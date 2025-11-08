@@ -41,6 +41,8 @@ export default () => {
 
   const queryTabs = tabs.filter((tab) => tab.type === "query");
   const tableTabs = tabs.filter((tab) => tab.type === "table");
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const isTableTabActive = activeTab?.type === "table";
 
   return (
     <div className="h-screen w-screen overflow-hidden">
@@ -65,7 +67,7 @@ export default () => {
 
       <ResizablePanel defaultSize={80}>
         <ResizablePanelGroup direction="vertical">
-          <ResizablePanel defaultSize={65} minSize={40}>
+          <ResizablePanel defaultSize={isTableTabActive ? 100 : 65} minSize={40}>
             <Tabs value={activeTabId} onValueChange={setActiveTabId} className="h-full flex flex-col">
               <div className="flex items-center border-b px-4 py-2">
                 <TabsList className="bg-transparent h-auto p-0 gap-1">
@@ -151,13 +153,16 @@ export default () => {
             </Tabs>
           </ResizablePanel>
 
-          <ResizableHandle />
-
-          <ResizablePanel defaultSize={35} minSize={20}>
-            <div className="flex h-full items-center justify-center p-6">
-              <span className="font-semibold">Results</span>
-            </div>
-          </ResizablePanel>
+          {!isTableTabActive && (
+            <>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={35} minSize={20}>
+                <div className="flex h-full items-center justify-center p-6">
+                  <span className="font-semibold">Results</span>
+                </div>
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </ResizablePanel>
     </ResizablePanelGroup>

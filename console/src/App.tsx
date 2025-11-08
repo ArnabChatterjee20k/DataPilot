@@ -1,6 +1,7 @@
 import {BrowserRouter,Routes, Route} from "react-router"
 import Dashboard from "./pages/dashboard"
 import Playground from "./pages/playground"
+import Upload from "./pages/upload"
 import Container from "./components/app/Container"
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Container><Dashboard/></Container>}/>
           <Route path="/playground/:id" element={<Playground/>}/>
+          <Route path="/upload" element={<Container><Upload/></Container>}/>
         </Routes>
       </BrowserRouter>
     </div>
