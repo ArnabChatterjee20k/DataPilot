@@ -1,0 +1,28 @@
+from fastapi import APIRouter, Request, Depends
+from pathlib import Path
+from ..config import get_adapter
+
+UPLOAD_DIR = Path('bucket')
+UPLOAD_DIR.mkdir(parents=True,exist_ok=True)
+
+router = APIRouter()
+# TODO: change this with include_router by defining router inside databases
+
+# connections -> databases, apis, etc
+# entites -> tables, endpoints, etc
+# buckets -> for uploading files(in case of sqlite)
+
+# fields -> columns, payload, etc
+# records -> rows, data, etc
+# here replacing fields, records with query as it will be a plain query any ways
+
+
+from .connections import router as ConnectionsRouter
+from .entities import router as EntitiesRouter
+from .bucket import router as BucketRouter
+
+router.include_router(ConnectionsRouter)
+router.include_router(EntitiesRouter)
+router.include_router(BucketRouter)
+
+__all__ = [router]
