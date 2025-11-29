@@ -44,7 +44,7 @@ async def get_rows(connection_id: str, entity_name: str, db: DBSession):
 @router.delete(
     "/connections/{connection_id}/entities/{entity}", response_model=EntityModelList
 )
-async def get_entities(connection_id: str, db: DBSession):
+async def get_entity(connection_id: str, db: DBSession):
     connection = await db.get(Connections, filters=Connections.uid == connection_id)
     if connection.source == SourceConfig.SQLITE.value:
         connection.connection_uri = UPLOAD_DIR / connection.connection_uri
