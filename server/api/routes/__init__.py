@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter
 from pathlib import Path
-from ..config import get_adapter
+from ..config import AppConfig
 
-UPLOAD_DIR = Path('bucket')
-UPLOAD_DIR.mkdir(parents=True,exist_ok=True)
+UPLOAD_DIR = Path(AppConfig.BUCKET_DIR)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 router = APIRouter()
-# TODO: change this with include_router by defining router inside databases
 
 # connections -> databases, apis, etc
 # entites -> tables, endpoints, etc
@@ -20,9 +19,11 @@ router = APIRouter()
 from .connections import router as ConnectionsRouter
 from .entities import router as EntitiesRouter
 from .bucket import router as BucketRouter
+from .queries import router as QueryRouter
 
 router.include_router(ConnectionsRouter)
 router.include_router(EntitiesRouter)
 router.include_router(BucketRouter)
+router.include_router(QueryRouter)
 
 __all__ = [router]

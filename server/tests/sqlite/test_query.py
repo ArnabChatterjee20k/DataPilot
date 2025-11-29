@@ -104,9 +104,9 @@ class TestSQLiteQuery:
 
         # Perform INSERT
         # Try POST first, then fallback to GET if POST doesn't exist
-        insert_response = client.post(
+        insert_response = client.get(
             f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-            json={
+            params={
                 "query": f"INSERT INTO {entity_name} (name, email) VALUES ('TestUser', 'test@example.com')"
             },
         )
@@ -148,19 +148,12 @@ class TestSQLiteQuery:
         entity_name = "users"
 
         # First insert a test record
-        insert_response = client.post(
+        insert_response = client.get(
             f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-            json={
+            params={
                 "query": f"INSERT INTO {entity_name} (name, email) VALUES ('UpdateTest', 'old@example.com')"
             },
         )
-        if insert_response.status_code == 404:
-            insert_response = client.get(
-                f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-                params={
-                    "query": f"INSERT INTO {entity_name} (name, email) VALUES ('UpdateTest', 'old@example.com')"
-                },
-            )
         assert insert_response.status_code in [
             200,
             201,
@@ -168,29 +161,12 @@ class TestSQLiteQuery:
         ], "Failed to insert test record"
 
         # Perform UPDATE
-        update_response = client.put(
+        update_response = client.get(
             f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-            json={
+            params={
                 "query": f"UPDATE {entity_name} SET email = 'new@example.com' WHERE name = 'UpdateTest'"
             },
         )
-
-        # If PUT doesn't exist, try POST or GET
-        if update_response.status_code == 404:
-            update_response = client.post(
-                f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-                json={
-                    "query": f"UPDATE {entity_name} SET email = 'new@example.com' WHERE name = 'UpdateTest'"
-                },
-            )
-        if update_response.status_code == 404:
-            update_response = client.get(
-                f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-                params={
-                    "query": f"UPDATE {entity_name} SET email = 'new@example.com' WHERE name = 'UpdateTest'"
-                },
-            )
-
         # Should succeed
         assert update_response.status_code in [
             200,
@@ -219,19 +195,12 @@ class TestSQLiteQuery:
         entity_name = "users"
 
         # First insert a test record
-        insert_response = client.post(
+        insert_response = client.get(
             f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-            json={
+            params={
                 "query": f"INSERT INTO {entity_name} (name, email) VALUES ('DeleteTest', 'delete@example.com')"
             },
         )
-        if insert_response.status_code == 404:
-            insert_response = client.get(
-                f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-                params={
-                    "query": f"INSERT INTO {entity_name} (name, email) VALUES ('DeleteTest', 'delete@example.com')"
-                },
-            )
         assert insert_response.status_code in [
             200,
             201,
@@ -248,17 +217,10 @@ class TestSQLiteQuery:
         ), "Test record not found before delete"
 
         # Perform DELETE
-        delete_response = client.delete(
+        delete_response = client.get(
             f"/connection/{connection_uid}/entitities/{entity_name}/queries",
             params={"query": f"DELETE FROM {entity_name} WHERE name = 'DeleteTest'"},
         )
-
-        # If DELETE doesn't exist, try POST or GET
-        if delete_response.status_code == 404:
-            delete_response = client.post(
-                f"/connection/{connection_uid}/entitities/{entity_name}/queries",
-                json={"query": f"DELETE FROM {entity_name} WHERE name = 'DeleteTest'"},
-            )
         if delete_response.status_code == 404:
             delete_response = client.get(
                 f"/connection/{connection_uid}/entitities/{entity_name}/queries",

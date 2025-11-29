@@ -4,6 +4,7 @@ from uuid import uuid4
 
 # id field automatically added here
 class Connections(Model):
+    # todo attach a playground id as well for getting unique connection id
     uid: str = lambda: str(uuid4())
     source: str
     name: str
@@ -11,13 +12,15 @@ class Connections(Model):
 
 
 class QueryLogs(Model):
-    uid:str = lambda: str(uuid4())
+    uid: str = lambda: str(uuid4())
     connection_id: int
     query: str
     metadata: dict
 
+
 class Bucket(Model):
-    uid:str
-    metadata:dict
+    uid: str
+    metadata: dict
+
 
 models = [Connections, QueryLogs, Bucket]

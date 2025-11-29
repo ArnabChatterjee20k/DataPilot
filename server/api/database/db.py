@@ -3,9 +3,9 @@ from laserorm.storage.storage import StorageSession
 from fastapi import Depends
 from typing import Annotated
 from .models import models
+from ..config import AppConfig
 
-# should be from the .env
-storage = SQLite("./config.db")
+storage = SQLite(AppConfig.DB_PATH)
 
 
 async def get_db():

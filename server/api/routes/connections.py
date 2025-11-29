@@ -5,14 +5,18 @@ from ..models import CreateConnectionsModel, ConnectionsModel, ConnectionsModelL
 from ..database.db import DBSession
 from ..database.models import Connections
 
-router = APIRouter(tags=['connections'])
+router = APIRouter(tags=["connections"])
+
 
 @router.post("/connections", response_model=ConnectionsModel)
 async def create_connection(connection: CreateConnectionsModel, db: DBSession):
-    if connection.source == SourceConfig.SQLITE:
+    if connection.source == SourceConfig.SQLITE.value:
         file_path = UPLOAD_DIR / connection.connection_uri
         if not file_path.exists():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail='First upload sqlite to the bucket then add it')
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="First upload sqlite to the bucket then add it",
+            )
 
     created = await db.create(Connections(**connection.model_dump()))
     await db.commit()
@@ -20,8 +24,10 @@ async def create_connection(connection: CreateConnectionsModel, db: DBSession):
     return ConnectionsModel(
         uid=created.get("uid"),
         name=created.get("name"),
+        source=created.get("source"),
         connection_uri=created.get("connection_uri"),
     )
+
 
 @router.get("/connections", response_model=ConnectionsModelList)
 async def list_connections(db: DBSession):
@@ -29,11 +35,12 @@ async def list_connections(db: DBSession):
     results = []
     for connection in connections:
         results.append(ConnectionsModel(**connection.get_values()))
-    return ConnectionsModelList(connections=results,total=len(results))
+    return ConnectionsModelList(connections=results, total=len(results))
+
 
 @router.get("/connections/{connection_uid}", response_model=ConnectionsModel)
-async def get_connection(connection_uid:str , db: DBSession):
-    connection = await db.get(Connections,filters=Connections.uid == connection_uid)
+async def get_connection(connection_uid: str, db: DBSession):
+    connection = await db.get(Connections, filters=Connections.uid == connection_uid)
     if not connection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return ConnectionsModel(**connection.get_values())
