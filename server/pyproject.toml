@@ -7,4 +7,24 @@ requires-python = ">=3.12"
 dependencies = [
     "black>=25.9.0",
     "fastapi[standard]>=0.121.0",
+    "laserorm[postgres,sqlite]",
+    "python-dotenv>=1.2.1",
 ]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.2.1",
+]
+
+[tool.uv.sources]
+laserorm = { git = "https://github.com/ArnabChatterjee20k/LaserORM.git" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*", "*Tests"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
