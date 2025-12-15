@@ -50,7 +50,8 @@ type TreeViewProps = {
   elements?: TreeViewElement[]
   initialExpandedItems?: string[]
   openIcon?: React.ReactNode
-  closeIcon?: React.ReactNode
+  closeIcon?: React.ReactNode,
+  onExpand?: (opnedId:string)=>void
 } & React.HTMLAttributes<HTMLDivElement>
 
 const Tree = forwardRef<HTMLDivElement, TreeViewProps>(
@@ -65,6 +66,7 @@ const Tree = forwardRef<HTMLDivElement, TreeViewProps>(
       openIcon,
       closeIcon,
       dir,
+      onExpand,
       ...props
     },
     ref
@@ -85,6 +87,7 @@ const Tree = forwardRef<HTMLDivElement, TreeViewProps>(
         if (prev?.includes(id)) {
           return prev.filter((item) => item !== id)
         }
+        if(onExpand) onExpand(id);
         return [...(prev ?? []), id]
       })
     }, [])

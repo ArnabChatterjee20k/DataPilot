@@ -44,10 +44,7 @@ export type ConnectionsModel = {
      * Connection Uri
      */
     connection_uri: string;
-    /**
-     * Entities
-     */
-    entities?: Array<EntityModel>;
+    source: SourceConfig;
 };
 
 /**
@@ -90,6 +87,20 @@ export type EntityModel = {
 };
 
 /**
+ * EntityModelList
+ */
+export type EntityModelList = {
+    /**
+     * Entities
+     */
+    entities: Array<EntityModel>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -97,6 +108,40 @@ export type HttpValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
+};
+
+/**
+ * QueryResult
+ */
+export type QueryResult = {
+    /**
+     * Query
+     */
+    query: string;
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Entity Name
+     */
+    entity_name: string;
+    /**
+     * Limit
+     */
+    limit?: number | null;
+    /**
+     * Offset
+     */
+    offset?: number | null;
+    /**
+     * Rows
+     */
+    rows: Array<unknown>;
+    /**
+     * Columns
+     */
+    columns: Array<unknown>;
 };
 
 /**
@@ -218,10 +263,74 @@ export type GetEntitiesResponses = {
     /**
      * Successful Response
      */
-    200: EntityModel;
+    200: EntityModelList;
 };
 
 export type GetEntitiesResponse = GetEntitiesResponses[keyof GetEntitiesResponses];
+
+export type GetRowsData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Entity Name
+         */
+        entity_name: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/entitities/{entity_name}';
+};
+
+export type GetRowsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetRowsError = GetRowsErrors[keyof GetRowsErrors];
+
+export type GetRowsResponses = {
+    /**
+     * Successful Response
+     */
+    200: QueryResult;
+};
+
+export type GetRowsResponse = GetRowsResponses[keyof GetRowsResponses];
+
+export type GetEntityData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connections/{connection_id}/entities/{entity}';
+};
+
+export type GetEntityErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetEntityError = GetEntityErrors[keyof GetEntityErrors];
+
+export type GetEntityResponses = {
+    /**
+     * Successful Response
+     */
+    200: EntityModelList;
+};
+
+export type GetEntityResponse = GetEntityResponses[keyof GetEntityResponses];
 
 export type UploadFileData = {
     body: BodyUploadFile;
@@ -247,6 +356,45 @@ export type UploadFileResponses = {
 };
 
 export type UploadFileResponse = UploadFileResponses[keyof UploadFileResponses];
+
+export type ExecuteQueryData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Entity Name
+         */
+        entity_name: string;
+    };
+    query?: {
+        /**
+         * Query
+         */
+        query?: string;
+    };
+    url: '/connection/{connection_id}/entitities/{entity_name}/queries';
+};
+
+export type ExecuteQueryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExecuteQueryError = ExecuteQueryErrors[keyof ExecuteQueryErrors];
+
+export type ExecuteQueryResponses = {
+    /**
+     * Successful Response
+     */
+    200: QueryResult;
+};
+
+export type ExecuteQueryResponse = ExecuteQueryResponses[keyof ExecuteQueryResponses];
 
 export type HealthData = {
     body?: never;

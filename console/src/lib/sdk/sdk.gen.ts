@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetEntitiesData, GetEntitiesErrors, GetEntitiesResponses, Health2Data, Health2Responses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetEntitiesData, GetEntitiesErrors, GetEntitiesResponses, GetEntityData, GetEntityErrors, GetEntityResponses, GetRowsData, GetRowsErrors, GetRowsResponses, Health2Data, Health2Responses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -21,78 +21,64 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 /**
  * List Connections
  */
-export const listConnections = <ThrowOnError extends boolean = false>(options?: Options<ListConnectionsData, ThrowOnError>) => {
-    return (options?.client ?? client).get<ListConnectionsResponses, unknown, ThrowOnError>({
-        url: '/connections',
-        ...options
-    });
-};
+export const listConnections = <ThrowOnError extends boolean = false>(options?: Options<ListConnectionsData, ThrowOnError>) => (options?.client ?? client).get<ListConnectionsResponses, unknown, ThrowOnError>({ url: '/connections', ...options });
 
 /**
  * Create Connection
  */
-export const createConnection = <ThrowOnError extends boolean = false>(options: Options<CreateConnectionData, ThrowOnError>) => {
-    return (options.client ?? client).post<CreateConnectionResponses, CreateConnectionErrors, ThrowOnError>({
-        url: '/connections',
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        }
-    });
-};
+export const createConnection = <ThrowOnError extends boolean = false>(options: Options<CreateConnectionData, ThrowOnError>) => (options.client ?? client).post<CreateConnectionResponses, CreateConnectionErrors, ThrowOnError>({
+    url: '/connections',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Get Connection
  */
-export const getConnection = <ThrowOnError extends boolean = false>(options: Options<GetConnectionData, ThrowOnError>) => {
-    return (options.client ?? client).get<GetConnectionResponses, GetConnectionErrors, ThrowOnError>({
-        url: '/connections/{connection_uid}',
-        ...options
-    });
-};
+export const getConnection = <ThrowOnError extends boolean = false>(options: Options<GetConnectionData, ThrowOnError>) => (options.client ?? client).get<GetConnectionResponses, GetConnectionErrors, ThrowOnError>({ url: '/connections/{connection_uid}', ...options });
 
 /**
  * Get Entities
  */
-export const getEntities = <ThrowOnError extends boolean = false>(options: Options<GetEntitiesData, ThrowOnError>) => {
-    return (options.client ?? client).get<GetEntitiesResponses, GetEntitiesErrors, ThrowOnError>({
-        url: '/connections/{connection_id}/entities',
-        ...options
-    });
-};
+export const getEntities = <ThrowOnError extends boolean = false>(options: Options<GetEntitiesData, ThrowOnError>) => (options.client ?? client).get<GetEntitiesResponses, GetEntitiesErrors, ThrowOnError>({ url: '/connections/{connection_id}/entities', ...options });
+
+/**
+ * Get Rows
+ */
+export const getRows = <ThrowOnError extends boolean = false>(options: Options<GetRowsData, ThrowOnError>) => (options.client ?? client).get<GetRowsResponses, GetRowsErrors, ThrowOnError>({ url: '/connection/{connection_id}/entitities/{entity_name}', ...options });
+
+/**
+ * Get Entity
+ */
+export const getEntity = <ThrowOnError extends boolean = false>(options: Options<GetEntityData, ThrowOnError>) => (options.client ?? client).get<GetEntityResponses, GetEntityErrors, ThrowOnError>({ url: '/connections/{connection_id}/entities/{entity}', ...options });
 
 /**
  * Upload File
  */
-export const uploadFile = <ThrowOnError extends boolean = false>(options: Options<UploadFileData, ThrowOnError>) => {
-    return (options.client ?? client).post<UploadFileResponses, UploadFileErrors, ThrowOnError>({
-        ...formDataBodySerializer,
-        url: '/bucket',
-        ...options,
-        headers: {
-            'Content-Type': null,
-            ...options.headers
-        }
-    });
-};
+export const uploadFile = <ThrowOnError extends boolean = false>(options: Options<UploadFileData, ThrowOnError>) => (options.client ?? client).post<UploadFileResponses, UploadFileErrors, ThrowOnError>({
+    ...formDataBodySerializer,
+    url: '/bucket',
+    ...options,
+    headers: {
+        'Content-Type': null,
+        ...options.headers
+    }
+});
+
+/**
+ * Execute Query
+ */
+export const executeQuery = <ThrowOnError extends boolean = false>(options: Options<ExecuteQueryData, ThrowOnError>) => (options.client ?? client).get<ExecuteQueryResponses, ExecuteQueryErrors, ThrowOnError>({ url: '/connection/{connection_id}/entitities/{entity_name}/queries', ...options });
 
 /**
  * Health
  */
-export const health = <ThrowOnError extends boolean = false>(options?: Options<HealthData, ThrowOnError>) => {
-    return (options?.client ?? client).get<HealthResponses, unknown, ThrowOnError>({
-        url: '/health',
-        ...options
-    });
-};
+export const health = <ThrowOnError extends boolean = false>(options?: Options<HealthData, ThrowOnError>) => (options?.client ?? client).get<HealthResponses, unknown, ThrowOnError>({ url: '/health', ...options });
 
 /**
  * Health
  */
-export const health2 = <ThrowOnError extends boolean = false>(options?: Options<Health2Data, ThrowOnError>) => {
-    return (options?.client ?? client).get<Health2Responses, unknown, ThrowOnError>({
-        url: '/',
-        ...options
-    });
-};
+export const health2 = <ThrowOnError extends boolean = false>(options?: Options<Health2Data, ThrowOnError>) => (options?.client ?? client).get<Health2Responses, unknown, ThrowOnError>({ url: '/', ...options });

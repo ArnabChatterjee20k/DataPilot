@@ -7,8 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDatabaseStore } from "./store";
-import { useSearchParams } from "react-router";
+import { useDatabaseStore, useTabsStore} from "./store/store";
 import { Checkbox } from "@/components/ui/checkbox"
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +22,7 @@ interface TableViewProps {
   tableName: string;
   tableId?: string;
   databaseName: string;
+  tabId: string
 }
 
 const COLUMN_PARAM = 'columns'
@@ -33,21 +33,22 @@ export function TableView({
   tableName,
   tableId,
   databaseName,
+  tabId
 }: TableViewProps) {
   const { getColumns, getRows } = useDatabaseStore();
-  const [searchParams, setSearchParams] = useSearchParams();
-
+  const { updateTableFilters, tabs } = useTabsStore();
+  const tab = tabs.filter(tab => tab.id === tabId)[0]
   const columns = tableId ? getColumns(tableId) : [];
   const rows = tableId ? getRows(tableId) : [];
 
-  const visibleColumnsParam = searchParams.get(COLUMN_PARAM)
+  const visibleColumnsParam = tab.filters[COLUMN_PARAM]
   const visibleColumns = visibleColumnsParam ? new Set(visibleColumnsParam.split(",")) : new Set(columns.map((col) => col.name))
 
   const [selectedRows,setSelectedRows] = useState<Set<string|number>>(new Set())
   
-  const sortColumnParam = searchParams.get(SORT_COLUMN_PARAM)
-  const sortDirParam = searchParams.get(SORT_DIR_PARAM) as "asc" | "desc" | null
-    
+  const sortColumnParam = tab.filters[SORT_COLUMN_PARAM]
+  const sortDirParam = tab.filters[SORT_DIR_PARAM] as "asc" | "desc" | null
+
   const sortedRows = useMemo(() => {
     if (!sortColumnParam) return rows
 
@@ -93,7 +94,7 @@ export function TableView({
     if(sortDirParam === 'asc' && sortColumnParam === columnName){
       direction = 'desc';
     }
-    setSearchParams(`?${SORT_COLUMN_PARAM}=${columnName}&${SORT_DIR_PARAM}=${direction}`)
+    updateTableFilters(tab.id,{[SORT_COLUMN_PARAM]:columnName, [SORT_DIR_PARAM]:direction})
   }
 
   const handleToggleViewColumn = (columnName:string)=>{
@@ -101,7 +102,7 @@ export function TableView({
     else visibleColumns.add(columnName)
     
     const newVisibleColumns = Array.from(visibleColumns).join(',')
-    setSearchParams(`?${COLUMN_PARAM}=${newVisibleColumns}`)
+    updateTableFilters(tab.id,{[COLUMN_PARAM]: newVisibleColumns})
   }
 
   const getSortIcon = (columnName: string) => {
