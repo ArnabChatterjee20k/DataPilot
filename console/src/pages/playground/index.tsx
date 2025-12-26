@@ -11,11 +11,22 @@ import DatabaseSidebar from "./DatabaseSidebar";
 import { TableView } from "./table";
 import { QueryResults } from "./result";
 import { X } from "lucide-react";
-import { useTabsStore } from "./store/store";
+import { useDatabaseStore, useTabsStore } from "./store/store";
 import { executeQuery } from "@/lib/sdk";
 
 export default () => {
-  const { tabs, activeTabId, setActiveTabId, addNewQueryTab, closeTab, updateTabContent, setQueryResult, updateTabConnection, queryResults } = useTabsStore();
+  const {
+    tabs,
+    activeTabId,
+    setActiveTabId,
+    addNewQueryTab,
+    closeTab,
+    updateTabContent,
+    setQueryResult,
+    updateTabConnection,
+    queryResults,
+  } = useTabsStore();
+  const { setRows, setColumns } = useDatabaseStore();
   const [runningTabId, setRunningTabId] = useState<string | null>(null);
 
   const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
@@ -23,11 +34,10 @@ export default () => {
     closeTab(tabId);
   };
 
-  const handleRunQuery = async (tabId: string, query:string) => {
-    const tab = tabs.find(t => t.id === tabId);
+  const handleRunQuery = async (tabId: string, query: string) => {
+    const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const connectionId = tab.connectionId;
-    console.log({tab,query,connectionId})
     if (!connectionId) {
       setQueryResult(tabId, {
         columns: [],
@@ -59,15 +69,27 @@ export default () => {
           query: response.data.query,
         });
         updateTabConnection(tabId, connectionId, entityName);
+        setColumns(
+          tab.tableId,
+          (response.data.columns as any[]).map((col: any, idx: number) => ({
+            id: `${tab.tableId}-col-${idx}`,
+            name: col.name || String(col),
+            type: col.type || "unknown",
+            nullable: col.nullable,
+            defaultValue: col.default_value,
+          }))
+        );
+        setRows(tab.tableId, response.data.rows);
       }
     } catch (error: any) {
       setQueryResult(tabId, {
         columns: [],
         rows: [],
-        error: error?.response?.data?.detail?.message || 
-               error?.response?.data?.detail?.[0]?.msg ||
-               error?.message || 
-               "Failed to execute query",
+        error:
+          error?.response?.data?.detail?.message ||
+          error?.response?.data?.detail?.[0]?.msg ||
+          error?.message ||
+          "Failed to execute query",
       });
     } finally {
       setRunningTabId(null);
@@ -76,101 +98,104 @@ export default () => {
 
   return (
     <div className="h-screen w-screen overflow-hidden">
-      <ResizablePanelGroup
-        direction="horizontal"
-        className="w-full h-full"
-      >
-      <ResizablePanel defaultSize={18} minSize={15} maxSize={30}>
-        <DatabaseSidebar />
-      </ResizablePanel>
+      <ResizablePanelGroup direction="horizontal" className="w-full h-full">
+        <ResizablePanel defaultSize={18} minSize={15} maxSize={30}>
+          <DatabaseSidebar />
+        </ResizablePanel>
 
-      <ResizableHandle />
+        <ResizableHandle />
 
-      <ResizablePanel defaultSize={80}>
-        <Tabs value={activeTabId} onValueChange={(value) => {
-          if (value !== activeTabId) {
-            setActiveTabId(value);
-          }
-        }} className="h-full flex flex-col">
-          <div className="flex items-center border-b px-4 py-2">
-            <TabsList className="bg-transparent h-auto p-0 gap-1">
-              {tabs.map((tab) => (
-                <TabsTrigger
-                  key={tab.id}
-                  value={tab.id}
-                  className="relative group px-3 py-1.5"
-                  onClick={(e) => {
-                    if (tab.isNew) {
-                      e.preventDefault();
-                      addNewQueryTab();
-                    }
-                  }}
-                >
-                  {tab.isNew ? (
-                    "+ New Query"
-                  ) : (
-                    <>
-                      <span>{tab.name}</span>
-                      {!tab.isNew && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="ml-2 h-4 w-4 p-0 opacity-0 group-hover:opacity-100"
-                          onClick={(e) => handleCloseTab(tab.id, e)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-          <div className="flex-1 overflow-hidden">
-            {tabs.map((tab) => (
-              <TabsContent
-                key={tab.id}
-                value={tab.id}
-                className="h-full m-0"
-              >
-                <ResizablePanelGroup direction="vertical" className="h-full">
-                  <ResizablePanel defaultSize={25} minSize={0} maxSize={100}>
-                    <CodeArea
-                      tab={tab}
-                      key={`codearea-${tab.id}`}
-                      content={tab.content || ""}
-                      onChange={(content) => updateTabContent(tab.id, content)}
-                      onRun={(query:string) => handleRunQuery(tab.id, query)}
-                      isRunning={runningTabId === tab.id}
-                    />
-                  </ResizablePanel>
-
-                  <ResizableHandle />
-
-                  <ResizablePanel defaultSize={65} minSize={40}>
-                    {tab.type === "query" ? (
-                      <QueryResults result={queryResults[tab.id]} />
-                    ) : tab.type === "table" && tab.tableName && tab.databaseName ? (
-                      <TableView
-                        tableName={tab.tableName}
-                        tableId={tab.tableId}
-                        databaseName={tab.databaseName}
-                        tabId={tab.id}
-                      />
+        <ResizablePanel defaultSize={80}>
+          <Tabs
+            value={activeTabId}
+            onValueChange={(value) => {
+              if (value !== activeTabId) {
+                setActiveTabId(value);
+              }
+            }}
+            className="h-full flex flex-col"
+          >
+            <div className="flex items-center border-b px-4 py-2">
+              <TabsList className="bg-transparent h-auto p-0 gap-1">
+                {tabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.id}
+                    value={tab.id}
+                    className="relative group px-3 py-1.5"
+                    onClick={(e) => {
+                      if (tab.isNew) {
+                        e.preventDefault();
+                        addNewQueryTab();
+                      }
+                    }}
+                  >
+                    {tab.isNew ? (
+                      "+ New Query"
                     ) : (
-                      <div className="flex h-full items-center justify-center p-6">
-                        <span className="text-muted-foreground">No content to display</span>
-                      </div>
+                      <>
+                        <span>{tab.name}</span>
+                        {!tab.isNew && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="ml-2 h-4 w-4 p-0 opacity-0 group-hover:opacity-100"
+                            onClick={(e) => handleCloseTab(tab.id, e)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </>
                     )}
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              </TabsContent>
-            ))}
-          </div>
-        </Tabs>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {tabs.map((tab) => (
+                <TabsContent key={tab.id} value={tab.id} className="h-full m-0">
+                  <ResizablePanelGroup direction="vertical" className="h-full">
+                    <ResizablePanel defaultSize={25} minSize={0} maxSize={100}>
+                      <CodeArea
+                        tab={tab}
+                        key={`codearea-${tab.id}`}
+                        content={tab.content || ""}
+                        onChange={(content) =>
+                          updateTabContent(tab.id, content)
+                        }
+                        onRun={(query: string) => handleRunQuery(tab.id, query)}
+                        isRunning={runningTabId === tab.id}
+                      />
+                    </ResizablePanel>
+
+                    <ResizableHandle />
+
+                    <ResizablePanel defaultSize={65} minSize={40}>
+                      {tab.type === "query" ? (
+                        <QueryResults result={queryResults[tab.id]} />
+                      ) : tab.type === "table" &&
+                        tab.tableName &&
+                        tab.databaseName ? (
+                        <TableView
+                          tableName={tab.tableName}
+                          tableId={tab.tableId}
+                          databaseName={tab.databaseName}
+                          tabId={tab.id}
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center p-6">
+                          <span className="text-muted-foreground">
+                            No content to display
+                          </span>
+                        </div>
+                      )}
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
+                </TabsContent>
+              ))}
+            </div>
+          </Tabs>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 };

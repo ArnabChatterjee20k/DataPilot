@@ -78,7 +78,7 @@ interface TabStore {
   queryResults: Record<string, QueryResult>; // { [tabId]: QueryResult }
   activeTableView: ActiveTableView | null; // Table view shown below query
   setActiveTabId: (id: string) => void;
-  addNewQueryTab: () => void;
+  addNewQueryTab: () => string;
   openTableTab: (table: Table, database: DatabaseConnection) => void;
   setActiveTableView: (table: Table, database: DatabaseConnection) => void;
   clearActiveTableView: () => void;
@@ -102,6 +102,7 @@ export const useTabsStore = create<TabStore>((set, get) => ({
       tabs: [...state.tabs, newTab],
       activeTabId: tabId,
     }));
+    return tabId;
   },
   openTableTab: (table: Table, database: DatabaseConnection) => {
     const state = get();
