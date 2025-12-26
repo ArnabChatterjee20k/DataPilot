@@ -8,7 +8,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { useEffect, useRef } from "react";
-import type { Tab } from "./store/store";
+import { type Tab } from "./store/store";
 
 interface CodeAreaProps {
   tab: Tab;

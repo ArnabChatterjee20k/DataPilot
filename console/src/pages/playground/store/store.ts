@@ -35,6 +35,8 @@ export interface Tab {
   filters: Record<string, string>;
   tableWindowSize?: string;
   queryWindowSize?: string;
+  rowsLimit: number;
+  rowsOffset: number;
 }
 
 export interface QueryResult {
@@ -53,6 +55,8 @@ const getNewQueryTab = (): Tab => ({
   content: "",
   isNew: true,
   filters: {},
+  rowsLimit: 100,
+  rowsOffset: 0,
 });
 
 const getDefaultNewQueryTab = (tabId: string): Tab => ({
@@ -62,6 +66,8 @@ const getDefaultNewQueryTab = (tabId: string): Tab => ({
   content: "",
   isNew: false,
   filters: {},
+  rowsLimit: 100,
+  rowsOffset: 0,
 });
 
 export const getTableTabId = (tableId: string) => `table-${tableId}`;
@@ -90,6 +96,7 @@ interface TabStore {
     entityName?: string
   ) => void;
   updateTableFilters: (tabId: string, filters: Record<string, string>) => void;
+  updateTabPagination: (tabId: string, limits:number, offset?:number) => void;
 }
 
 export const useTabsStore = create<TabStore>((set, get) => ({
@@ -128,6 +135,8 @@ export const useTabsStore = create<TabStore>((set, get) => ({
       databaseName: database.name,
       connectionId: database.id,
       filters: {},
+      rowsLimit: 100,
+      rowsOffset: 0,
     };
     set((state) => ({
       tabs: [...state.tabs, newTab],
@@ -200,6 +209,19 @@ export const useTabsStore = create<TabStore>((set, get) => ({
         return {
           ...tab,
           filters: hasFilters ? { ...(tab.filters ?? {}), ...filters } : {},
+        };
+      }),
+    }));
+  },
+  updateTabPagination: (tabId: string, limit: number, offset?: number) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+
+        return {
+          ...tab,
+          rowsLimit: limit,
+          rowsOffset: offset || 0,
         };
       }),
     }));

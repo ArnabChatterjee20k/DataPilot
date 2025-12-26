@@ -13,6 +13,7 @@ import { QueryResults } from "./result";
 import { X } from "lucide-react";
 import { useDatabaseStore, useTabsStore } from "./store/store";
 import { executeQuery } from "@/lib/sdk";
+import { getQueryWithRowOffsetAndLimits } from "@/lib/queries";
 
 export default () => {
   const {
@@ -58,7 +59,7 @@ export default () => {
           entity_name: entityName,
         },
         query: {
-          query: query,
+          query: getQueryWithRowOffsetAndLimits(query, tab.rowsLimit, tab.rowsOffset),
         },
       });
 

@@ -1,22 +1,36 @@
 import { useMemo, useState } from "react";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDatabaseStore, useTabsStore } from "./store/store";
+import {
+  getTableTabId,
+  useDatabaseStore,
+  useTabsStore,
+  type Column,
+} from "./store/store";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronsUpDown,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { getRowsQuery } from "@/lib/queries";
+import { executeQuery } from "@/lib/sdk";
 
 interface TableViewProps {
   tableName: string;
@@ -28,6 +42,8 @@ interface TableViewProps {
 const COLUMN_PARAM = "columns";
 const SORT_COLUMN_PARAM = "sortCol";
 const SORT_DIR_PARAM = "sortDIR";
+// -1 means no limits
+const ROWS_LIMITS = [100, 200, 300, -1];
 
 // Hack: Shadcn doesn implement scrolling on the outer div(https://github.com/shadcn-ui/ui/issues/1151)
 // so it is solves that
@@ -47,9 +63,12 @@ function StickyHeaderTableContainer(props: React.ComponentProps<"table">) {
 }
 
 export function TableView({ tableId, tabId }: TableViewProps) {
-  const { getColumns, getRows } = useDatabaseStore();
-  const { updateTableFilters, tabs } = useTabsStore();
+  const { getColumns, getRows, setRows } = useDatabaseStore();
+  const { updateTabContent } = useTabsStore();
+  const { updateTableFilters, updateTabPagination, tabs } = useTabsStore();
   const tab = tabs.filter((tab) => tab.id === tabId)[0];
+
+  // sorting
   const columns = tableId ? getColumns(tableId) : [];
   const rows = tableId ? getRows(tableId) : [];
 
@@ -140,30 +159,73 @@ export function TableView({ tableId, tabId }: TableViewProps) {
     visibleColumns.has(col.name)
   );
 
+  // pagination
+  const handleToggleRowLimit = (limit: number) => {
+    updateTabPagination(tab.id, limit);
+  };
+
+  // TODO: handle connection for the table
+  const fetchPage = async (offset: number) => {
+    updateTabPagination(tabId, tab.rowsLimit, offset);
+
+    const query = getRowsQuery(tab.tableName!, tab.rowsLimit, offset);
+
+    const rowsResponse = await executeQuery({
+      path: {
+        connection_id: tab.connectionId!,
+        entity_name: tab.tableName!,
+      },
+      query: {
+        query,
+        limit: tab.rowsLimit,
+        offset,
+      },
+    });
+
+    if (!rowsResponse.data) return;
+
+    updateTabContent(
+      getTableTabId(tab.tableId!),
+      rowsResponse.data.query || query
+    );
+
+    if (rowsResponse.data.rows) {
+      setRows(tab.tableId!, rowsResponse.data.rows as any[]);
+    }
+  };
+
+  const handlePaginateNext = async () => {
+    const nextOffset = tab.rowsOffset + tab.rowsLimit;
+    await fetchPage(nextOffset);
+  };
+
+  const handlePaginatePrevious = async () => {
+    if (tab.rowsOffset === 0) return;
+
+    const prevOffset = Math.max(0, tab.rowsOffset - tab.rowsLimit);
+    await fetchPage(prevOffset);
+  };
+
   return (
     <div className="h-full flex flex-col p-6">
       <div className="mb-4 flex items-center">
         {/* table search */}
-        {/* column view toggle */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="gap-2 bg-transparent">
-              Columns
-              <ChevronDown className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {columns.map((column) => (
-              <DropdownMenuCheckboxItem
-                key={column.id}
-                checked={visibleColumns.has(column.name)}
-                onCheckedChange={() => handleToggleViewColumn(column.name)}
-              >
-                {column.name}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex justify-between gap-2">
+          <RowsPaginator
+            currentPage={(tab.rowsOffset + 1) % tab.rowsLimit}
+            handleNextPage={handlePaginateNext}
+            handlePreviousPage={handlePaginatePrevious}
+          />
+          <RowsPerPageDropdown
+            currentRowLimit={tab.rowsLimit}
+            handleToggleRowLimit={handleToggleRowLimit}
+          />
+          <ColumnDropdown
+            columns={columns}
+            visibleColumns={visibleColumns}
+            handleToggleViewColumn={handleToggleViewColumn}
+          />
+        </div>
       </div>
 
       <div className="flex-1 border rounded-lg min-h-0 overflow-hidden">
@@ -264,3 +326,93 @@ export function TableView({ tableId, tabId }: TableViewProps) {
     </div>
   );
 }
+
+function RowsPaginator({
+  currentPage,
+  handleNextPage,
+  handlePreviousPage,
+}: {
+  currentPage: number;
+  handleNextPage: () => void;
+  handlePreviousPage: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Button onClick={handlePreviousPage} size="icon" variant="outline">
+        <ChevronLeft />
+      </Button>
+      <p className="text-sm">Page {currentPage}</p>
+      <Button onClick={handleNextPage} size="icon" variant="outline">
+        <ChevronRight />
+      </Button>
+    </div>
+  );
+}
+
+function ColumnDropdown({
+  columns,
+  visibleColumns,
+  handleToggleViewColumn,
+}: {
+  columns: Column[];
+  visibleColumns: Set<string>;
+  handleToggleViewColumn: (column: string) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="gap-2 bg-transparent">
+          Columns
+          <ChevronDown className="w-4 h-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel>Columns visible</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {columns.map((column) => (
+          <DropdownMenuCheckboxItem
+            key={column.id}
+            checked={visibleColumns.has(column.name)}
+            onCheckedChange={() => handleToggleViewColumn(column.name)}
+          >
+            {column.name}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function RowsPerPageDropdown({
+  currentRowLimit,
+  handleToggleRowLimit,
+}: {
+  currentRowLimit: number;
+  handleToggleRowLimit: (limit: number) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="gap-2 bg-transparent">
+          {currentRowLimit === -1 ? "No limits" : currentRowLimit}
+          <ChevronDown className="w-4 h-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel>Rows per page </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {ROWS_LIMITS.map((row) => (
+          <DropdownMenuCheckboxItem
+            key={row}
+            checked={row === currentRowLimit}
+            onCheckedChange={() => handleToggleRowLimit(row)}
+          >
+            {row === -1 ? "No limits" : row}
+          </DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SearchTable() {}
