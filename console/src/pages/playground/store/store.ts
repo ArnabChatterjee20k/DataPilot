@@ -19,7 +19,7 @@ export interface Column {
   defaultValue?: string;
 }
 
-export type Row = Record<string,string>
+export type Row = Record<string, string>;
 
 export type TabType = "query" | "table";
 export interface Tab {
@@ -32,9 +32,9 @@ export interface Tab {
   databaseName?: string;
   connectionId?: string;
   isNew?: boolean;
-  filters:Record<string,string>,
-  tableWindowSize?:string
-  queryWindowSize?:string
+  filters: Record<string, string>;
+  tableWindowSize?: string;
+  queryWindowSize?: string;
 }
 
 export interface QueryResult {
@@ -52,7 +52,7 @@ const getNewQueryTab = (): Tab => ({
   type: "query",
   content: "",
   isNew: true,
-  filters:{}
+  filters: {},
 });
 
 const getDefaultNewQueryTab = (tabId: string): Tab => ({
@@ -61,10 +61,10 @@ const getDefaultNewQueryTab = (tabId: string): Tab => ({
   type: "query",
   content: "",
   isNew: false,
-  filters:{}
+  filters: {},
 });
 
-export const getTableTabId = (tableId:string)=> `table-${tableId}`;
+export const getTableTabId = (tableId: string) => `table-${tableId}`;
 
 interface ActiveTableView {
   table: Table;
@@ -84,8 +84,12 @@ interface TabStore {
   closeTab: (tabId: string) => void;
   updateTabContent: (tabId: string, content: string) => void;
   setQueryResult: (tabId: string, result: QueryResult) => void;
-  updateTabConnection: (tabId: string, connectionId: string, entityName?: string) => void;
-  updateTableFilters:(tabId: string, filters:Record<string,string>) => void;
+  updateTabConnection: (
+    tabId: string,
+    connectionId: string,
+    entityName?: string
+  ) => void;
+  updateTableFilters: (tabId: string, filters: Record<string, string>) => void;
 }
 
 export const useTabsStore = create<TabStore>((set, get) => ({
@@ -123,7 +127,7 @@ export const useTabsStore = create<TabStore>((set, get) => ({
       tableId: table.id,
       databaseName: database.name,
       connectionId: database.id,
-      filters:{}
+      filters: {},
     };
     set((state) => ({
       tabs: [...state.tabs, newTab],
@@ -175,21 +179,30 @@ export const useTabsStore = create<TabStore>((set, get) => ({
       queryResults: { ...state.queryResults, [tabId]: result },
     }));
   },
-  updateTabConnection: (tabId: string, connectionId: string, entityName?: string) => {
+  updateTabConnection: (
+    tabId: string,
+    connectionId: string,
+    entityName?: string
+  ) => {
     set((state) => ({
       tabs: state.tabs.map((tab) =>
         tab.id === tabId ? { ...tab, connectionId, entityName } : tab
       ),
     }));
   },
-  updateTableFilters: (tabId: string,filters: Record<string, string>) => {
+  updateTableFilters: (tabId: string, filters: Record<string, string>) => {
     set((state) => ({
-      tabs: state.tabs.map((tab) =>
-        tab.id === tabId
-          ? { ...tab, filters: {...(tab.filters || {}), ...filters} }
-          : tab
-      ),
-    }))
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+
+        const hasFilters = Object.keys(filters).length > 0;
+
+        return {
+          ...tab,
+          filters: hasFilters ? { ...(tab.filters ?? {}), ...filters } : {},
+        };
+      }),
+    }));
   },
 }));
 
@@ -210,7 +223,11 @@ interface DatabaseStore {
   setTablesForConnection: (connectionId: string, tables: Table[]) => void;
   addTable: (connectionId: string, table: Table) => void;
   removeTable: (connectionId: string, tableId: string) => void;
-  updateTable: (connectionId: string, tableId: string, table: Partial<Table>) => void;
+  updateTable: (
+    connectionId: string,
+    tableId: string,
+    table: Partial<Table>
+  ) => void;
   getTablesForConnection: (connectionId: string) => Table[];
   setColumns: (tableId: string, columns: Column[]) => void;
   setRows: (tableId: string, rows: Row[]) => void;
@@ -270,18 +287,24 @@ export const useDatabaseStore = create<DatabaseStore>((set, get) => ({
       const newRows = { ...state.rows };
       delete newColumns[tableId];
       delete newRows[tableId];
-      
+
       const connectionTables = state.tables[connectionId] || [];
       return {
         tables: {
           ...state.tables,
-          [connectionId]: connectionTables.filter((table) => table.id !== tableId),
+          [connectionId]: connectionTables.filter(
+            (table) => table.id !== tableId
+          ),
         },
         columns: newColumns,
         rows: newRows,
       };
     }),
-  updateTable: (connectionId: string, tableId: string, updates: Partial<Table>) =>
+  updateTable: (
+    connectionId: string,
+    tableId: string,
+    updates: Partial<Table>
+  ) =>
     set((state) => {
       const connectionTables = state.tables[connectionId] || [];
       return {

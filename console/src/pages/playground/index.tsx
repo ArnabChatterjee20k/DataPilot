@@ -25,6 +25,7 @@ export default () => {
     setQueryResult,
     updateTabConnection,
     queryResults,
+    updateTableFilters
   } = useTabsStore();
   const { setRows, setColumns } = useDatabaseStore();
   const [runningTabId, setRunningTabId] = useState<string | null>(null);
@@ -50,7 +51,6 @@ export default () => {
     const entityName = tab.tableName as string;
 
     setRunningTabId(tabId);
-
     try {
       const response = await executeQuery({
         path: {
@@ -63,6 +63,7 @@ export default () => {
       });
 
       if (response.data) {
+        updateTableFilters(tabId,{})
         setQueryResult(tabId, {
           columns: (response.data.columns as any[]) || [],
           rows: (response.data.rows as any[]) || [],
