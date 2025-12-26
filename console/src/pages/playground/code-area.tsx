@@ -1,25 +1,38 @@
 import { Button } from "@/components/ui/button";
 import { PlayIcon, Loader2 } from "lucide-react";
-
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { useEffect, useRef } from "react";
 import type { Tab } from "./store/store";
 
 interface CodeAreaProps {
-  tab:Tab;
+  tab: Tab;
   content: string;
   onChange: (content: string) => void;
-  onRun?: (query:string) => void;
+  onRun?: (query: string) => void;
   isRunning?: boolean;
 }
 
-export function CodeArea({ tab, content, onChange, onRun, isRunning = false }: CodeAreaProps) {
+export function CodeArea({
+  tab,
+  content,
+  onChange,
+  onRun,
+  isRunning = false,
+}: CodeAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(()=>{
-    if(textareaRef.current){
-      if(!content) textareaRef.current.placeholder = "# ⌘ B to get AI assistant"
-      else textareaRef.current.value = content
-    } 
-  },[content])
+  useEffect(() => {
+    if (textareaRef.current) {
+      if (!content)
+        textareaRef.current.placeholder = "# ⌘ B to get AI assistant";
+      else textareaRef.current.value = content;
+    }
+  }, [content]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Tab") {
@@ -38,14 +51,12 @@ export function CodeArea({ tab, content, onChange, onRun, isRunning = false }: C
   return (
     <div className="h-full flex flex-col">
       <div className="bg-[#0f0f0f] border-r border-[#1a1a1a] px-4 py-3 font-mono text-sm flex justify-between">
-        <p className="self-end">
-          {tab.databaseName}
-        </p>
-        <Button 
-          size="sm" 
-          variant="outline" 
+        <TableBreadCrumb tab={tab} />
+        <Button
+          size="sm"
+          variant="outline"
           className="cursor-pointer"
-          onClick={()=>onRun && onRun((textareaRef.current?.value) || '')}
+          onClick={() => onRun && onRun(textareaRef.current?.value || "")}
           disabled={isRunning || !onRun}
         >
           {isRunning ? (
@@ -85,5 +96,33 @@ export function CodeArea({ tab, content, onChange, onRun, isRunning = false }: C
         </div>
       </div>
     </div>
+  );
+}
+
+function TableBreadCrumb({ tab }: { tab: Tab }) {
+  return (
+    <Breadcrumb>
+      <BreadcrumbList>
+        {tab.connectionId ? (
+          <>
+            <BreadcrumbItem>{tab.connectionId}</BreadcrumbItem>
+            <BreadcrumbSeparator />
+          </>
+        ) : null}
+        {tab.databaseName ? (
+          <>
+            <BreadcrumbItem>{tab.databaseName}</BreadcrumbItem>
+            <BreadcrumbSeparator />
+          </>
+        ) : null}
+        {tab.tableName ? (
+          <>
+            <BreadcrumbItem>
+              <BreadcrumbPage>{tab.tableName}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </>
+        ) : null}
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }

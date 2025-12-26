@@ -47,7 +47,7 @@ export default () => {
       return;
     }
 
-    const entityName = tab.entityName as string;
+    const entityName = tab.tableName as string;
 
     setRunningTabId(tabId);
 
@@ -69,6 +69,8 @@ export default () => {
           query: response.data.query,
         });
         updateTabConnection(tabId, connectionId, entityName);
+        // TODO: need to check for the tableId as we have query tabs as well
+        // here type error is justified and we need to correct the structure and relation between tabs, query and table
         setColumns(
           tab.tableId,
           (response.data.columns as any[]).map((col: any, idx: number) => ({
@@ -168,7 +170,7 @@ export default () => {
                     </ResizablePanel>
 
                     <ResizableHandle />
-
+                    {/* TODO: remove the dependency from tab type so that results from aribitary can be visible as well */}
                     <ResizablePanel defaultSize={65} minSize={40}>
                       {tab.type === "query" ? (
                         <QueryResults result={queryResults[tab.id]} />

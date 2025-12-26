@@ -198,7 +198,7 @@ export default function DatabaseSidebar() {
         <div className="flex-1 overflow-auto">
           <Tree
             onExpand={(id) => loadEntities(id)}
-            className="bg-background overflow-hidden rounded-md p-3"
+                className="bg-background overflow-hidden rounded-md p-3"
             elements={elements}
           >
             {connections.map((database) => (

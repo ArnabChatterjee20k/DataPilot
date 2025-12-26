@@ -31,7 +31,6 @@ export interface Tab {
   tableId?: string;
   databaseName?: string;
   connectionId?: string;
-  entityName?: string;
   isNew?: boolean;
   filters:Record<string,string>,
   tableWindowSize?:string
