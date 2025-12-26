@@ -1,19 +1,48 @@
 import { File, Folder, Tree } from "@/components/ui/file-tree";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getEntities, getRows, listConnections } from "@/lib/sdk";
+import { executeQuery, listConnections, getConnection } from "@/lib/sdk";
 import { getTableTabId, useDatabaseStore, useTabsStore } from "./store/store";
 import type { DatabaseConnection, Table } from "./store/store";
 import { useEffect, useState } from "react";
 import { ConnectionModal } from "./ConnectionModal";
 
+// Helper function to get table list query based on connection type
+const getTablesQuery = (connectionType: string): string => {
+  switch (connectionType) {
+    case "sqlite":
+      return "SELECT name FROM sqlite_master WHERE type='table'";
+    case "postgres":
+      return "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'public'";
+    case "mysql":
+      return "SELECT table_name as name FROM information_schema.tables WHERE table_schema = DATABASE()";
+    default:
+      return "SELECT name FROM sqlite_master WHERE type='table'";
+  }
+};
+
+// Helper function to get initial rows query with pagination
+const getInitialRowsQuery = (
+  entityName: string,
+  limit: number = 100,
+  offset: number = 0
+): string => {
+  return `SELECT * FROM ${entityName} LIMIT ${limit} OFFSET ${offset}`;
+};
+
 export default function DatabaseSidebar() {
-  const { connections, tables, setConnections, setTablesForConnection, setColumns, setRows } =
-    useDatabaseStore();
+  const {
+    connections,
+    tables,
+    setConnections,
+    setTablesForConnection,
+    setColumns,
+    setRows,
+  } = useDatabaseStore();
   const { openTableTab, updateTabContent } = useTabsStore();
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
 
-  const handleTableClick = async(
+  const handleTableClick = async (
     e: React.MouseEvent,
     table: Table,
     database: DatabaseConnection
@@ -21,44 +50,53 @@ export default function DatabaseSidebar() {
     e.stopPropagation();
     try {
       openTableTab(table, database);
-      
-      const rowsResponse = await getRows({
+
+      const limit = 100;
+      const offset = 0;
+      const query = getInitialRowsQuery(table.name, limit, offset);
+      const rowsResponse = await executeQuery({
         path: {
           connection_id: database.id,
           entity_name: table.name,
         },
+        query: {
+          query: query,
+          limit: limit,
+          offset: offset,
+        },
       });
-      
+
       if (rowsResponse.data) {
-        // Set columns and rows from getRows response
+        // Set columns and rows from executeQuery response
         if (rowsResponse.data.columns) {
-          setColumns(table.id, (rowsResponse.data.columns as any[]).map((col: any, idx: number) => ({
-            id: `${table.id}-col-${idx}`,
-            name: col.name || String(col),
-            type: col.type || 'unknown',
-            nullable: col.nullable,
-            defaultValue: col.default_value,
-          })));
+          setColumns(
+            table.id,
+            (rowsResponse.data.columns as any[]).map(
+              (col: any, idx: number) => ({
+                id: `${table.id}-col-${idx}`,
+                name: col.name || String(col),
+                type: col.type || "unknown",
+                nullable: col.nullable,
+                defaultValue: col.default_value,
+              })
+            )
+          );
         }
-        updateTabContent(getTableTabId(table.id), rowsResponse.data.query)
+        updateTabContent(
+          getTableTabId(table.id),
+          rowsResponse.data.query || query
+        );
         if (rowsResponse.data.rows) {
           setRows(table.id, rowsResponse.data.rows as any[]);
         }
       }
     } catch (error) {
-      console.error('Error fetching entity:', error);
+      console.error("Error fetching entity:", error);
     }
   };
 
   const handleNewConnection = () => {
     setIsConnectionModalOpen(true);
-  };
-
-  const handleConnectionSuccess = async () => {
-    // Reload connections to refresh the view
-    await loadConnections();
-    // Optionally, you could also clear cached tables/entities here if needed
-    // setTablesForConnection can be used to clear specific connection's tables
   };
 
   const loadConnections = async () => {
@@ -73,7 +111,52 @@ export default function DatabaseSidebar() {
   };
 
   const loadEntities = async (id: string) => {
-    const entities = await getEntities({ path: { connection_id: id } });
+    // Try to get connection from store first, if not available fetch from API
+    let connection = connections.find((conn) => conn.id === id);
+
+    if (!connection) {
+      // Fetch connection details from API if not in store
+      try {
+        const connectionResponse = await getConnection({
+          path: { connection_uid: id },
+        });
+        if (connectionResponse.data) {
+          connection = {
+            id: connectionResponse.data.uid,
+            name: connectionResponse.data.name,
+            type: connectionResponse.data.source,
+          };
+        } else {
+          return;
+        }
+      } catch (error) {
+        console.error("Error fetching connection:", error);
+        return;
+      }
+    }
+
+    const query = getTablesQuery(connection.type);
+    // Use a placeholder entity_name for table listing queries
+    const response = await executeQuery({
+      path: {
+        connection_id: id,
+        entity_name: "_tables", // Placeholder since we're querying for tables, not a specific table
+      },
+      query: {
+        query: query,
+      },
+    });
+
+    // Transform rows to entities structure
+    const entities = {
+      data: {
+        entities:
+          response.data?.rows.map((row: any) => ({
+            name: row.name,
+          })) || [],
+      },
+    };
+
     setTablesForConnection(
       id,
       entities.data?.entities.map((entity) => ({
@@ -83,9 +166,9 @@ export default function DatabaseSidebar() {
     );
   };
 
-  useEffect(()=>{
-    loadConnections()
-  },[])
+  useEffect(() => {
+    loadConnections();
+  }, []);
 
   const elements = connections.map((db) => ({
     id: db.id,
@@ -114,9 +197,7 @@ export default function DatabaseSidebar() {
         </div>
         <div className="flex-1 overflow-auto">
           <Tree
-            onExpand={(id) =>
-              loadEntities(id)
-            }
+            onExpand={(id) => loadEntities(id)}
             className="bg-background overflow-hidden rounded-md p-3"
             elements={elements}
           >
@@ -143,7 +224,7 @@ export default function DatabaseSidebar() {
       <ConnectionModal
         open={isConnectionModalOpen}
         onOpenChange={setIsConnectionModalOpen}
-        onSuccess={handleConnectionSuccess}
+        onSuccess={loadConnections}
       />
     </>
   );

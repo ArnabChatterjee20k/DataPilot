@@ -17,12 +17,10 @@ router = APIRouter()
 
 
 from .connections import router as ConnectionsRouter
-from .entities import router as EntitiesRouter
 from .bucket import router as BucketRouter
 from .queries import router as QueryRouter
 
 router.include_router(ConnectionsRouter)
-router.include_router(EntitiesRouter)
 router.include_router(BucketRouter)
 router.include_router(QueryRouter)
 

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query
-from typing import Annotated
+from typing import Annotated, Optional
 from ..config import get_adapter, SourceConfig
 from . import UPLOAD_DIR
 from ..models import QueryResult
@@ -17,7 +17,9 @@ async def execute_query(
     connection_id: str,
     entity_name: str,
     db: DBSession,
-    query: str = Annotated[str, Query()],
+    query: Annotated[str, Query()],
+    limit: Annotated[Optional[int], Query()] = None,
+    offset: Annotated[Optional[int], Query()] = None,
 ):
     connection = await db.get(Connections, filters=Connections.uid == connection_id)
     if connection.source == SourceConfig.SQLITE.value:
@@ -25,6 +27,7 @@ async def execute_query(
     Adapter = get_adapter(connection.source)
     storage = Adapter(connection_uri=connection.connection_uri)
     async with storage.session() as session:
+        # Execute query as-is (frontend controls pagination in SQL)
         result = await session.execute(query, force_commit=True)
         return QueryResult(
             rows=result.rows,
@@ -32,4 +35,6 @@ async def execute_query(
             entity_name=entity_name,
             connection_id=connection_id,
             query=query,
+            limit=limit,
+            offset=offset,
         )

@@ -374,6 +374,14 @@ export type ExecuteQueryData = {
          * Query
          */
         query?: string;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+        /**
+         * Offset
+         */
+        offset?: number | null;
     };
     url: '/connection/{connection_id}/entitities/{entity_name}/queries';
 };

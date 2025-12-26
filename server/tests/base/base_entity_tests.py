@@ -59,18 +59,30 @@ class BaseEntityTestMixin:
         return response.json()["uid"]
 
     def test_list_entities(self, client: httpx.Client):
-        """Test listing entities (tables) via API"""
+        """Test listing entities (tables) via query API"""
         connection_uid = self._create_connection(client)
 
-        response = client.get(f"/connections/{connection_uid}/entities")
+        # Get table list query based on source type
+        if self.source == "sqlite":
+            query = "SELECT name FROM sqlite_master WHERE type='table'"
+        elif self.source == "postgres":
+            query = "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'public'"
+        elif self.source == "mysql":
+            query = "SELECT table_name as name FROM information_schema.tables WHERE table_schema = DATABASE()"
+        else:
+            query = "SELECT name FROM sqlite_master WHERE type='table'"
+
+        response = client.get(
+            f"/connection/{connection_uid}/entitities/_tables/queries",
+            params={"query": query},
+        )
         assert response.status_code == 200
         data = response.json()
-        assert "entities" in data
-        assert "total" in data
-        assert data["total"] >= 0
+        assert "rows" in data
+        assert isinstance(data["rows"], list)
 
         # Verify expected test tables are present
-        entity_names = [entity["name"] for entity in data["entities"]]
+        entity_names = [row["name"] for row in data["rows"]]
         expected_tables = self.get_test_tables()
         for table in expected_tables:
             assert (
@@ -78,7 +90,7 @@ class BaseEntityTestMixin:
             ), f"Expected table {table} not found in entities"
 
     def test_get_entity_rows(self, client: httpx.Client):
-        """Test getting rows from an entity via API"""
+        """Test getting rows from an entity via query API"""
         connection_uid = self._create_connection(client)
         test_tables = self.get_test_tables()
 
@@ -87,7 +99,11 @@ class BaseEntityTestMixin:
 
         # Test getting rows from the first test table
         entity_name = test_tables[0]
-        response = client.get(f"/connection/{connection_uid}/entitities/{entity_name}")
+        query = f"SELECT * FROM {entity_name} LIMIT 100"
+        response = client.get(
+            f"/connection/{connection_uid}/entitities/{entity_name}/queries",
+            params={"query": query},
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -104,8 +120,12 @@ class BaseEntityTestMixin:
         """Test getting rows from an entity that doesn't exist"""
         connection_uid = self._create_connection(client)
         fake_entity = "nonexistent_table_12345"
+        query = f"SELECT * FROM {fake_entity} LIMIT 100"
 
-        response = client.get(f"/connection/{connection_uid}/entitities/{fake_entity}")
+        response = client.get(
+            f"/connection/{connection_uid}/entitities/{fake_entity}/queries",
+            params={"query": query},
+        )
         # The API might return 200 with empty rows or an error - depends on implementation
         # Adjust assertion based on actual API behavior
         assert response.status_code in [200, 404, 500]

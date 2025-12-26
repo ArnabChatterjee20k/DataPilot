@@ -26,4 +26,4 @@ async def upload_file(file: UploadFile, db: DBSession):
         )
     )
     await db.commit()
-    return BucketModel(uid=file_id, filename=file.filename)
+    return BucketModel(uid=f"{file_id}.{ext}", filename=file.filename)

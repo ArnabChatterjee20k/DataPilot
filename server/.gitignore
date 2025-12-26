@@ -13,3 +13,5 @@ wheels/
 bucket/
 test-bucket/
 .env
+
+*.db
