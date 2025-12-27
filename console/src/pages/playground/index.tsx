@@ -11,7 +11,7 @@ import DatabaseSidebar from "./DatabaseSidebar";
 import { TableView } from "./table";
 import { QueryResults } from "./result";
 import { X } from "lucide-react";
-import { useDatabaseStore, useTabsStore } from "./store/store";
+import { useDatabaseStore, useTabsStore, type Row, type Column } from "./store/store";
 import { executeQuery } from "@/lib/sdk";
 import { getQueryWithRowOffsetAndLimits } from "@/lib/queries";
 
@@ -26,7 +26,7 @@ export default () => {
     setQueryResult,
     updateTabConnection,
     queryResults,
-    updateTableFilters
+    updateTableFilters,
   } = useTabsStore();
   const { setRows, setColumns } = useDatabaseStore();
   const [runningTabId, setRunningTabId] = useState<string | null>(null);
@@ -39,16 +39,16 @@ export default () => {
   const handleRunQuery = async (tabId: string, query: string) => {
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
-    const connectionId = tab.connectionId;
-    if (!connectionId) {
-      setQueryResult(tabId, {
-        columns: [],
-        rows: [],
-        error: "No connection available. Please create a connection first.",
-      });
+    if (!tab.connectionId || !tab.tableId) {
+        setQueryResult(tabId, {
+          columns: [] as Column[],
+          rows: [],
+          error: "No connection available. Please create a connection first.",
+        });
       return;
     }
 
+    const connectionId = tab.connectionId;
     const entityName = tab.tableName as string;
 
     setRunningTabId(tabId);
@@ -59,35 +59,44 @@ export default () => {
           entity_name: entityName,
         },
         query: {
-          query: getQueryWithRowOffsetAndLimits(query, tab.rowsLimit, tab.rowsOffset),
+          query: getQueryWithRowOffsetAndLimits(
+            query,
+            tab.rowsLimit,
+            tab.rowsOffset
+          ),
         },
       });
 
       if (response.data) {
-        updateTableFilters(tabId,{})
-        setQueryResult(tabId, {
-          columns: (response.data.columns as any[]) || [],
-          rows: (response.data.rows as any[]) || [],
-          query: response.data.query,
-        });
-        updateTabConnection(tabId, connectionId, entityName);
-        // TODO: need to check for the tableId as we have query tabs as well
-        // here type error is justified and we need to correct the structure and relation between tabs, query and table
-        setColumns(
-          tab.tableId,
-          (response.data.columns as any[]).map((col: any, idx: number) => ({
-            id: `${tab.tableId}-col-${idx}`,
+        updateTableFilters(tabId, {});
+        
+        // Convert response columns to Column format
+        const columns: Column[] = ((response.data.columns as any[]) || []).map(
+          (col: any, idx: number) => ({
+            id: `${tabId}-col-${idx}`,
             name: col.name || String(col),
             type: col.type || "unknown",
             nullable: col.nullable,
             defaultValue: col.default_value,
-          }))
+          })
         );
-        setRows(tab.tableId, response.data.rows);
+        
+        setQueryResult(tabId, {
+          columns,
+          rows: (response.data.rows as any[]) || [],
+          query: response.data.query,
+        });
+        updateTabConnection(tabId, connectionId, tab.databaseName,entityName);
+        
+        // Also store in database store for table tabs
+        if (tab.tableId) {
+          setColumns(tab.tableId, columns);
+          setRows(tab.tableId, response.data.rows as Row[]);
+        }
       }
     } catch (error: any) {
       setQueryResult(tabId, {
-        columns: [],
+        columns: [] as Column[],
         rows: [],
         error:
           error?.response?.data?.detail?.message ||
@@ -175,7 +184,14 @@ export default () => {
                     {/* TODO: remove the dependency from tab type so that results from aribitary can be visible as well */}
                     <ResizablePanel defaultSize={65} minSize={40}>
                       {tab.type === "query" ? (
-                        <QueryResults result={queryResults[tab.id]} />
+                        <TableView
+                          tableName={tab.tableName || ""}
+                          tableId={tab.tableId}
+                          databaseName={tab.databaseName || ""}
+                          tabId={tab.id}
+                          externalColumns={queryResults[tab.id]?.columns || []}
+                          externalRows={queryResults[tab.id]?.rows || []}
+                        />
                       ) : tab.type === "table" &&
                         tab.tableName &&
                         tab.databaseName ? (

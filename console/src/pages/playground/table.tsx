@@ -11,6 +11,7 @@ import {
   useDatabaseStore,
   useTabsStore,
   type Column,
+  type Row,
 } from "./store/store";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -39,6 +40,8 @@ interface TableViewProps {
   tableId?: string;
   databaseName: string;
   tabId: string;
+  externalRows?: Row[];
+  externalColumns?: Column[];
 }
 
 const COLUMN_PARAM = "columns";
@@ -64,15 +67,15 @@ function StickyHeaderTableContainer(props: React.ComponentProps<"table">) {
   );
 }
 
-export function TableView({ tableId, tabId }: TableViewProps) {
+export function TableView({ tableId, tabId, externalRows, externalColumns }: TableViewProps) {
   const { getColumns, getRows, setRows, connections } = useDatabaseStore();
   const { updateTabContent } = useTabsStore();
   const { updateTableFilters, updateTabPagination, tabs } = useTabsStore();
   const tab = tabs.filter((tab) => tab.id === tabId)[0];
 
   // sorting
-  const columns = tableId ? getColumns(tableId) : [];
-  const rows = tableId ? getRows(tableId) : [];
+  const columns = externalColumns ? externalColumns : (tableId ? getColumns(tableId) : []);
+  const rows = externalRows ? externalRows : (tableId ? getRows(tableId) : []);
 
   // Search state
   const [isSearching, setIsSearching] = useState(false);
@@ -81,6 +84,9 @@ export function TableView({ tableId, tabId }: TableViewProps) {
 
   // Combined loading state for disabling controls
   const isProcessing = isSearching || isLoading;
+  
+  // Check if using external data (query results)
+  const isUsingExternalData = !!externalRows || !!externalColumns;
 
   // Get connection type for search query
   const connection = connections.find((conn) => conn.id === tab.connectionId);
@@ -317,19 +323,19 @@ export function TableView({ tableId, tabId }: TableViewProps) {
           <SearchTable
             onSearch={handleSearch}
             isSearching={isSearching}
-            disabled={isProcessing}
+            disabled={isProcessing || isUsingExternalData}
           />
           <div className="flex justify-center items-center gap-2">
             <RowsPaginator
               currentPage={(tab.rowsOffset + 1) % tab.rowsLimit}
               handleNextPage={handlePaginateNext}
               handlePreviousPage={handlePaginatePrevious}
-              disabled={isProcessing}
+              disabled={isProcessing || isUsingExternalData}
             />
             <RowsPerPageDropdown
               currentRowLimit={tab.rowsLimit}
               handleToggleRowLimit={handleToggleRowLimit}
-              disabled={isProcessing}
+              disabled={isProcessing || isUsingExternalData}
             />
             <ColumnDropdown
               columns={columns}

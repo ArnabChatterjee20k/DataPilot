@@ -4,11 +4,22 @@ import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
-  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 import { useEffect, useRef } from "react";
-import { type Tab } from "./store/store";
+import { useDatabaseStore, useTabsStore, type Tab } from "./store/store";
+import { executeQuery } from "@/lib/sdk";
+import { getTablesQuery } from "@/lib/queries";
 
 interface CodeAreaProps {
   tab: Tab;
@@ -112,17 +123,85 @@ function TableBreadCrumb({ tab }: { tab: Tab }) {
         {tab.databaseName ? (
           <>
             <BreadcrumbItem>{tab.databaseName}</BreadcrumbItem>
-            <BreadcrumbSeparator />
           </>
-        ) : null}
-        {tab.tableName ? (
-          <>
-            <BreadcrumbItem>
-              <BreadcrumbPage>{tab.tableName}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </>
-        ) : null}
+        ) : (
+          <QueryConnectionConfig tab={tab} />
+        )}
       </BreadcrumbList>
     </Breadcrumb>
+  );
+}
+
+function QueryConnectionConfig({ tab }: { tab: Tab }) {
+  const { updateTabConnection } = useTabsStore();
+  const { connections, setTablesForConnection } = useDatabaseStore();
+  function getConnectionName(connectionId: string) {
+    return connections.find((con) => con.id === connectionId)?.name;
+  }
+  const loadEntities = async (id: string) => {
+    const connection = connections.find((conn) => conn.id === id);
+    if (!connection) {
+      alert("Issues while fetching tables");
+      return;
+    }
+    const query = getTablesQuery(connection.type);
+    const response = await executeQuery({
+      path: {
+        connection_id: id,
+        entity_name: "_tables", // Placeholder since we're querying for tables, not a specific table
+      },
+      query: {
+        query: query,
+      },
+    });
+
+    // Transform rows to entities structure
+    const entities = {
+      data: {
+        entities:
+          response.data?.rows.map((row: any) => ({
+            name: row.name,
+          })) || [],
+      },
+    };
+
+    setTablesForConnection(
+      id,
+      entities.data?.entities.map((entity) => ({
+        id: entity.name,
+        name: entity.name,
+      })) || []
+    );
+  };
+  useEffect(() => {
+    if (tab.connectionId) loadEntities(tab.connectionId);
+  }, [tab.connectionId]);
+  return (
+    <div>
+      <Select
+        value={tab.connectionId}
+        onValueChange={(connectionId) =>
+          // using placeholder as it is not required
+          updateTabConnection(
+            tab.id,
+            connectionId,
+            getConnectionName(connectionId),
+            "placeholder_table"
+          )
+        }
+      >
+        <SelectTrigger className="w-[200px]">
+          <SelectValue placeholder="Select Connection" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectLabel>Select Connection</SelectLabel>
+            {connections.map((connection) => (
+              <SelectItem value={connection.id}>{connection.name}</SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

@@ -40,7 +40,7 @@ export interface Tab {
 }
 
 export interface QueryResult {
-  columns: string[];
+  columns: Column[];
   rows: Row[];
   query?: string;
   error?: string;
@@ -93,10 +93,11 @@ interface TabStore {
   updateTabConnection: (
     tabId: string,
     connectionId: string,
-    entityName?: string
+    databaseId?: string,
+    tableId?: string
   ) => void;
   updateTableFilters: (tabId: string, filters: Record<string, string>) => void;
-  updateTabPagination: (tabId: string, limits:number, offset?:number) => void;
+  updateTabPagination: (tabId: string, limits: number, offset?: number) => void;
 }
 
 export const useTabsStore = create<TabStore>((set, get) => ({
@@ -190,12 +191,20 @@ export const useTabsStore = create<TabStore>((set, get) => ({
   },
   updateTabConnection: (
     tabId: string,
-    connectionId: string,
-    entityName?: string
+    connectionId?: string,
+    databaseName?: string,
+    tableId?: string
   ) => {
     set((state) => ({
       tabs: state.tabs.map((tab) =>
-        tab.id === tabId ? { ...tab, connectionId, entityName } : tab
+        tab.id === tabId
+          ? {
+              ...tab,
+              ...(connectionId !== undefined && { connectionId }),
+              ...(databaseName !== undefined && { databaseName }),
+              ...(tableId !== undefined && { tableId }),
+            }
+          : tab
       ),
     }));
   },
