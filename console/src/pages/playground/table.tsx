@@ -76,6 +76,11 @@ export function TableView({ tableId, tabId }: TableViewProps) {
 
   // Search state
   const [isSearching, setIsSearching] = useState(false);
+  // Loading state for pagination
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Combined loading state for disabling controls
+  const isProcessing = isSearching || isLoading;
 
   // Get connection type for search query
   const connection = connections.find((conn) => conn.id === tab.connectionId);
@@ -168,37 +173,45 @@ export function TableView({ tableId, tabId }: TableViewProps) {
   );
 
   // pagination
-  const handleToggleRowLimit = (limit: number) => {
+  const handleToggleRowLimit = async (limit: number) => {
     updateTabPagination(tab.id, limit);
+    await fetchPage(0, limit);
   };
 
   // TODO: handle connection for the table
-  const fetchPage = async (offset: number) => {
-    updateTabPagination(tabId, tab.rowsLimit, offset);
+  const fetchPage = async (offset: number, limit?: number) => {
+    setIsLoading(true);
 
-    const query = getRowsQuery(tab.tableName!, tab.rowsLimit, offset);
+    try {
+      const rowsLimit = limit ?? tab.rowsLimit;
+      updateTabPagination(tabId, rowsLimit, offset);
 
-    const rowsResponse = await executeQuery({
-      path: {
-        connection_id: tab.connectionId!,
-        entity_name: tab.tableName!,
-      },
-      query: {
-        query,
-        limit: tab.rowsLimit,
-        offset,
-      },
-    });
+      const query = getRowsQuery(tab.tableName!, rowsLimit, offset);
 
-    if (!rowsResponse.data) return;
+      const rowsResponse = await executeQuery({
+        path: {
+          connection_id: tab.connectionId!,
+          entity_name: tab.tableName!,
+        },
+        query: {
+          query,
+          limit: rowsLimit,
+          offset,
+        },
+      });
 
-    updateTabContent(
-      getTableTabId(tab.tableId!),
-      rowsResponse.data.query || query
-    );
+      if (!rowsResponse.data) return;
 
-    if (rowsResponse.data.rows) {
-      setRows(tab.tableId!, rowsResponse.data.rows as any[]);
+      updateTabContent(
+        getTableTabId(tab.tableId!),
+        rowsResponse.data.query || query
+      );
+
+      if (rowsResponse.data.rows) {
+        setRows(tab.tableId!, rowsResponse.data.rows as any[]);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -300,115 +313,128 @@ export function TableView({ tableId, tabId }: TableViewProps) {
   return (
     <div className="h-full flex flex-col p-6">
       <div className="mb-4 flex items-center">
-        {/* table search */}
         <div className="flex justify-between w-full">
-          <SearchTable onSearch={handleSearch} isSearching={isSearching} />
-          <div className="flex justify-center gap-2">
+          <SearchTable
+            onSearch={handleSearch}
+            isSearching={isSearching}
+            disabled={isProcessing}
+          />
+          <div className="flex justify-center items-center gap-2">
             <RowsPaginator
               currentPage={(tab.rowsOffset + 1) % tab.rowsLimit}
               handleNextPage={handlePaginateNext}
               handlePreviousPage={handlePaginatePrevious}
+              disabled={isProcessing}
             />
             <RowsPerPageDropdown
               currentRowLimit={tab.rowsLimit}
               handleToggleRowLimit={handleToggleRowLimit}
+              disabled={isProcessing}
             />
             <ColumnDropdown
               columns={columns}
               visibleColumns={visibleColumns}
               handleToggleViewColumn={handleToggleViewColumn}
+              disabled={isProcessing}
             />
           </div>
         </div>
       </div>
 
-      <div className="flex-1 border rounded-lg min-h-0 overflow-hidden">
+      <div className="flex-1 border rounded-lg min-h-0 overflow-hidden relative">
         {displayedColumns.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground">
             <p>No columns selected</p>
           </div>
         ) : (
-          <StickyHeaderTableContainer className="w-full caption-bottom text-sm min-w-full">
-            <TableHeader className="sticky top-0 z-30 bg-background">
-              <TableRow>
-                <TableHead className="sticky top-0 w-12 px-4 py-2 bg-background z-30">
-                  <Checkbox
-                    checked={
-                      sortedRows.length > 0 &&
-                      sortedRows.every((row) =>
-                        selectedRows.has(row.id as string | number)
-                      )
-                    }
-                    onCheckedChange={handleSelectAll}
-                    aria-label="Select all rows"
-                  />
-                </TableHead>
-                {displayedColumns.map((column) => (
-                  <TableHead
-                    key={column.id}
-                    className="sticky top-0 px-4 py-2 whitespace-nowrap bg-background z-30 cursor-pointer hover:bg-muted"
-                    onClick={() => handleSort(column.name)}
-                  >
-                    <button className="flex items-center gap-2 font-semibold">
-                      <span>{column.name}</span>
-                      {getSortIcon(column.name)}
-                    </button>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      {column.type}
-                      {column.nullable === false && (
-                        <span className="ml-1 text-red-500">*</span>
-                      )}
-                    </span>
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedRows.length === 0 ? (
+          <>
+            <StickyHeaderTableContainer className="w-full caption-bottom text-sm min-w-full">
+              <TableHeader className="sticky top-0 z-30 bg-background">
                 <TableRow>
-                  <TableCell
-                    colSpan={displayedColumns.length + 1}
-                    className="px-4 py-8 text-center text-muted-foreground"
-                  >
-                    No data available
-                  </TableCell>
-                </TableRow>
-              ) : (
-                sortedRows.map((row, index) => {
-                  const rowId = row.id as string | number;
-                  return (
-                    <TableRow
-                      key={rowId ?? index}
-                      className={selectedRows.has(rowId) ? "bg-muted" : ""}
+                  <TableHead className="sticky top-0 w-12 px-4 py-2 bg-background z-30">
+                    <Checkbox
+                      checked={
+                        sortedRows.length > 0 &&
+                        sortedRows.every((row) =>
+                          selectedRows.has(row.id as string | number)
+                        )
+                      }
+                      onCheckedChange={handleSelectAll}
+                      aria-label="Select all rows"
+                    />
+                  </TableHead>
+                  {displayedColumns.map((column) => (
+                    <TableHead
+                      key={column.id}
+                      className="sticky top-0 px-4 py-2 whitespace-nowrap bg-background z-30 cursor-pointer hover:bg-muted"
+                      onClick={() => handleSort(column.name)}
                     >
-                      <TableCell className="px-4 py-2 w-12">
-                        <Checkbox
-                          checked={selectedRows.has(rowId)}
-                          onCheckedChange={() => handleSelectRow(rowId)}
-                          aria-label={`Select row ${index + 1}`}
-                        />
-                      </TableCell>
-                      {displayedColumns.map((column) => (
-                        <TableCell
-                          key={column.id}
-                          className="px-4 py-2 whitespace-nowrap"
-                        >
-                          {row[column.name] !== null &&
-                          row[column.name] !== undefined ? (
-                            String(row[column.name])
-                          ) : (
-                            <span className="text-muted-foreground italic">
-                              null
-                            </span>
-                          )}
+                      <button className="flex items-center gap-2 font-semibold">
+                        <span>{column.name}</span>
+                        {getSortIcon(column.name)}
+                      </button>
+                      <span className="text-xs text-muted-foreground font-normal">
+                        {column.type}
+                        {column.nullable === false && (
+                          <span className="ml-1 text-red-500">*</span>
+                        )}
+                      </span>
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={displayedColumns.length + 1}
+                      className="px-4 py-8 text-center text-muted-foreground"
+                    >
+                      No data available
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedRows.map((row, index) => {
+                    const rowId = row.id as string | number;
+                    return (
+                      <TableRow
+                        key={rowId ?? index}
+                        className={selectedRows.has(rowId) ? "bg-muted" : ""}
+                      >
+                        <TableCell className="px-4 py-2 w-12">
+                          <Checkbox
+                            checked={selectedRows.has(rowId)}
+                            onCheckedChange={() => handleSelectRow(rowId)}
+                            aria-label={`Select row ${index + 1}`}
+                          />
                         </TableCell>
-                      ))}
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </StickyHeaderTableContainer>
+                        {displayedColumns.map((column) => (
+                          <TableCell
+                            key={column.id}
+                            className="px-4 py-2 whitespace-nowrap"
+                          >
+                            {row[column.name] !== null &&
+                            row[column.name] !== undefined ? (
+                              String(row[column.name])
+                            ) : (
+                              <span className="text-muted-foreground italic">
+                                null
+                              </span>
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </StickyHeaderTableContainer>
+            {isLoading && (
+              <div className="absolute bottom-0 left-0 right-0 p-2 bg-background/80 backdrop-blur-sm border-t text-sm text-center text-muted-foreground">
+                Loading...
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -425,18 +451,30 @@ function RowsPaginator({
   currentPage,
   handleNextPage,
   handlePreviousPage,
+  disabled,
 }: {
   currentPage: number;
   handleNextPage: () => void;
   handlePreviousPage: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Button onClick={handlePreviousPage} size="icon" variant="outline">
+      <Button
+        onClick={handlePreviousPage}
+        size="icon"
+        variant="outline"
+        disabled={disabled}
+      >
         <ChevronLeft />
       </Button>
       <p className="text-sm">Page {currentPage}</p>
-      <Button onClick={handleNextPage} size="icon" variant="outline">
+      <Button
+        onClick={handleNextPage}
+        size="icon"
+        variant="outline"
+        disabled={disabled}
+      >
         <ChevronRight />
       </Button>
     </div>
@@ -447,15 +485,21 @@ function ColumnDropdown({
   columns,
   visibleColumns,
   handleToggleViewColumn,
+  disabled,
 }: {
   columns: Column[];
   visibleColumns: Set<string>;
   handleToggleViewColumn: (column: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-2 bg-transparent">
+        <Button
+          variant="outline"
+          className="gap-2 bg-transparent"
+          disabled={disabled}
+        >
           Columns
           <ChevronDown className="w-4 h-4" />
         </Button>
@@ -480,14 +524,20 @@ function ColumnDropdown({
 function RowsPerPageDropdown({
   currentRowLimit,
   handleToggleRowLimit,
+  disabled,
 }: {
   currentRowLimit: number;
   handleToggleRowLimit: (limit: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-2 bg-transparent">
+        <Button
+          variant="outline"
+          className="gap-2 bg-transparent"
+          disabled={disabled}
+        >
           {currentRowLimit === -1 ? "No limits" : currentRowLimit}
           <ChevronDown className="w-4 h-4" />
         </Button>
@@ -512,9 +562,11 @@ function RowsPerPageDropdown({
 function SearchTable({
   onSearch,
   isSearching,
+  disabled,
 }: {
   onSearch: (term: string) => void;
   isSearching: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div className="relative w-full max-w-xs">
@@ -526,7 +578,7 @@ function SearchTable({
         className="px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium rounded-lg ps-9 text-heading text-sm focus:ring-brand focus:border-brand block w-full placeholder:text-body"
         placeholder="Search in table..."
         onSearch={onSearch}
-        disabled={isSearching}
+        disabled={disabled || isSearching}
       />
       {isSearching && (
         <div className="absolute inset-y-0 end-0 flex items-center pe-3 pointer-events-none">
