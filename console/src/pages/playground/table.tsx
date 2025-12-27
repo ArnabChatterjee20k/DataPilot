@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   TableBody,
   TableCell,
@@ -19,6 +19,7 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronsUpDown,
+  SearchIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,8 +30,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { getRowsQuery } from "@/lib/queries";
+import { getRowsQuery, getTableRecordsSearchQuery } from "@/lib/queries";
 import { executeQuery } from "@/lib/sdk";
+import SearchInput from "@/components/app/SearchInput";
 
 interface TableViewProps {
   tableName: string;
@@ -63,7 +65,7 @@ function StickyHeaderTableContainer(props: React.ComponentProps<"table">) {
 }
 
 export function TableView({ tableId, tabId }: TableViewProps) {
-  const { getColumns, getRows, setRows } = useDatabaseStore();
+  const { getColumns, getRows, setRows, connections } = useDatabaseStore();
   const { updateTabContent } = useTabsStore();
   const { updateTableFilters, updateTabPagination, tabs } = useTabsStore();
   const tab = tabs.filter((tab) => tab.id === tabId)[0];
@@ -71,6 +73,13 @@ export function TableView({ tableId, tabId }: TableViewProps) {
   // sorting
   const columns = tableId ? getColumns(tableId) : [];
   const rows = tableId ? getRows(tableId) : [];
+
+  // Search state
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Get connection type for search query
+  const connection = connections.find((conn) => conn.id === tab.connectionId);
+  const connectionType = connection?.type || "sqlite";
 
   const visibleColumnsParam = tab.filters[COLUMN_PARAM];
   const visibleColumns = visibleColumnsParam
@@ -91,7 +100,6 @@ export function TableView({ tableId, tabId }: TableViewProps) {
       const aValue = a[sortColumnParam!];
       const bValue = b[sortColumnParam!];
 
-      // Handle nulls
       if (aValue === null || aValue === undefined) return 1;
       if (bValue === null || bValue === undefined) return -1;
 
@@ -206,25 +214,111 @@ export function TableView({ tableId, tabId }: TableViewProps) {
     await fetchPage(prevOffset);
   };
 
+  // Search functionality
+  const handleSearch = useCallback(
+    async (search: string) => {
+      if (!tableId || !tab.tableName || !tab.connectionId) return;
+
+      setIsSearching(true);
+
+      // Reset filters before searching
+      updateTableFilters(tab.id, {});
+      updateTabPagination(tab.id, 100, 0);
+
+      try {
+        if (!search.trim()) {
+          // If search is empty, fetch normal rows
+          await fetchPage(0);
+          return;
+        }
+
+        // Get all column names for search
+        const columnNames = columns.map((col) => col.name);
+
+        if (columnNames.length === 0) {
+          setIsSearching(false);
+          return;
+        }
+
+        const searchQuery = getTableRecordsSearchQuery(
+          connectionType,
+          tab.tableName,
+          search.trim(),
+          columnNames,
+          100
+        );
+
+        if (!searchQuery) {
+          setIsSearching(false);
+          return;
+        }
+
+        const rowsResponse = await executeQuery({
+          path: {
+            connection_id: tab.connectionId,
+            entity_name: tab.tableName,
+          },
+          query: {
+            query: searchQuery,
+            limit: 100,
+            offset: 0,
+          },
+        });
+
+        if (!rowsResponse.data) {
+          setIsSearching(false);
+          return;
+        }
+
+        updateTabContent(
+          getTableTabId(tab.tableId!),
+          rowsResponse.data.query || searchQuery
+        );
+
+        if (rowsResponse.data.rows) {
+          setRows(tab.tableId!, rowsResponse.data.rows as any[]);
+        }
+      } catch (error) {
+        console.error("Error executing search:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [
+      tableId,
+      tab,
+      columns,
+      connectionType,
+      setRows,
+      updateTableFilters,
+      updateTabContent,
+      updateTabPagination,
+      fetchPage,
+    ]
+  );
+
   return (
     <div className="h-full flex flex-col p-6">
       <div className="mb-4 flex items-center">
         {/* table search */}
-        <div className="flex justify-between gap-2">
-          <RowsPaginator
-            currentPage={(tab.rowsOffset + 1) % tab.rowsLimit}
-            handleNextPage={handlePaginateNext}
-            handlePreviousPage={handlePaginatePrevious}
-          />
-          <RowsPerPageDropdown
-            currentRowLimit={tab.rowsLimit}
-            handleToggleRowLimit={handleToggleRowLimit}
-          />
-          <ColumnDropdown
-            columns={columns}
-            visibleColumns={visibleColumns}
-            handleToggleViewColumn={handleToggleViewColumn}
-          />
+        <div className="flex justify-between w-full">
+          <SearchTable onSearch={handleSearch} isSearching={isSearching} />
+          <div className="flex justify-center gap-2">
+            <RowsPaginator
+              currentPage={(tab.rowsOffset + 1) % tab.rowsLimit}
+              handleNextPage={handlePaginateNext}
+              handlePreviousPage={handlePaginatePrevious}
+            />
+            <RowsPerPageDropdown
+              currentRowLimit={tab.rowsLimit}
+              handleToggleRowLimit={handleToggleRowLimit}
+            />
+            <ColumnDropdown
+              columns={columns}
+              visibleColumns={visibleColumns}
+              handleToggleViewColumn={handleToggleViewColumn}
+            />
+          </div>
         </div>
       </div>
 
@@ -415,4 +509,30 @@ function RowsPerPageDropdown({
   );
 }
 
-function SearchTable() {}
+function SearchTable({
+  onSearch,
+  isSearching,
+}: {
+  onSearch: (term: string) => void;
+  isSearching: boolean;
+}) {
+  return (
+    <div className="relative w-full max-w-xs">
+      <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+        <SearchIcon size={16} className="text-gray-500" />
+      </div>
+      <SearchInput
+        id="simple-search"
+        className="px-3 py-2.5 bg-neutral-secondary-medium border border-default-medium rounded-lg ps-9 text-heading text-sm focus:ring-brand focus:border-brand block w-full placeholder:text-body"
+        placeholder="Search in table..."
+        onSearch={onSearch}
+        disabled={isSearching}
+      />
+      {isSearching && (
+        <div className="absolute inset-y-0 end-0 flex items-center pe-3 pointer-events-none">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+        </div>
+      )}
+    </div>
+  );
+}

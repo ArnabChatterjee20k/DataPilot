@@ -43,3 +43,90 @@ export function getQueryWithRowOffsetAndLimits(
 
   return newQuery;
 }
+
+export const getTableRecordsSearchQuery = (
+  connectionType: string,
+  table: string,
+  search: string,
+  columns: string[],
+  limit: number = 20
+): string => {
+  if (!table || !columns.length) return "";
+
+  switch (connectionType) {
+    case "sqlite": {
+      const q = `%${search}%`;
+
+      const where = columns
+        .map((col) => `${col} LIKE '${q}'`)
+        .join(" OR ");
+
+      const orderBy = columns
+        .map(
+          (col) =>
+            `CASE WHEN ${col} LIKE '${search}%' THEN 0 ELSE 1 END`
+        )
+        .join(", ");
+
+      return `
+        SELECT *
+        FROM ${table}
+        WHERE (${where})
+        ORDER BY
+          ${orderBy}
+        LIMIT ${limit}
+      `;
+    }
+
+    case "postgres": {
+      const q = `%${search}%`;
+
+      const where = columns
+        .map((col) => `${col} ILIKE '${q}'`)
+        .join(" OR ");
+
+      const orderBy = columns
+        .map(
+          (col) =>
+            `CASE WHEN ${col} ILIKE '${search}%' THEN 0 ELSE 1 END`
+        )
+        .join(", ");
+
+      return `
+        SELECT *
+        FROM ${table}
+        WHERE (${where})
+        ORDER BY
+          ${orderBy}
+        LIMIT ${limit}
+      `;
+    }
+
+    case "mysql": {
+      const q = `%${search}%`;
+
+      const where = columns
+        .map((col) => `${col} LIKE '${q}'`)
+        .join(" OR ");
+
+      const orderBy = columns
+        .map(
+          (col) =>
+            `CASE WHEN ${col} LIKE '${search}%' THEN 0 ELSE 1 END`
+        )
+        .join(", ");
+
+      return `
+        SELECT *
+        FROM ${table}
+        WHERE (${where})
+        ORDER BY
+          ${orderBy}
+        LIMIT ${limit}
+      `;
+    }
+
+    default:
+      return "";
+  }
+};
