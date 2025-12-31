@@ -77,30 +77,6 @@ export type CreateConnectionsModel = {
 };
 
 /**
- * EntityModel
- */
-export type EntityModel = {
-    /**
-     * Name
-     */
-    name: string;
-};
-
-/**
- * EntityModelList
- */
-export type EntityModelList = {
-    /**
-     * Entities
-     */
-    entities: Array<EntityModel>;
-    /**
-     * Total
-     */
-    total: number;
-};
-
-/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -148,6 +124,21 @@ export type QueryResult = {
  * SourceConfig
  */
 export type SourceConfig = 'postgres' | 'sqlite' | 'mysql' | 'api';
+
+/**
+ * UpdateConnectionsModel
+ */
+export type UpdateConnectionsModel = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Connection Uri
+     */
+    connection_uri?: string | null;
+    source?: SourceConfig | null;
+};
 
 /**
  * ValidationError
@@ -208,6 +199,36 @@ export type CreateConnectionResponses = {
 
 export type CreateConnectionResponse = CreateConnectionResponses[keyof CreateConnectionResponses];
 
+export type DeleteConnectionData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Uid
+         */
+        connection_uid: string;
+    };
+    query?: never;
+    url: '/connections/{connection_uid}';
+};
+
+export type DeleteConnectionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteConnectionError = DeleteConnectionErrors[keyof DeleteConnectionErrors];
+
+export type DeleteConnectionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteConnectionResponse = DeleteConnectionResponses[keyof DeleteConnectionResponses];
+
 export type GetConnectionData = {
     body?: never;
     path: {
@@ -238,99 +259,35 @@ export type GetConnectionResponses = {
 
 export type GetConnectionResponse = GetConnectionResponses[keyof GetConnectionResponses];
 
-export type GetEntitiesData = {
-    body?: never;
+export type UpdateConnectionData = {
+    body: UpdateConnectionsModel;
     path: {
         /**
-         * Connection Id
+         * Connection Uid
          */
-        connection_id: string;
+        connection_uid: string;
     };
     query?: never;
-    url: '/connections/{connection_id}/entities';
+    url: '/connections/{connection_uid}';
 };
 
-export type GetEntitiesErrors = {
+export type UpdateConnectionErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type GetEntitiesError = GetEntitiesErrors[keyof GetEntitiesErrors];
+export type UpdateConnectionError = UpdateConnectionErrors[keyof UpdateConnectionErrors];
 
-export type GetEntitiesResponses = {
+export type UpdateConnectionResponses = {
     /**
      * Successful Response
      */
-    200: EntityModelList;
+    200: ConnectionsModel;
 };
 
-export type GetEntitiesResponse = GetEntitiesResponses[keyof GetEntitiesResponses];
-
-export type GetRowsData = {
-    body?: never;
-    path: {
-        /**
-         * Connection Id
-         */
-        connection_id: string;
-        /**
-         * Entity Name
-         */
-        entity_name: string;
-    };
-    query?: never;
-    url: '/connection/{connection_id}/entitities/{entity_name}';
-};
-
-export type GetRowsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetRowsError = GetRowsErrors[keyof GetRowsErrors];
-
-export type GetRowsResponses = {
-    /**
-     * Successful Response
-     */
-    200: QueryResult;
-};
-
-export type GetRowsResponse = GetRowsResponses[keyof GetRowsResponses];
-
-export type GetEntityData = {
-    body?: never;
-    path: {
-        /**
-         * Connection Id
-         */
-        connection_id: string;
-    };
-    query?: never;
-    url: '/connections/{connection_id}/entities/{entity}';
-};
-
-export type GetEntityErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetEntityError = GetEntityErrors[keyof GetEntityErrors];
-
-export type GetEntityResponses = {
-    /**
-     * Successful Response
-     */
-    200: EntityModelList;
-};
-
-export type GetEntityResponse = GetEntityResponses[keyof GetEntityResponses];
+export type UpdateConnectionResponse = UpdateConnectionResponses[keyof UpdateConnectionResponses];
 
 export type UploadFileData = {
     body: BodyUploadFile;
@@ -369,11 +326,11 @@ export type ExecuteQueryData = {
          */
         entity_name: string;
     };
-    query?: {
+    query: {
         /**
          * Query
          */
-        query?: string;
+        query: string;
         /**
          * Limit
          */

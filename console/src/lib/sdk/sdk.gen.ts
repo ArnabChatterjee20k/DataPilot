@@ -2,7 +2,7 @@
 
 import { type Client, formDataBodySerializer, type Options as Options2, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetEntitiesData, GetEntitiesErrors, GetEntitiesResponses, GetEntityData, GetEntityErrors, GetEntityResponses, GetRowsData, GetRowsErrors, GetRowsResponses, Health2Data, Health2Responses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, Health2Data, Health2Responses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -36,24 +36,26 @@ export const createConnection = <ThrowOnError extends boolean = false>(options: 
 });
 
 /**
+ * Delete Connection
+ */
+export const deleteConnection = <ThrowOnError extends boolean = false>(options: Options<DeleteConnectionData, ThrowOnError>) => (options.client ?? client).delete<DeleteConnectionResponses, DeleteConnectionErrors, ThrowOnError>({ url: '/connections/{connection_uid}', ...options });
+
+/**
  * Get Connection
  */
 export const getConnection = <ThrowOnError extends boolean = false>(options: Options<GetConnectionData, ThrowOnError>) => (options.client ?? client).get<GetConnectionResponses, GetConnectionErrors, ThrowOnError>({ url: '/connections/{connection_uid}', ...options });
 
 /**
- * Get Entities
+ * Update Connection
  */
-export const getEntities = <ThrowOnError extends boolean = false>(options: Options<GetEntitiesData, ThrowOnError>) => (options.client ?? client).get<GetEntitiesResponses, GetEntitiesErrors, ThrowOnError>({ url: '/connections/{connection_id}/entities', ...options });
-
-/**
- * Get Rows
- */
-export const getRows = <ThrowOnError extends boolean = false>(options: Options<GetRowsData, ThrowOnError>) => (options.client ?? client).get<GetRowsResponses, GetRowsErrors, ThrowOnError>({ url: '/connection/{connection_id}/entitities/{entity_name}', ...options });
-
-/**
- * Get Entity
- */
-export const getEntity = <ThrowOnError extends boolean = false>(options: Options<GetEntityData, ThrowOnError>) => (options.client ?? client).get<GetEntityResponses, GetEntityErrors, ThrowOnError>({ url: '/connections/{connection_id}/entities/{entity}', ...options });
+export const updateConnection = <ThrowOnError extends boolean = false>(options: Options<UpdateConnectionData, ThrowOnError>) => (options.client ?? client).put<UpdateConnectionResponses, UpdateConnectionErrors, ThrowOnError>({
+    url: '/connections/{connection_uid}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Upload File

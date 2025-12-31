@@ -1,7 +1,7 @@
 import { File, Folder, Tree } from "@/components/ui/file-tree";
-import { Plus } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { executeQuery, listConnections, getConnection } from "@/lib/sdk";
+import { executeQuery, listConnections, getConnection, deleteConnection } from "@/lib/sdk";
 import { getTableTabId, useDatabaseStore, useTabsStore } from "./store/store";
 import type { DatabaseConnection, Table } from "./store/store";
 import { useEffect, useState } from "react";
@@ -17,9 +17,11 @@ export default function DatabaseSidebar() {
     setTablesForConnection,
     setColumns,
     setRows,
+    removeConnection,
   } = useDatabaseStore();
   const { openTableTab, updateTabContent } = useTabsStore();
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
 
   const handleTableClick = async (
     e: React.MouseEvent,
@@ -75,7 +77,37 @@ export default function DatabaseSidebar() {
   };
 
   const handleNewConnection = () => {
+    setEditingConnectionId(null);
     setIsConnectionModalOpen(true);
+  };
+
+  const handleEditConnection = (connectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingConnectionId(connectionId);
+    setIsConnectionModalOpen(true);
+  };
+
+  const handleDeleteConnection = async (connectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!confirm(`Are you sure you want to delete this connection? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deleteConnection({
+        path: { connection_uid: connectionId },
+      });
+      
+      // Remove from store
+      removeConnection(connectionId);
+      
+      // Reload connections to ensure consistency
+      await loadConnections();
+    } catch (error) {
+      console.error("Error deleting connection:", error);
+      alert("Failed to delete connection. Please try again.");
+    }
   };
 
   const loadConnections = async () => {
@@ -181,29 +213,56 @@ export default function DatabaseSidebar() {
             elements={elements}
           >
             {connections.map((database) => (
-              <Folder
-                key={database.id}
-                element={database.name}
-                value={database.id}
-              >
-                {(tables[database.id] || []).map((table) => (
-                  <File
-                    key={table.id}
-                    value={table.id}
-                    onClick={(e) => handleTableClick(e, table, database)}
+              <div key={database.id} className="group relative">
+                <Folder
+                  element={database.name}
+                  value={database.id}
+                >
+                  {(tables[database.id] || []).map((table) => (
+                    <File
+                      key={table.id}
+                      value={table.id}
+                      onClick={(e) => handleTableClick(e, table, database)}
+                    >
+                      <p>{table.name}</p>
+                    </File>
+                  ))}
+                </Folder>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => handleEditConnection(database.id, e)}
+                    title="Edit connection"
                   >
-                    <p>{table.name}</p>
-                  </File>
-                ))}
-              </Folder>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => handleDeleteConnection(database.id, e)}
+                    title="Delete connection"
+                  >
+                    <Trash2 className="h-3 w-3 text-destructive" />
+                  </Button>
+                </div>
+              </div>
             ))}
           </Tree>
         </div>
       </div>
       <ConnectionModal
         open={isConnectionModalOpen}
-        onOpenChange={setIsConnectionModalOpen}
+        onOpenChange={(open) => {
+          setIsConnectionModalOpen(open);
+          if (!open) {
+            setEditingConnectionId(null);
+          }
+        }}
         onSuccess={loadConnections}
+        connectionId={editingConnectionId}
       />
     </>
   );

@@ -12,6 +12,12 @@ export const getTablesQuery = (connectionType: string): string => {
   }
 };
 
+// only user-defined schemas using a query
+export const getPostgresSchemasQuery =
+  (): string => `SELECT nspname AS schema_name
+FROM pg_catalog.pg_namespace
+WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'`;
+
 // Helper function to get initial rows query with pagination
 export const getRowsQuery = (
   entityName: string,
@@ -57,15 +63,10 @@ export const getTableRecordsSearchQuery = (
     case "sqlite": {
       const q = `%${search}%`;
 
-      const where = columns
-        .map((col) => `${col} LIKE '${q}'`)
-        .join(" OR ");
+      const where = columns.map((col) => `${col} LIKE '${q}'`).join(" OR ");
 
       const orderBy = columns
-        .map(
-          (col) =>
-            `CASE WHEN ${col} LIKE '${search}%' THEN 0 ELSE 1 END`
-        )
+        .map((col) => `CASE WHEN ${col} LIKE '${search}%' THEN 0 ELSE 1 END`)
         .join(", ");
 
       return `
@@ -81,15 +82,10 @@ export const getTableRecordsSearchQuery = (
     case "postgres": {
       const q = `%${search}%`;
 
-      const where = columns
-        .map((col) => `${col} ILIKE '${q}'`)
-        .join(" OR ");
+      const where = columns.map((col) => `${col} ILIKE '${q}'`).join(" OR ");
 
       const orderBy = columns
-        .map(
-          (col) =>
-            `CASE WHEN ${col} ILIKE '${search}%' THEN 0 ELSE 1 END`
-        )
+        .map((col) => `CASE WHEN ${col} ILIKE '${search}%' THEN 0 ELSE 1 END`)
         .join(", ");
 
       return `
@@ -105,15 +101,10 @@ export const getTableRecordsSearchQuery = (
     case "mysql": {
       const q = `%${search}%`;
 
-      const where = columns
-        .map((col) => `${col} LIKE '${q}'`)
-        .join(" OR ");
+      const where = columns.map((col) => `${col} LIKE '${q}'`).join(" OR ");
 
       const orderBy = columns
-        .map(
-          (col) =>
-            `CASE WHEN ${col} LIKE '${search}%' THEN 0 ELSE 1 END`
-        )
+        .map((col) => `CASE WHEN ${col} LIKE '${search}%' THEN 0 ELSE 1 END`)
         .join(", ");
 
       return `

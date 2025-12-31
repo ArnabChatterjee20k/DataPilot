@@ -21,6 +21,7 @@ import {
   ChevronUp,
   ChevronsUpDown,
   SearchIcon,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,16 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getRowsQuery, getTableRecordsSearchQuery } from "@/lib/queries";
 import { executeQuery } from "@/lib/sdk";
 import SearchInput from "@/components/app/SearchInput";
@@ -81,9 +92,14 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
   const [isSearching, setIsSearching] = useState(false);
   // Loading state for pagination
   const [isLoading, setIsLoading] = useState(false);
+  // Edit dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<Row | null>(null);
+  const [isNewRow, setIsNewRow] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Combined loading state for disabling controls
-  const isProcessing = isSearching || isLoading;
+  const isProcessing = isSearching || isLoading || isSaving;
   
   // Check if using external data (query results)
   const isUsingExternalData = !!externalRows || !!externalColumns;
@@ -316,6 +332,121 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
     ]
   );
 
+  const handleEditRow = (row: Row | null, isNew: boolean = false) => {
+    if (isNew) {
+      // Create empty row with default values
+      const newRow: Row = { id: "new" };
+      columns.forEach((col) => {
+        newRow[col.name] = col.defaultValue || "";
+      });
+      setEditingRow(newRow);
+      setIsNewRow(true);
+    } else {
+      setEditingRow(row ? { ...row } : null);
+      setIsNewRow(false);
+    }
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveRow = async () => {
+    if (!editingRow || !tab.tableName || !tab.connectionId || !tableId) return;
+
+    setIsSaving(true);
+    try {
+      let query = "";
+      
+      if (isNewRow) {
+        // Generate INSERT query
+        const columnNames: string[] = [];
+        const values: string[] = [];
+        
+        columns.forEach((col) => {
+          const value = editingRow[col.name];
+          if (value !== undefined && value !== null && value !== "") {
+            columnNames.push(col.name);
+            // Escape single quotes in values
+            const escapedValue = String(value).replace(/'/g, "''");
+            values.push(`'${escapedValue}'`);
+          } else if (col.nullable !== false && !col.defaultValue) {
+            // Include nullable columns with null
+            columnNames.push(col.name);
+            values.push("NULL");
+          }
+        });
+
+        if (columnNames.length === 0) {
+          throw new Error("At least one column must have a value");
+        }
+
+        query = `INSERT INTO ${tab.tableName} (${columnNames.join(", ")}) VALUES (${values.join(", ")})`;
+      } else {
+        // Generate UPDATE query
+        const setClauses: string[] = [];
+        const whereClauses: string[] = [];
+        
+        // Use id column for WHERE clause
+        const idValue = editingRow.id;
+        if (idValue === undefined || idValue === null) {
+          throw new Error("Cannot update row without an ID");
+        }
+        
+        // Find the primary key or id column
+        const idColumn = columns.find((col) => col.name.toLowerCase() === "id") || columns[0];
+        whereClauses.push(`${idColumn.name} = '${String(idValue).replace(/'/g, "''")}'`);
+
+        columns.forEach((col) => {
+          if (col.name === idColumn.name) return; // Skip ID column in SET clause
+          
+          const value = editingRow[col.name];
+          if (value !== undefined) {
+            if (value === null || value === "") {
+              if (col.nullable !== false) {
+                setClauses.push(`${col.name} = NULL`);
+              }
+            } else {
+              const escapedValue = String(value).replace(/'/g, "''");
+              setClauses.push(`${col.name} = '${escapedValue}'`);
+            }
+          }
+        });
+
+        if (setClauses.length === 0) {
+          throw new Error("No columns to update");
+        }
+
+        query = `UPDATE ${tab.tableName} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")}`;
+      }
+
+      // Execute the query
+      await executeQuery({
+        path: {
+          connection_id: tab.connectionId,
+          entity_name: tab.tableName,
+        },
+        query: {
+          query,
+        },
+      });
+
+      // Refresh the table
+      await fetchPage(tab.rowsOffset);
+      
+      setIsEditDialogOpen(false);
+      setEditingRow(null);
+    } catch (error: any) {
+      console.error("Error saving row:", error);
+      alert(`Error saving row: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRowDoubleClick = (row: Row) => {
+    if (!isUsingExternalData) {
+      handleEditRow(row, false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col p-6">
       <div className="mb-4 flex items-center">
@@ -326,6 +457,18 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
             disabled={isProcessing || isUsingExternalData}
           />
           <div className="flex justify-center items-center gap-2">
+            {!isUsingExternalData && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleEditRow(null, true)}
+                disabled={isProcessing}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                New Row
+              </Button>
+            )}
             <RowsPaginator
               currentPage={(tab.rowsOffset + 1) % tab.rowsLimit}
               handleNextPage={handlePaginateNext}
@@ -406,6 +549,8 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
                       <TableRow
                         key={rowId ?? index}
                         className={selectedRows.has(rowId) ? "bg-muted" : ""}
+                        onDoubleClick={() => handleRowDoubleClick(row)}
+                        style={{ cursor: isUsingExternalData ? "default" : "pointer" }}
                       >
                         <TableCell className="px-4 py-2 w-12">
                           <Checkbox
@@ -449,6 +594,73 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
           {selectedRows.size} row{selectedRows.size !== 1 ? "s" : ""} selected
         </div>
       )}
+
+      {/* Edit Row Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{isNewRow ? "Insert New Row" : "Edit Row"}</DialogTitle>
+            <DialogDescription>
+              {isNewRow
+                ? "Fill in the values for the new row. Leave fields empty for NULL values."
+                : "Modify the row values below."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {columns.map((column) => (
+              <div key={column.id} className="space-y-2">
+                <Label htmlFor={`edit-${column.id}`}>
+                  {column.name}
+                  {column.nullable === false && (
+                    <span className="ml-1 text-red-500">*</span>
+                  )}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({column.type})
+                  </span>
+                </Label>
+                <Input
+                  id={`edit-${column.id}`}
+                  value={
+                    editingRow?.[column.name] !== undefined &&
+                    editingRow?.[column.name] !== null
+                      ? String(editingRow[column.name])
+                      : ""
+                  }
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    if (!editingRow) return;
+                    const newRow = { ...editingRow };
+                    newRow[column.name] = e.target.value;
+                    setEditingRow(newRow);
+                  }}
+                  placeholder={
+                    column.defaultValue
+                      ? `Default: ${column.defaultValue}`
+                      : column.nullable !== false
+                      ? "NULL"
+                      : "Required"
+                  }
+                  disabled={isSaving}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setEditingRow(null);
+              }}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveRow} disabled={isSaving}>
+              {isSaving ? "Saving..." : isNewRow ? "Insert" : "Update"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

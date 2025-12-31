@@ -13,6 +13,14 @@ class CreateConnectionsModel(BaseModel):
         use_enum_values = True
 
 
+class UpdateConnectionsModel(BaseModel):
+    name: Optional[str] = None
+    connection_uri: Optional[str] = None
+    source: Optional[SourceConfig] = None
+
+    class Config:
+        use_enum_values = True
+
 class ConnectionsModel(BaseModel):
     uid: str
     name: str

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException, status
 from typing import Annotated, Optional
+import asyncpg
 from ..config import get_adapter, SourceConfig
 from . import UPLOAD_DIR
 from ..models import QueryResult
@@ -26,15 +27,49 @@ async def execute_query(
         connection.connection_uri = UPLOAD_DIR / connection.connection_uri
     Adapter = get_adapter(connection.source)
     storage = Adapter(connection_uri=connection.connection_uri)
-    async with storage.session() as session:
-        # Execute query as-is (frontend controls pagination in SQL)
-        result = await session.execute(query, force_commit=True)
-        return QueryResult(
-            rows=result.rows,
-            columns=result.description or [],
-            entity_name=entity_name,
-            connection_id=connection_id,
-            query=query,
-            limit=limit,
-            offset=offset,
+    
+    try:
+        async with storage.session() as session:
+            # Execute query as-is (frontend controls pagination in SQL)
+            result = await session.execute(query, force_commit=True)
+            return QueryResult(
+                rows=result.rows,
+                columns=result.description or [],
+                entity_name=entity_name,
+                connection_id=connection_id,
+                query=query,
+                limit=limit,
+                offset=offset,
+            )
+    except asyncpg.exceptions.InternalServerError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"PostgreSQL connection error: {str(e)}. Please check your connection URI and credentials.",
+        )
+    except asyncpg.exceptions.InvalidPasswordError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"PostgreSQL authentication failed: {str(e)}. Please check your password.",
+        )
+    except asyncpg.exceptions.InvalidCatalogNameError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"PostgreSQL database not found: {str(e)}. Please check your database name.",
+        )
+    except (asyncpg.exceptions.PostgresError, ConnectionError, OSError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database connection error: {str(e)}. Please check your connection settings and ensure the database server is running.",
+        )
+    except AttributeError as e:
+        if "'NoneType' object has no attribute 'close'" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection failed. Please check your connection URI and credentials.",
+            )
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error executing query: {str(e)}",
         )
