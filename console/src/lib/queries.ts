@@ -1,10 +1,11 @@
 // Helper function to get table list query based on connection type
-export const getTablesQuery = (connectionType: string): string => {
+export const getTablesQuery = (connectionType: string, schemaName?: string): string => {
   switch (connectionType) {
     case "sqlite":
       return "SELECT name FROM sqlite_master WHERE type='table'";
     case "postgres":
-      return "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'public'";
+      const schema = schemaName || 'public';
+      return `SELECT table_name as name FROM information_schema.tables WHERE table_schema = '${schema}'`;
     case "mysql":
       return "SELECT table_name as name FROM information_schema.tables WHERE table_schema = DATABASE()";
     default:
@@ -22,9 +23,12 @@ WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'`;
 export const getRowsQuery = (
   entityName: string,
   limit: number = 100,
-  offset: number = 0
+  offset: number = 0,
+  schemaName?: string
 ): string => {
-  return `SELECT * FROM ${entityName} LIMIT ${limit} OFFSET ${offset}`;
+  // For PostgreSQL, use schema-qualified table name if schema is provided
+  const tableName = schemaName ? `${schemaName}.${entityName}` : entityName;
+  return `SELECT * FROM ${tableName} LIMIT ${limit} OFFSET ${offset}`;
 };
 
 export function getQueryWithRowOffsetAndLimits(
@@ -55,9 +59,15 @@ export const getTableRecordsSearchQuery = (
   table: string,
   search: string,
   columns: string[],
-  limit: number = 20
+  limit: number = 20,
+  schemaName?: string
 ): string => {
   if (!table || !columns.length) return "";
+
+  // For PostgreSQL, use schema-qualified table name if schema is provided
+  const tableName = (connectionType === 'postgres' && schemaName) 
+    ? `${schemaName}.${table}` 
+    : table;
 
   switch (connectionType) {
     case "sqlite": {
@@ -71,7 +81,7 @@ export const getTableRecordsSearchQuery = (
 
       return `
         SELECT *
-        FROM ${table}
+        FROM ${tableName}
         WHERE (${where})
         ORDER BY
           ${orderBy}
@@ -90,7 +100,7 @@ export const getTableRecordsSearchQuery = (
 
       return `
         SELECT *
-        FROM ${table}
+        FROM ${tableName}
         WHERE (${where})
         ORDER BY
           ${orderBy}

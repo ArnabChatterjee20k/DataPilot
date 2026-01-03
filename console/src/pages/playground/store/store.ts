@@ -6,9 +6,15 @@ export interface DatabaseConnection {
   type: string;
 }
 
+export interface Schema {
+  id: string;
+  name: string;
+}
+
 export interface Table {
   id: string;
   name: string;
+  schemaId?: string;
 }
 
 export interface Column {
@@ -240,6 +246,7 @@ export const useTabsStore = create<TabStore>((set, get) => ({
 // Database Store
 interface DatabaseStore {
   connections: DatabaseConnection[];
+  schemas: Record<string, Schema[]>; // { [databaseId]: Schema[] }
   tables: Record<string, Table[]>; // { [databaseId]: Table[] }
   columns: Record<string, Column[]>; // { [tableId]: Column[] }
   rows: Record<string, Row[]>; // { [tableId]: Row[] }
@@ -250,7 +257,10 @@ interface DatabaseStore {
     id: string,
     connection: Partial<DatabaseConnection>
   ) => void;
+  setSchemasForConnections: (connectionId: string, schema: Schema[]) => void;
+  getSchemasForConnectionId: (connectionId: string) => Schema[];
   setTables: (tables: Record<string, Table[]>) => void;
+  // can be used for both setting to connection and schema as schemaId is part of the table only
   setTablesForConnection: (connectionId: string, tables: Table[]) => void;
   addTable: (connectionId: string, table: Table) => void;
   removeTable: (connectionId: string, tableId: string) => void;
@@ -268,6 +278,7 @@ interface DatabaseStore {
 
 export const useDatabaseStore = create<DatabaseStore>((set, get) => ({
   connections: [],
+  schemas: {},
   tables: {},
   columns: {},
   rows: {},
@@ -294,6 +305,17 @@ export const useDatabaseStore = create<DatabaseStore>((set, get) => ({
         conn.id === id ? { ...conn, ...updates } : conn
       ),
     })),
+  setSchemasForConnections: (connectionId: string, schema: Schema[]) =>
+    set((state) => ({
+      schemas: {
+        ...state.schemas,
+        [connectionId]: [...schema], // Create a new array reference to ensure reactivity
+      },
+    })),
+  getSchemasForConnectionId: (connectionId: string) => {
+    const state = get();
+    return state.schemas[connectionId] || [];
+  },
   setTables: (tables: Record<string, Table[]>) =>
     set(() => ({
       tables: tables,
