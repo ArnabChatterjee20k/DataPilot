@@ -9,23 +9,127 @@ import {
   DatabaseIcon,
   MoreVertical,
   FolderIcon,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { executeQuery, listConnections, deleteConnection, getTables, getSchemas } from "@/lib/sdk";
+import { executeQuery, getTables, getSchemas } from "@/lib/sdk";
 import { getTableTabId, useDatabaseStore, useTabsStore } from "./store/store";
 import type { DatabaseConnection, Table } from "./store/store";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { ConnectionModal } from "./ConnectionModal";
-import {
-  getRowsQuery,
-} from "@/lib/queries";
+import { getRowsQuery } from "@/lib/queries";
+import { useConnections, useDeleteConnection } from "./hooks";
+
+// Helper function to extract error message
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  const apiError = error as any;
+  return (
+    apiError?.response?.data?.detail?.message ||
+    apiError?.response?.data?.detail?.[0]?.msg ||
+    apiError?.message ||
+    "An error occurred"
+  );
+}
+
+// Error Banner Component
+function ErrorBanner({
+  title,
+  description,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mb-3 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm font-medium text-destructive">{title}</p>
+          <p className="text-xs text-destructive/80 mt-1">{description}</p>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onCancel}
+          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+        >
+          ×
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Loading Banner Component
+function LoadingBanner({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="mb-3 p-3 bg-muted/50 border border-muted rounded-md">
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 text-muted-foreground animate-spin shrink-0" />
+        <div className="flex-1">
+          <p className="text-sm font-medium text-foreground">{title}</p>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function DatabaseSidebar() {
-  const connections = useDatabaseStore((state) => state.connections);
+  // React Query for connections (server data)
+  const {
+    data: connections = [],
+    isLoading: isLoadingConnections,
+    error: connectionsError,
+    refetch: refetchConnections,
+  } = useConnections();
+  const deleteConnectionMutation = useDeleteConnection();
+
+  // Error state maps
+  const connectionsErrorState = connectionsError
+    ? {
+        title: "Failed to load connections",
+        description: getErrorMessage(connectionsError),
+        onCancel: () => {
+          // Error will be cleared when refetch succeeds
+        },
+      }
+    : null;
+
+  const deleteErrorState = deleteConnectionMutation.error
+    ? {
+        title: "Failed to delete connection",
+        description: getErrorMessage(deleteConnectionMutation.error),
+        onCancel: () => deleteConnectionMutation.reset(),
+      }
+    : null;
+
+  // Loading state maps
+  const deleteLoadingState = deleteConnectionMutation.isPending
+    ? {
+        title: "Deleting connection...",
+        description: "Please wait while we delete the connection",
+      }
+    : null;
+
+  // Zustand for local state (tables, schemas, columns, rows)
   const tables = useDatabaseStore((state) => state.tables);
   const schemas = useDatabaseStore((state) => state.schemas);
-  const setConnections = useDatabaseStore((state) => state.setConnections);
   const setTablesForConnection = useDatabaseStore(
     (state) => state.setTablesForConnection
   );
@@ -34,7 +138,6 @@ export default function DatabaseSidebar() {
   );
   const setColumns = useDatabaseStore((state) => state.setColumns);
   const setRows = useDatabaseStore((state) => state.setRows);
-  const removeConnection = useDatabaseStore((state) => state.removeConnection);
   const { openTableTab, updateTabContent } = useTabsStore();
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
@@ -105,17 +208,6 @@ export default function DatabaseSidebar() {
     setIsConnectionModalOpen(true);
   }, []);
 
-  const loadConnections = useCallback(async () => {
-    const currentConnections = await listConnections();
-    setConnections(
-      currentConnections.data?.connections.map((conn) => ({
-        id: conn.uid,
-        name: conn.name,
-        type: conn.source,
-      })) || []
-    );
-  }, [setConnections]);
-
   const handleDeleteConnection = useCallback(
     async (connectionId: string) => {
       if (
@@ -127,22 +219,15 @@ export default function DatabaseSidebar() {
       }
 
       try {
-        await deleteConnection({
-          path: { connection_uid: connectionId },
-        });
-
-        // Remove from store
-        removeConnection(connectionId);
-
-        // Reload connections to ensure consistency
-        await loadConnections();
+        await deleteConnectionMutation.mutateAsync(connectionId);
+        // React Query will automatically refetch connections list
       } catch (error) {
         console.error("Error deleting connection:", error);
-        alert("Failed to delete connection. Please try again.");
       }
     },
-    [removeConnection, loadConnections]
+    [deleteConnectionMutation]
   );
+
   const loadSchemas = async (id: string) => {
     let connection = connections.find((conn) => conn.id === id);
 
@@ -202,10 +287,6 @@ export default function DatabaseSidebar() {
 
     setTablesForConnection(connectionId, allTables);
   };
-
-  useEffect(() => {
-    loadConnections();
-  }, []);
 
   // Convert connections and tables to the Tree nodes structure
   const treeNodes = useMemo<NestedTreeNode[]>(() => {
@@ -277,6 +358,7 @@ export default function DatabaseSidebar() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleDeleteConnection(database.id)}
+                disabled={deleteConnectionMutation.isPending}
                 className="
                     flex items-center
                     rounded-sm px-2 py-1.5
@@ -285,10 +367,18 @@ export default function DatabaseSidebar() {
                     transition-colors
                     hover:bg-destructive/10
                     focus:bg-destructive/10
+                    disabled:opacity-50
+                    disabled:cursor-not-allowed
                   "
               >
-                <Trash2 className="mr-2 h-4 w-4 text-red-500" />
-                Delete Connection
+                {deleteConnectionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 text-red-500 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4 text-red-500" />
+                )}
+                {deleteConnectionMutation.isPending
+                  ? "Deleting..."
+                  : "Delete Connection"}
               </DropdownMenuItem>
             </>
           ),
@@ -346,6 +436,7 @@ export default function DatabaseSidebar() {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => handleDeleteConnection(database.id)}
+              disabled={deleteConnectionMutation.isPending}
               className="
                   flex items-center
                   rounded-sm px-2 py-1.5
@@ -354,10 +445,18 @@ export default function DatabaseSidebar() {
                   transition-colors
                   hover:bg-destructive/10
                   focus:bg-destructive/10
+                  disabled:opacity-50
+                  disabled:cursor-not-allowed
                 "
             >
-              <Trash2 className="mr-2 h-4 w-4 text-red-500" />
-              Delete Connection
+              {deleteConnectionMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 text-red-500 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4 text-red-500" />
+              )}
+              {deleteConnectionMutation.isPending
+                ? "Deleting..."
+                : "Delete Connection"}
             </DropdownMenuItem>
           </>
         ),
@@ -372,7 +471,6 @@ export default function DatabaseSidebar() {
     handleDeleteConnection,
   ]);
 
-  // Handle node expansion - now receives the full node object with depth
   const handleNodeExpand = (info: ExpandedNodeInfo) => {
     // Find the connection by traversing up the tree if needed
     let connection: DatabaseConnection | undefined;
@@ -420,7 +518,67 @@ export default function DatabaseSidebar() {
         </div>
         <div className="flex-1 overflow-auto">
           <div className="bg-background overflow-hidden rounded-md p-3">
-            <Tree nodes={treeNodes} indent={20} onExpand={handleNodeExpand} />
+            {isLoadingConnections ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">
+                  Loading connections...
+                </span>
+              </div>
+            ) : connectionsErrorState ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+                <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+                <p className="text-sm font-medium text-destructive mb-1">
+                  {connectionsErrorState.title}
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  {connectionsErrorState.description}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => refetchConnections()}
+                  disabled={isLoadingConnections}
+                  className="mt-2"
+                >
+                  {isLoadingConnections ? (
+                    <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                  ) : null}
+                  Retry
+                </Button>
+              </div>
+            ) : connections.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <DatabaseIcon className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  No connections found
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Click the + button to create one
+                </p>
+              </div>
+            ) : (
+              <>
+                {deleteLoadingState && (
+                  <LoadingBanner
+                    title={deleteLoadingState.title}
+                    description={deleteLoadingState.description}
+                  />
+                )}
+                {deleteErrorState && (
+                  <ErrorBanner
+                    title={deleteErrorState.title}
+                    description={deleteErrorState.description}
+                    onCancel={deleteErrorState.onCancel}
+                  />
+                )}
+                <Tree
+                  nodes={treeNodes}
+                  indent={20}
+                  onExpand={handleNodeExpand}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -432,7 +590,7 @@ export default function DatabaseSidebar() {
             setEditingConnectionId(null);
           }
         }}
-        onSuccess={loadConnections}
+        onSuccess={() => {}}
         connectionId={editingConnectionId}
       />
     </>
