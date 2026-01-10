@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/select";
 
 import { useEffect, useRef } from "react";
-import { useDatabaseStore, useTabsStore, type Tab } from "./store/store";
-import { getTables } from "@/lib/sdk";
+import { useTabsStore, type Tab } from "./store/store";
 import { useConnections } from "./hooks";
 
 interface CodeAreaProps {
@@ -91,8 +90,6 @@ export function CodeArea({
         <div className="flex-1 overflow-hidden relative bg-[#0a0a0a] rounded">
           <textarea
             ref={textareaRef}
-            // value={content}
-            // onChange={(e) => onChange(e.target.value)}
             rows={1}
             onKeyDown={handleKeyDown}
             className="absolute inset-0 w-full h-full font-mono text-sm text-white placeholder:opacity-35 bg-transparent resize-none outline-none px-4 py-4 leading-6"
@@ -136,33 +133,10 @@ function QueryConnectionConfig({ tab }: { tab: Tab }) {
   const { updateTabConnection } = useTabsStore();
   const {data: connectionsData} = useConnections()
   const connections = connectionsData || []
-  const { setTablesForConnection } = useDatabaseStore()
   function getConnectionName(connectionId: string) {
     return connections.find((con) => con.id === connectionId)?.name;
   }
-  const loadEntities = async (id: string) => {
-    const connection = connections.find((conn) => conn.id === id);
-    if (!connection) {
-      alert("Issues while fetching tables");
-      return;
-    }
-    const response = await getTables({
-      path: {
-        connection_id: id,
-      },
-    });
 
-    setTablesForConnection(
-      id,
-      response.data?.tables.map((table) => ({
-        id: table.name,
-        name: table.name,
-      })) || []
-    );
-  };
-  useEffect(() => {
-    if (tab.connectionId) loadEntities(tab.connectionId);
-  }, [tab.connectionId]);
   return (
     <div>
       <Select

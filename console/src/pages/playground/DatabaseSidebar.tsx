@@ -8,7 +8,8 @@ import {
   Pencil,
   DatabaseIcon,
   MoreVertical,
-  FolderIcon,
+  Layers,
+  Table2,
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -284,13 +285,14 @@ export default function DatabaseSidebar() {
             const schemaTables = tablesPerSchema.get(schemaKey) || [];
             return {
               name: schema.name,
-              icon: FolderIcon,
+              icon: Layers,
               className:
                 "group relative rounded-md px-2 py-1 transition-colors duration-150 hover:bg-muted/60",
               children:
                 schemaTables.length > 0
                   ? schemaTables.map((table) => ({
                       name: table.name,
+                      icon: Table2,
                       className:
                         "group relative rounded-md px-2 py-1 cursor-pointer transition-colors duration-150 hover:bg-muted/70 hover:text-foreground",
                       onClick: () => handleTableClick(table, database),
@@ -372,6 +374,7 @@ export default function DatabaseSidebar() {
           directTables.length > 0
             ? directTables.map((table) => ({
                 name: table.name,
+                icon: Table2,
                 className:
                   "group relative rounded-md px-2 py-1 cursor-pointer transition-colors duration-150 hover:bg-muted/70 hover:text-foreground",
                 onClick: () => handleTableClick(table, database),
