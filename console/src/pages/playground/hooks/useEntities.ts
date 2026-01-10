@@ -1,12 +1,13 @@
 import { useQueries } from "@tanstack/react-query";
-import { getSchemas } from "@/lib/sdk";
-import type { Schema } from "../store/store";
+import { getTables, type TableModel } from "@/lib/sdk";
+import type { Table } from "../store/store";
 
-export const schemaKeys = {
-  schema: (connectionId: string) => ["schema", connectionId],
+export const entityKeys = {
+entities:()=>['entities']
+  entity: (connectionId: string) => ["schema", connectionId],
 };
 
-export function useSchemas(connectionIds: string[]) {
+export function useSchemas(connectionIds: string) {
   return useQueries({
     queries: connectionIds.map((connectionId) => ({
       queryKey: schemaKeys.schema(connectionId),
@@ -23,7 +24,8 @@ export function useSchemas(connectionIds: string[]) {
             connectionId: connectionId
           })) || []
         );
-      }
+      },
+      staleTime: 5 * 60_000,
     })),
   });
 }
