@@ -16,11 +16,11 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { executeQuery, getTables, getSchemas } from "@/lib/sdk";
 import { getTableTabId, useDatabaseStore, useTabsStore } from "./store/store";
-import type { DatabaseConnection, Table } from "./store/store";
+import type { DatabaseConnection, Schema, Table } from "./store/store";
 import { useState, useMemo, useCallback } from "react";
 import { ConnectionModal } from "./ConnectionModal";
 import { getRowsQuery } from "@/lib/queries";
-import { useConnections, useDeleteConnection } from "./hooks";
+import { useConnections, useDeleteConnection, useSchemas } from "./hooks";
 
 // Helper function to extract error message
 function getErrorMessage(error: unknown): string {
@@ -91,7 +91,6 @@ function LoadingBanner({
 }
 
 export default function DatabaseSidebar() {
-  // React Query for connections (server data)
   const {
     data: connections = [],
     isLoading: isLoadingConnections,
@@ -100,6 +99,25 @@ export default function DatabaseSidebar() {
   } = useConnections();
   const deleteConnectionMutation = useDeleteConnection();
 
+  const [expandedConnectionForSchemas, setExpandedConnectionForSchemas] =
+    useState<string[]>([]);
+
+  const schemasForAllConnectionIds = useSchemas(expandedConnectionForSchemas);
+  const schemasPerConnectionId = new Map<string, Schema[]>();
+  schemasForAllConnectionIds.forEach((schemasForConnectionId) => {
+    schemasForConnectionId.data?.forEach((schema) => {
+      if (!schemasPerConnectionId.has(schema.connectionId)) {
+        schemasPerConnectionId.set(schema.connectionId, []);
+      }
+      const connectionIds =
+        schemasPerConnectionId.get(schema.connectionId) || [];
+      schemasPerConnectionId.set(schema.connectionId, [
+        ...connectionIds,
+        { ...schema },
+      ]);
+    });
+  });
+  console.log(schemasForAllConnectionIds);
   // Error state maps
   const connectionsErrorState = connectionsError
     ? {
@@ -129,7 +147,6 @@ export default function DatabaseSidebar() {
 
   // Zustand for local state (tables, schemas, columns, rows)
   const tables = useDatabaseStore((state) => state.tables);
-  const schemas = useDatabaseStore((state) => state.schemas);
   const setTablesForConnection = useDatabaseStore(
     (state) => state.setTablesForConnection
   );
@@ -291,7 +308,7 @@ export default function DatabaseSidebar() {
   // Convert connections and tables to the Tree nodes structure
   const treeNodes = useMemo<NestedTreeNode[]>(() => {
     return connections.map((database) => {
-      const connectionSchemas = schemas[database.id] || [];
+      const connectionSchemas = schemasPerConnectionId.get(database.id) || [];
       const connectionTables = tables[database.id] || [];
       const isPostgres = database.type === "postgres";
 
@@ -465,7 +482,6 @@ export default function DatabaseSidebar() {
   }, [
     connections,
     tables,
-    schemas,
     handleTableClick,
     handleEditConnection,
     handleDeleteConnection,
@@ -482,7 +498,10 @@ export default function DatabaseSidebar() {
       if (!connection) return;
 
       if (connection.type === "postgres") {
-        loadSchemas(connection.id);
+        setExpandedConnectionForSchemas((prev) => {
+          if (!connection) return prev;
+          return [...new Set([...prev, connection.id])];
+        });
       } else {
         loadEntities(connection.id);
       }
@@ -490,7 +509,7 @@ export default function DatabaseSidebar() {
       // Schema node (for postgres) - load tables for this schema
       // Find the parent connection
       connection = connections.find((conn) => {
-        const connectionSchemas = schemas[conn.id] || [];
+        const connectionSchemas = schemasPerConnectionId.get(conn.id) || [];
         return connectionSchemas.some(
           (schema) => schema.name === info.node.name
         );
