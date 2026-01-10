@@ -18,8 +18,7 @@ import {
 
 import { useEffect, useRef } from "react";
 import { useDatabaseStore, useTabsStore, type Tab } from "./store/store";
-import { executeQuery } from "@/lib/sdk";
-import { getTablesQuery } from "@/lib/queries";
+import { getTables } from "@/lib/sdk";
 
 interface CodeAreaProps {
   tab: Tab;
@@ -144,32 +143,17 @@ function QueryConnectionConfig({ tab }: { tab: Tab }) {
       alert("Issues while fetching tables");
       return;
     }
-    const query = getTablesQuery(connection.type);
-    const response = await executeQuery({
+    const response = await getTables({
       path: {
         connection_id: id,
-        entity_name: "_tables", // Placeholder since we're querying for tables, not a specific table
-      },
-      query: {
-        query: query,
       },
     });
 
-    // Transform rows to entities structure
-    const entities = {
-      data: {
-        entities:
-          response.data?.rows.map((row: any) => ({
-            name: row.name,
-          })) || [],
-      },
-    };
-
     setTablesForConnection(
       id,
-      entities.data?.entities.map((entity) => ({
-        id: entity.name,
-        name: entity.name,
+      response.data?.tables.map((table) => ({
+        id: table.name,
+        name: table.name,
       })) || []
     );
   };

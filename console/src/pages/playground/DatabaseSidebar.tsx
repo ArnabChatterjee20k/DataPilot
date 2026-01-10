@@ -12,15 +12,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { executeQuery, listConnections, deleteConnection } from "@/lib/sdk";
+import { executeQuery, listConnections, deleteConnection, getTables, getSchemas } from "@/lib/sdk";
 import { getTableTabId, useDatabaseStore, useTabsStore } from "./store/store";
 import type { DatabaseConnection, Table } from "./store/store";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { ConnectionModal } from "./ConnectionModal";
 import {
-  getPostgresSchemasQuery,
   getRowsQuery,
-  getTablesQuery,
 } from "@/lib/queries";
 
 export default function DatabaseSidebar() {
@@ -153,31 +151,17 @@ export default function DatabaseSidebar() {
       return;
     }
 
-    const query = getPostgresSchemasQuery();
-    const response = await executeQuery({
+    const response = await getSchemas({
       path: {
         connection_id: id,
-        entity_name: "_tables",
-      },
-      query: {
-        query: query,
       },
     });
-    // Transform rows to entities structure
-    const schemas = {
-      data: {
-        entities:
-          response.data?.rows.map((row: any) => ({
-            name: row.schema_name,
-          })) || [],
-      },
-    };
 
     setSchemasForConnections(
       id,
-      schemas.data?.entities.map((entity) => ({
-        id: entity.name,
-        name: entity.name,
+      response.data?.schemas.map((schema) => ({
+        id: schema.name,
+        name: schema.name,
       })) || []
     );
   };
@@ -190,36 +174,21 @@ export default function DatabaseSidebar() {
       return;
     }
 
-    const query = getTablesQuery(connection.type, schemaName);
-    // Use a placeholder entity_name for table listing queries
-    const response = await executeQuery({
+    const response = await getTables({
       path: {
         connection_id: connectionId,
-        entity_name: "_tables", // Placeholder since we're querying for tables, not a specific table
       },
-      query: {
-        query: query,
-      },
+      query: schemaName ? { schema: schemaName } : undefined,
     });
-
-    // Transform rows to entities structure
-    const entities = {
-      data: {
-        entities:
-          response.data?.rows.map((row: any) => ({
-            name: row.name,
-          })) || [],
-      },
-    };
 
     // Get existing tables for this connection
     const existingTables = tables[connectionId] || [];
 
     // Create new tables with schemaId if schemaName is provided
     const newTables =
-      entities.data?.entities.map((entity) => ({
-        id: entity.name,
-        name: entity.name,
+      response.data?.tables.map((table) => ({
+        id: table.name,
+        name: table.name,
         schemaId: schemaName,
       })) || [];
 

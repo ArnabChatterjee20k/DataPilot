@@ -60,3 +60,23 @@ class QueryResult(BaseModel):
     offset: Optional[int] = 100
     rows: list
     columns: list
+
+
+# Tables
+class TableModel(BaseModel):
+    name: str
+
+
+class TableModelList(BaseModel):
+    tables: list[TableModel]
+    total: int
+
+
+# Schemas
+class SchemaModel(BaseModel):
+    name: str
+
+
+class SchemaModelList(BaseModel):
+    schemas: list[SchemaModel]
+    total: int

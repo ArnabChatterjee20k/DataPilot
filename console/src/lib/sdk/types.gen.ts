@@ -121,9 +121,57 @@ export type QueryResult = {
 };
 
 /**
+ * SchemaModel
+ */
+export type SchemaModel = {
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * SchemaModelList
+ */
+export type SchemaModelList = {
+    /**
+     * Schemas
+     */
+    schemas: Array<SchemaModel>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
  * SourceConfig
  */
 export type SourceConfig = 'postgres' | 'sqlite' | 'mysql' | 'api';
+
+/**
+ * TableModel
+ */
+export type TableModel = {
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * TableModelList
+ */
+export type TableModelList = {
+    /**
+     * Tables
+     */
+    tables: Array<TableModel>;
+    /**
+     * Total
+     */
+    total: number;
+};
 
 /**
  * UpdateConnectionsModel
@@ -360,6 +408,71 @@ export type ExecuteQueryResponses = {
 };
 
 export type ExecuteQueryResponse = ExecuteQueryResponses[keyof ExecuteQueryResponses];
+
+export type GetTablesData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Schema
+         */
+        schema?: string | null;
+    };
+    url: '/connection/{connection_id}/table';
+};
+
+export type GetTablesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTablesError = GetTablesErrors[keyof GetTablesErrors];
+
+export type GetTablesResponses = {
+    /**
+     * Successful Response
+     */
+    200: TableModelList;
+};
+
+export type GetTablesResponse = GetTablesResponses[keyof GetTablesResponses];
+
+export type GetSchemasData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/schema';
+};
+
+export type GetSchemasErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSchemasError = GetSchemasErrors[keyof GetSchemasErrors];
+
+export type GetSchemasResponses = {
+    /**
+     * Successful Response
+     */
+    200: SchemaModelList;
+};
+
+export type GetSchemasResponse = GetSchemasResponses[keyof GetSchemasResponses];
 
 export type HealthData = {
     body?: never;
