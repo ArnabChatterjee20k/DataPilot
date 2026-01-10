@@ -1,3 +1,3 @@
-// Export all playground hooks
 export * from './useConnections';
-
+export * from './useSchemas';
+export * from './useTables';
