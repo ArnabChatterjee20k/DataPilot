@@ -19,6 +19,7 @@ import {
 import { useEffect, useRef } from "react";
 import { useDatabaseStore, useTabsStore, type Tab } from "./store/store";
 import { getTables } from "@/lib/sdk";
+import { useConnections } from "./hooks";
 
 interface CodeAreaProps {
   tab: Tab;
@@ -133,7 +134,9 @@ function TableBreadCrumb({ tab }: { tab: Tab }) {
 
 function QueryConnectionConfig({ tab }: { tab: Tab }) {
   const { updateTabConnection } = useTabsStore();
-  const { connections, setTablesForConnection } = useDatabaseStore();
+  const {data: connectionsData} = useConnections()
+  const connections = connectionsData || []
+  const { setTablesForConnection } = useDatabaseStore()
   function getConnectionName(connectionId: string) {
     return connections.find((con) => con.id === connectionId)?.name;
   }

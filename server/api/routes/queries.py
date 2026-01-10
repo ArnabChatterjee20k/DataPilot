@@ -123,8 +123,6 @@ async def get_tables(
         async with storage.session() as session:
             query = get_tables_query(connection.source, schema)
             result = await session.execute(query, force_commit=True)
-            print(query)
-            print(result)
             tables = []
             for row in result.rows:
                 # Handle both dict and tuple/list row formats
