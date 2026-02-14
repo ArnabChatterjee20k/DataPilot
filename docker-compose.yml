@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  datapilot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datapilot
+    ports:
+      - "8000:8000"
+    environment:
+      - MODE=DEV
+      - DB_PATH=${DB_PATH:-./data/database.db}
+      - BUCKET_DIR=${BUCKET_DIR:-./data/buckets}
+    volumes:
+      # Mount data directory for persistence
+      - ./data:/app/server/data
+      # Mount .env file if it exists
+      - ./server/.env:/app/server/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Alternative healthcheck using Python if curl is not available:
+    # test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

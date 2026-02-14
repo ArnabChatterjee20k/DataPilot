@@ -1,0 +1,62 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+npm-debug.log
+pnpm-debug.log
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+.coverage
+htmlcov
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directories (will be mounted as volumes)
+data/
+
+# Build artifacts
+console/dist
+console/.vite
+
+# Lock files (we copy them explicitly)
+# But ignore if they're in wrong location
+uv.lock
+pnpm-lock.yaml
+
+# Tests
+tests/
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+
+# Documentation
+*.md
+!README.md

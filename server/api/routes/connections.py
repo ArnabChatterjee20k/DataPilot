@@ -11,11 +11,19 @@ router = APIRouter(tags=["connections"])
 @router.post("/connections", response_model=ConnectionsModel)
 async def create_connection(connection: CreateConnectionsModel, db: DBSession):
     if connection.source == SourceConfig.SQLITE.value:
+        # Check if connection_uri is provided
+        if not connection.connection_uri:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Connection URI is required for SQLite connections. Please upload a file first.",
+            )
+        
+        # Check if the file exists in the bucket directory
         file_path = UPLOAD_DIR / connection.connection_uri
         if not file_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="First upload sqlite to the bucket then add it",
+                detail=f"SQLite file not found: {connection.connection_uri}. Please upload the file to the bucket first.",
             )
 
     created = await db.create(Connections(**connection.model_dump()))

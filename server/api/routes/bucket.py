@@ -26,4 +26,5 @@ async def upload_file(file: UploadFile, db: DBSession):
         )
     )
     await db.commit()
-    return BucketModel(uid=f"{file_id}.{ext}", filename=file.filename)
+    # Return the actual filename that was saved (not with double dot)
+    return BucketModel(uid=new_filename, filename=file.filename)
