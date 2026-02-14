@@ -1,27 +1,31 @@
 import { useQueries } from "@tanstack/react-query";
-import { getTables, type TableModel } from "@/lib/sdk";
+import { getTables } from "@/lib/sdk";
 import type { Table } from "../store/store";
 
 export const entityKeys = {
-entities:()=>['entities']
-  entity: (connectionId: string) => ["schema", connectionId],
+  entities: () => ['entities'],
+  entity: (connectionId: string) => ["entity", connectionId],
 };
 
-export function useSchemas(connectionIds: string) {
+type EntityQueryParams = {
+  connectionId: string;
+};
+
+export function useEntities(queries: EntityQueryParams[]) {
   return useQueries({
-    queries: connectionIds.map((connectionId) => ({
-      queryKey: schemaKeys.schema(connectionId),
-      queryFn: async (): Promise<(Schema & {connectionId:string})[]> => {
-        const response = await getSchemas({
+    queries: queries.map(({ connectionId }) => ({
+      queryKey: entityKeys.entity(connectionId),
+      queryFn: async (): Promise<(Table & { connectionId: string })[]> => {
+        const response = await getTables({
           path: { connection_id: connectionId },
           throwOnError: true,
         });
         if (!response.data) return [];
         return (
-          response.data?.schemas.map((schema) => ({
-            id: schema.name,
-            name: schema.name,
-            connectionId: connectionId
+          response.data?.tables.map((table) => ({
+            id: table.name,
+            name: table.name,
+            connectionId: connectionId,
           })) || []
         );
       },

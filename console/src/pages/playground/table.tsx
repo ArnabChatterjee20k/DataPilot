@@ -22,6 +22,8 @@ import {
   ChevronsUpDown,
   SearchIcon,
   Plus,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +55,9 @@ interface TableViewProps {
   tabId: string;
   externalRows?: Row[];
   externalColumns?: Column[];
+  /** When provided, a Reload button is shown that re-runs the current query */
+  onReload?: () => void;
+  isReloading?: boolean;
 }
 
 const COLUMN_PARAM = "columns";
@@ -78,7 +83,7 @@ function StickyHeaderTableContainer(props: React.ComponentProps<"table">) {
   );
 }
 
-export function TableView({ tableId, tabId, externalRows, externalColumns }: TableViewProps) {
+export function TableView({ tableId, tabId, externalRows, externalColumns, onReload, isReloading = false }: TableViewProps) {
   const { getColumns, getRows, setRows, connections } = useDatabaseStore();
   const { updateTabContent } = useTabsStore();
   const { updateTableFilters, updateTabPagination, tabs } = useTabsStore();
@@ -97,9 +102,10 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
   const [editingRow, setEditingRow] = useState<Row | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Combined loading state for disabling controls
-  const isProcessing = isSearching || isLoading || isSaving;
+  const isProcessing = isSearching || isLoading || isSaving || isDeleting;
   
   // Check if using external data (query results)
   const isUsingExternalData = !!externalRows || !!externalColumns;
@@ -160,6 +166,49 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
       setSelectedRows(new Set());
     }
   };
+
+  const handleDeleteSelectedRows = useCallback(async () => {
+    if (selectedRows.size === 0 || !tab.tableName || !tab.connectionId || isUsingExternalData) return;
+    if (
+      !confirm(
+        `Are you sure you want to delete ${selectedRows.size} row${selectedRows.size !== 1 ? "s" : ""}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const idColumn = columns.find((col) => col.name.toLowerCase() === "id") || columns[0];
+    if (!idColumn) return;
+
+    const formatValue = (val: string | number) => {
+      if (typeof val === "number" || (typeof val === "string" && /^-?\d+(\.\d+)?$/.test(val))) {
+        return String(val);
+      }
+      return `'${String(val).replace(/'/g, "''")}'`;
+    };
+
+    // Use selected row ids (same values we use for selection)
+    const inClause = Array.from(selectedRows).map(formatValue).join(", ");
+    const query = `DELETE FROM ${tab.tableName} WHERE ${idColumn.name} IN (${inClause})`;
+
+    setIsDeleting(true);
+    try {
+      await executeQuery({
+        path: {
+          connection_id: tab.connectionId,
+          entity_name: tab.tableName,
+        },
+        query: { query },
+      });
+      setSelectedRows(new Set());
+      await fetchPage(tab.rowsOffset);
+    } catch (error: any) {
+      console.error("Error deleting rows:", error);
+      alert(`Error deleting rows: ${error?.message || "Unknown error"}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [selectedRows, tab.tableName, tab.connectionId, tab.rowsOffset, columns, isUsingExternalData]);
 
   const handleSort = (columnName: string) => {
     let direction: "asc" | "desc" = "asc";
@@ -457,6 +506,19 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
             disabled={isProcessing || isUsingExternalData}
           />
           <div className="flex justify-center items-center gap-2">
+            {onReload && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onReload}
+                disabled={isProcessing || isReloading}
+                className="gap-2"
+                title="Reload (re-run query)"
+              >
+                <RefreshCw className={`h-4 w-4 ${isReloading ? "animate-spin" : ""}`} />
+                Reload
+              </Button>
+            )}
             {!isUsingExternalData && (
               <Button
                 size="sm"
@@ -590,8 +652,27 @@ export function TableView({ tableId, tabId, externalRows, externalColumns }: Tab
       </div>
 
       {selectedRows.size > 0 && (
-        <div className="mt-4 p-3 bg-muted rounded text-sm">
-          {selectedRows.size} row{selectedRows.size !== 1 ? "s" : ""} selected
+        <div className="mt-4 p-3 bg-muted rounded text-sm flex items-center justify-between gap-3">
+          <span>
+            {selectedRows.size} row{selectedRows.size !== 1 ? "s" : ""} selected
+          </span>
+          {!isUsingExternalData && (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleDeleteSelectedRows}
+              disabled={isDeleting}
+              className="gap-2"
+              title="Delete selected rows"
+            >
+              {isDeleting ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {isDeleting ? "Deleting..." : "Delete selected"}
+            </Button>
+          )}
         </div>
       )}
 

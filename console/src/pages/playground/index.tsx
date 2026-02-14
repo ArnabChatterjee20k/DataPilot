@@ -9,7 +9,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import DatabaseSidebar from "./DatabaseSidebar";
 import { TableView } from "./table";
-import { QueryResults } from "./result";
 import { X } from "lucide-react";
 import { useDatabaseStore, useTabsStore, type Row, type Column } from "./store/store";
 import { executeQuery } from "@/lib/sdk";
@@ -52,6 +51,11 @@ export default () => {
     const entityName = tab.tableName as string;
 
     setRunningTabId(tabId);
+    const applyLimitOffset = tab.applyLimitOffset !== false;
+    const queryToRun = applyLimitOffset
+      ? getQueryWithRowOffsetAndLimits(query, tab.rowsLimit, tab.rowsOffset)
+      : query;
+
     try {
       const response = await executeQuery({
         path: {
@@ -59,11 +63,7 @@ export default () => {
           entity_name: entityName,
         },
         query: {
-          query: getQueryWithRowOffsetAndLimits(
-            query,
-            tab.rowsLimit,
-            tab.rowsOffset
-          ),
+          query: queryToRun,
         },
       });
 
@@ -191,6 +191,8 @@ export default () => {
                           tabId={tab.id}
                           externalColumns={queryResults[tab.id]?.columns || []}
                           externalRows={queryResults[tab.id]?.rows || []}
+                          onReload={() => handleRunQuery(tab.id, tab.content || "")}
+                          isReloading={runningTabId === tab.id}
                         />
                       ) : tab.type === "table" &&
                         tab.tableName &&
@@ -200,6 +202,8 @@ export default () => {
                           tableId={tab.tableId}
                           databaseName={tab.databaseName}
                           tabId={tab.id}
+                          onReload={() => handleRunQuery(tab.id, tab.content || "")}
+                          isReloading={runningTabId === tab.id}
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center p-6">

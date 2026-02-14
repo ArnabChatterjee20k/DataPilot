@@ -207,7 +207,7 @@ export default function Tree({ nodes, indent = 10, onExpand }: TreeProps) {
               className={cn("border-b-0", node.className)}
               disabled={node.disabled}
             >
-              {node.children || node.parent === "ROOT" ? (
+              {node.children || node.parent === "ROOT" || (node.menuActions && node.addChildrenIcon) ? (
                 <>
                   <FileTrigger
                     className="py-2"
@@ -221,7 +221,10 @@ export default function Tree({ nodes, indent = 10, onExpand }: TreeProps) {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
-                                className="ml-auto mr-2 p-1 rounded hover:bg-accent transition-colors"
+                                className={cn(
+                                  "ml-auto mr-2 p-1 rounded hover:bg-accent transition-colors focus:opacity-100",
+                                  node.children ? "opacity-0 group-hover:opacity-100" : ""
+                                )}
                                 onClick={(e) => e.stopPropagation()}
                                 title="Menu"
                               >

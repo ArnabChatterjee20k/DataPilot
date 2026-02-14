@@ -43,6 +43,8 @@ export interface Tab {
   queryWindowSize?: string;
   rowsLimit: number;
   rowsOffset: number;
+  /** When false, run query as-is without appending LIMIT/OFFSET */
+  applyLimitOffset?: boolean;
 }
 
 export interface QueryResult {
@@ -63,6 +65,7 @@ const getNewQueryTab = (): Tab => ({
   filters: {},
   rowsLimit: 100,
   rowsOffset: 0,
+  applyLimitOffset: true,
 });
 
 const getDefaultNewQueryTab = (tabId: string): Tab => ({
@@ -74,6 +77,7 @@ const getDefaultNewQueryTab = (tabId: string): Tab => ({
   filters: {},
   rowsLimit: 100,
   rowsOffset: 0,
+  applyLimitOffset: true,
 });
 
 export const getTableTabId = (tableId: string) => `table-${tableId}`;
@@ -104,6 +108,7 @@ interface TabStore {
   ) => void;
   updateTableFilters: (tabId: string, filters: Record<string, string>) => void;
   updateTabPagination: (tabId: string, limits: number, offset?: number) => void;
+  setApplyLimitOffset: (tabId: string, apply: boolean) => void;
 }
 
 export const useTabsStore = create<TabStore>((set, get) => ({
@@ -144,6 +149,7 @@ export const useTabsStore = create<TabStore>((set, get) => ({
       filters: {},
       rowsLimit: 100,
       rowsOffset: 0,
+      applyLimitOffset: true,
     };
     set((state) => ({
       tabs: [...state.tabs, newTab],
@@ -239,6 +245,13 @@ export const useTabsStore = create<TabStore>((set, get) => ({
           rowsOffset: offset || 0,
         };
       }),
+    }));
+  },
+  setApplyLimitOffset: (tabId: string, apply: boolean) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, applyLimitOffset: apply } : tab
+      ),
     }));
   },
 }));

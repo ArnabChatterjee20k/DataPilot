@@ -12,21 +12,25 @@ import {
   Table2,
   Loader2,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { executeQuery } from "@/lib/sdk";
 import { getTableTabId, useDatabaseStore, useTabsStore } from "./store/store";
 import type { DatabaseConnection, Schema, Table } from "./store/store";
 import { useState, useMemo, useCallback } from "react";
 import { ConnectionModal } from "./ConnectionModal";
 import { getRowsQuery } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useConnections,
   useDeleteConnection,
   useSchemas,
   useTables,
 } from "./hooks";
+import { schemaKeys } from "./hooks/useSchemas";
+import { tableKeys } from "./hooks/useTables";
 
 // Helper function to extract error message
 function getErrorMessage(error: unknown): string {
@@ -95,6 +99,7 @@ function LoadingBanner({
 }
 
 export default function DatabaseSidebar() {
+  const queryClient = useQueryClient();
   const {
     data: connections = [],
     isLoading: isLoadingConnections,
@@ -102,6 +107,7 @@ export default function DatabaseSidebar() {
     refetch: refetchConnections,
   } = useConnections();
   const deleteConnectionMutation = useDeleteConnection();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [expandedConnectionForSchemas, setExpandedConnectionForSchemas] =
     useState<string[]>([]);
@@ -248,6 +254,16 @@ export default function DatabaseSidebar() {
     setIsConnectionModalOpen(true);
   }, []);
 
+  const handleRefreshAll = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refetchConnections();
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "schema" || q.queryKey[0] === "tables" });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refetchConnections, queryClient]);
+
   const handleDeleteConnection = useCallback(
     async (connectionId: string) => {
       if (
@@ -266,6 +282,59 @@ export default function DatabaseSidebar() {
       }
     },
     [deleteConnectionMutation]
+  );
+
+  const handleReloadConnection = useCallback(
+    (connectionId: string) => {
+      queryClient.invalidateQueries({ queryKey: schemaKeys.schema(connectionId) });
+      queryClient.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) &&
+          q.queryKey[0] === "tables" &&
+          q.queryKey[1] === connectionId,
+      });
+    },
+    [queryClient]
+  );
+
+  const handleReloadEntity = useCallback(
+    (connectionId: string, schemaName?: string) => {
+      queryClient.invalidateQueries({
+        queryKey: tableKeys.table(connectionId, schemaName),
+      });
+    },
+    [queryClient]
+  );
+
+  const handleDeleteTable = useCallback(
+    async (table: Table, database: DatabaseConnection, schemaName?: string) => {
+      const entityName = schemaName ? `${schemaName}.${table.name}` : table.name;
+      const displayName = schemaName ? `${schemaName}.${table.name}` : table.name;
+      if (
+        !confirm(
+          `Are you sure you want to delete the table "${displayName}"? This will run DROP TABLE and cannot be undone.`
+        )
+      ) {
+        return;
+      }
+      try {
+        const dropQuery = schemaName
+          ? `DROP TABLE IF EXISTS "${schemaName}"."${table.name}"`
+          : `DROP TABLE IF EXISTS "${table.name}"`;
+        await executeQuery({
+          path: {
+            connection_id: database.id,
+            entity_name: entityName,
+          },
+          query: { query: dropQuery },
+        });
+        queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "schema" || q.queryKey[0] === "tables" });
+      } catch (error) {
+        console.error("Error dropping table:", error);
+        alert(getErrorMessage(error));
+      }
+    },
+    [queryClient]
   );
 
   const treeNodes = useMemo<NestedTreeNode[]>(() => {
@@ -295,13 +364,38 @@ export default function DatabaseSidebar() {
                       icon: Table2,
                       className:
                         "group relative rounded-md px-2 py-1 cursor-pointer transition-colors duration-150 hover:bg-muted/70 hover:text-foreground",
+                      addChildrenIcon: MoreVertical,
                       onClick: () => handleTableClick(table, database),
+                      menuActions: () => (
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => handleReloadEntity(database.id, schema.name)}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Reload
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteTable(table, database, schema.name)}
+                            className="text-red-500 hover:bg-destructive/10 focus:bg-destructive/10"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete table
+                          </DropdownMenuItem>
+                        </>
+                      ),
                     }))
                   : [],
             };
           }),
           menuActions: () => (
             <>
+              <DropdownMenuItem
+                onClick={() => handleReloadConnection(database.id)}
+              >
+                <RefreshCw className="mr-2 h-4 w-4 text-foreground/70" />
+                Reload
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleEditConnection(database.id)}
                 className="
@@ -377,11 +471,36 @@ export default function DatabaseSidebar() {
                 icon: Table2,
                 className:
                   "group relative rounded-md px-2 py-1 cursor-pointer transition-colors duration-150 hover:bg-muted/70 hover:text-foreground",
+                addChildrenIcon: MoreVertical,
                 onClick: () => handleTableClick(table, database),
+                menuActions: () => (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => handleReloadEntity(database.id)}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Reload
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => handleDeleteTable(table, database)}
+                      className="text-red-500 hover:bg-destructive/10 focus:bg-destructive/10"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete table
+                    </DropdownMenuItem>
+                  </>
+                ),
               }))
             : [],
         menuActions: () => (
           <>
+            <DropdownMenuItem
+              onClick={() => handleReloadConnection(database.id)}
+            >
+              <RefreshCw className="mr-2 h-4 w-4 text-foreground/70" />
+              Reload
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => handleEditConnection(database.id)}
               className="
@@ -447,6 +566,9 @@ export default function DatabaseSidebar() {
     handleTableClick,
     handleEditConnection,
     handleDeleteConnection,
+    handleReloadConnection,
+    handleReloadEntity,
+    handleDeleteTable,
   ]);
 
   const handleNodeExpand = (info: ExpandedNodeInfo) => {
@@ -492,14 +614,27 @@ export default function DatabaseSidebar() {
       <div className="bg-background relative flex h-full flex-col border-r">
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h2 className="text-sm font-semibold">Connections</h2>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleNewConnection}
-            className="h-7 w-7 p-0"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleRefreshAll}
+              disabled={isRefreshing || isLoadingConnections}
+              className="h-7 w-7 p-0"
+              title="Refresh connections and tables"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleNewConnection}
+              className="h-7 w-7 p-0"
+              title="Create new connection"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <div className="flex-1 overflow-auto">
           <div className="bg-background overflow-hidden rounded-md p-3">
@@ -575,7 +710,10 @@ export default function DatabaseSidebar() {
             setEditingConnectionId(null);
           }
         }}
-        onSuccess={() => {}}
+        onSuccess={() => {
+          refetchConnections();
+          queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "schema" || q.queryKey[0] === "tables" });
+        }}
         connectionId={editingConnectionId}
       />
     </>

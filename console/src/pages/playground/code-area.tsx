@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PlayIcon, Loader2 } from "lucide-react";
 import {
   Breadcrumb,
@@ -16,9 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useTabsStore, type Tab } from "./store/store";
 import { useConnections } from "./hooks";
+import { Label } from "@/components/ui/label";
 
 interface CodeAreaProps {
   tab: Tab;
@@ -36,13 +38,6 @@ export function CodeArea({
   isRunning = false,
 }: CodeAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (textareaRef.current) {
-      if (!content)
-        textareaRef.current.placeholder = "# ⌘ B to get AI assistant";
-      else textareaRef.current.value = content;
-    }
-  }, [content]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Tab") {
@@ -58,29 +53,55 @@ export function CodeArea({
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value);
+  };
+
+  const { setApplyLimitOffset } = useTabsStore();
+  const applyLimitOffset = tab.applyLimitOffset !== false;
+
   return (
     <div className="h-full flex flex-col">
-      <div className="bg-[#0f0f0f] border-r border-[#1a1a1a] px-4 py-3 font-mono text-sm flex justify-between">
+      <div className="bg-[#0f0f0f] border-r border-[#1a1a1a] px-4 py-3 font-mono text-sm flex justify-between items-center gap-4">
         <TableBreadCrumb tab={tab} />
-        <Button
-          size="sm"
-          variant="outline"
-          className="cursor-pointer"
-          onClick={() => onRun && onRun(textareaRef.current?.value || "")}
-          disabled={isRunning || !onRun}
-        >
-          {isRunning ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Running...
-            </>
-          ) : (
-            <>
-              <PlayIcon className="mr-2 h-4 w-4" />
-              Run
-            </>
+        <div className="flex items-center gap-3">
+          {tab.type === "query" && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id={`limit-offset-${tab.id}`}
+                checked={applyLimitOffset}
+                onCheckedChange={(checked) =>
+                  setApplyLimitOffset(tab.id, checked === true)
+                }
+              />
+              <Label
+                htmlFor={`limit-offset-${tab.id}`}
+                className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap"
+              >
+                Add limit/offset
+              </Label>
+            </div>
           )}
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => onRun && onRun(textareaRef.current?.value || "")}
+            disabled={isRunning || !onRun}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Running...
+              </>
+            ) : (
+              <>
+                <PlayIcon className="mr-2 h-4 w-4" />
+                Run
+              </>
+            )}
+          </Button>
+        </div>
       </div>
       {/* 
         TODO: on change tab need to save the query state into the zustand store first -> need to be async and non blocking 
@@ -91,7 +112,10 @@ export function CodeArea({
           <textarea
             ref={textareaRef}
             rows={1}
+            value={content}
+            onChange={handleChange}
             onKeyDown={handleKeyDown}
+            placeholder="# ⌘ B to get AI assistant"
             className="absolute inset-0 w-full h-full font-mono text-sm text-white placeholder:opacity-35 bg-transparent resize-none outline-none px-4 py-4 leading-6"
             style={{
               color: "transparent",

@@ -13,4 +13,24 @@ import type { ClientOptions as ClientOptions2 } from './types.gen';
  */
 export type CreateClientConfig<T extends ClientOptions = ClientOptions2> = (override?: Config<ClientOptions & T>) => Config<Required<ClientOptions> & T>;
 
-export const client = createClient(createConfig<ClientOptions2>({ baseUrl: 'http://localhost:8000' }));
+// Use relative URL when served from same origin (Docker), or absolute URL for local dev
+// In Docker, frontend and backend are served from the same origin, so empty string works
+// For local development with separate servers, use the API URL
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Check if we're running in Docker (same origin) or local dev (different ports)
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+    
+    // If running on localhost with port 8002 (Docker), use relative URL
+    // If running on localhost with different port (local dev), use localhost:8000
+    if (hostname === 'localhost' && (port === '8002' || port === '')) {
+      return ''; // Relative URL - same origin
+    }
+    // For local development with Vite dev server
+    return 'http://localhost:8000';
+  }
+  return ''; // Default to relative URL
+};
+
+export const client = createClient(createConfig<ClientOptions2>({ baseUrl: getBaseUrl() }));
