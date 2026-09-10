@@ -15,7 +15,7 @@ class TestSQLiteEntity(BaseEntityTestMixin):
         return self._connection_uri
 
     def get_test_tables(self) -> list[str]:
-        return ["users", "products", "accounts"]
+        return ["users", "products", "accounts", "nullable", "typed"]
 
     @pytest.fixture(autouse=True)
     def _setup_connection_uri(self, sqlite_connection_uri):

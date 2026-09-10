@@ -32,6 +32,21 @@ SEED_STATEMENTS = (
     )
     """,
     "CREATE INDEX accounts_username_idx ON accounts (username)",
+    """
+    CREATE TABLE nullable (
+        id INTEGER PRIMARY KEY,
+        note TEXT,
+        category TEXT
+    )
+    """,
+    """
+    CREATE TABLE typed (
+        id INTEGER PRIMARY KEY,
+        created_at TEXT,
+        payload TEXT,
+        amount REAL
+    )
+    """,
 )
 
 SEED_ROWS = (
@@ -46,6 +61,14 @@ SEED_ROWS = (
     (
         "INSERT INTO accounts (username, password_hash, api_token) VALUES (?, ?, ?)",
         ("bob", "hash-2", "token-2"),
+    ),
+    ("INSERT INTO nullable (note, category) VALUES (?, ?)", ("first", "a")),
+    ("INSERT INTO nullable (note, category) VALUES (?, ?)", (None, "a")),
+    ("INSERT INTO nullable (note, category) VALUES (?, ?)", (None, "a")),
+    ("INSERT INTO nullable (note, category) VALUES (?, ?)", ("fourth", "b")),
+    (
+        "INSERT INTO typed (created_at, payload, amount) VALUES (?, ?, ?)",
+        ("2024-01-02T03:04:05", '{"a": 1}', 12.5),
     ),
 )
 
