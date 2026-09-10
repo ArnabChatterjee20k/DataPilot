@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -147,6 +147,82 @@ export const getEntityStats = <ThrowOnError extends boolean = false>(options: Op
  * as JSON, binary as base64.
  */
 export const exportEntity = <ThrowOnError extends boolean = false>(options: Options<ExportEntityData, ThrowOnError>): RequestResult<ExportEntityResponses, ExportEntityErrors, ThrowOnError> => (options.client ?? client).get<ExportEntityResponses, ExportEntityErrors, ThrowOnError>({ url: '/connection/{connection_id}/entities/{entity_name}/export', ...options });
+
+/**
+ * Send Request
+ *
+ * Send a request from the server and return the whole response.
+ *
+ * Running server-side is what makes this usable at all: the browser cannot
+ * call an arbitrary origin because of CORS, and any credential it sent would
+ * be readable by the page.
+ */
+export const sendRequest = <ThrowOnError extends boolean = false>(options: Options<SendRequestData, ThrowOnError>): RequestResult<SendRequestResponses, SendRequestErrors, ThrowOnError> => (options.client ?? client).post<SendRequestResponses, SendRequestErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/request',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Requests
+ */
+export const listRequests = <ThrowOnError extends boolean = false>(options: Options<ListRequestsData, ThrowOnError>): RequestResult<ListRequestsResponses, ListRequestsErrors, ThrowOnError> => (options.client ?? client).get<ListRequestsResponses, ListRequestsErrors, ThrowOnError>({ url: '/connection/{connection_id}/requests', ...options });
+
+/**
+ * Create Request
+ */
+export const createRequest = <ThrowOnError extends boolean = false>(options: Options<CreateRequestData, ThrowOnError>): RequestResult<CreateRequestResponses, CreateRequestErrors, ThrowOnError> => (options.client ?? client).post<CreateRequestResponses, CreateRequestErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/requests',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Request
+ */
+export const deleteRequest = <ThrowOnError extends boolean = false>(options: Options<DeleteRequestData, ThrowOnError>): RequestResult<DeleteRequestResponses, DeleteRequestErrors, ThrowOnError> => (options.client ?? client).delete<DeleteRequestResponses, DeleteRequestErrors, ThrowOnError>({ url: '/connection/{connection_id}/requests/{request_uid}', ...options });
+
+/**
+ * Get Request
+ */
+export const getRequest = <ThrowOnError extends boolean = false>(options: Options<GetRequestData, ThrowOnError>): RequestResult<GetRequestResponses, GetRequestErrors, ThrowOnError> => (options.client ?? client).get<GetRequestResponses, GetRequestErrors, ThrowOnError>({ url: '/connection/{connection_id}/requests/{request_uid}', ...options });
+
+/**
+ * Update Request
+ */
+export const updateRequest = <ThrowOnError extends boolean = false>(options: Options<UpdateRequestData, ThrowOnError>): RequestResult<UpdateRequestResponses, UpdateRequestErrors, ThrowOnError> => (options.client ?? client).put<UpdateRequestResponses, UpdateRequestErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/requests/{request_uid}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Variables
+ *
+ * Variables for a connection, with secret-looking values masked.
+ */
+export const getVariables = <ThrowOnError extends boolean = false>(options: Options<GetVariablesData, ThrowOnError>): RequestResult<GetVariablesResponses, GetVariablesErrors, ThrowOnError> => (options.client ?? client).get<GetVariablesResponses, GetVariablesErrors, ThrowOnError>({ url: '/connection/{connection_id}/variables', ...options });
+
+/**
+ * Set Variables
+ */
+export const setVariables = <ThrowOnError extends boolean = false>(options: Options<SetVariablesData, ThrowOnError>): RequestResult<SetVariablesResponses, SetVariablesErrors, ThrowOnError> => (options.client ?? client).put<SetVariablesResponses, SetVariablesErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/variables',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Health
