@@ -5,6 +5,7 @@ import {
   Database,
   FileUp,
   Globe,
+  Radio,
   Loader2,
   PlugZap,
 } from "lucide-react";
@@ -46,24 +47,85 @@ import { useCreateConnection, useUpdateConnection } from "./hooks";
 
 const SQLITE_SUFFIXES = [".db", ".sqlite", ".sqlite3", ".db3"];
 
+/**
+ * What you are connecting to, which is not quite the same as the backend's
+ * source: an HTTP API and an MQTT broker are both `api` connections, told
+ * apart by their URL. Offering them as one choice hid MQTT entirely.
+ */
 const SOURCES = [
-  { value: "postgres", label: "PostgreSQL", icon: Database },
-  { value: "mysql", label: "MySQL", icon: Database },
-  { value: "sqlite", label: "SQLite file", icon: FileUp },
-  { value: "api", label: "HTTP / WebSocket", icon: Globe },
-] as const satisfies readonly {
-  value: SourceConfig;
+  {
+    value: "postgres",
+    source: "postgres",
+    label: "PostgreSQL",
+    icon: Database,
+    placeholder: "postgresql://user:password@host:5432/database",
+  },
+  {
+    value: "mysql",
+    source: "mysql",
+    label: "MySQL",
+    icon: Database,
+    placeholder: "mysql://user:password@host:3306/database",
+  },
+  {
+    value: "sqlite",
+    source: "sqlite",
+    label: "SQLite file",
+    icon: FileUp,
+    placeholder: "",
+  },
+  {
+    value: "api",
+    source: "api",
+    label: "HTTP / WebSocket",
+    icon: Globe,
+    placeholder: "https://api.example.com   or wss://stream.example.com",
+    uriLabel: "Base URL",
+  },
+  {
+    value: "mqtt",
+    source: "api",
+    label: "MQTT broker",
+    icon: Radio,
+    placeholder: "mqtt://broker.example.com:1883   or mqtts://…:8883",
+    uriLabel: "Broker address",
+    hint: "Username and password go in the connection's variables as mqtt_username and mqtt_password, where they are stored masked.",
+  },
+] as const satisfies readonly SourceOption[];
+
+interface SourceOption {
+  value: string;
+  source: SourceConfig;
   label: string;
   icon: typeof Database;
-}[];
+  placeholder: string;
+  uriLabel?: string;
+  hint?: string;
+}
 
-const URI_PLACEHOLDER: Partial<Record<SourceConfig, string>> = {
-  postgres: "postgresql://user:password@host:5432/database",
-  mysql: "mysql://user:password@host:3306/database",
-  api: "https://api.example.com   or wss://stream.example.com",
-};
+type Kind = (typeof SOURCES)[number]["value"];
 
-const URI_LABEL: Partial<Record<SourceConfig, string>> = { api: "Base URL" };
+const optionFor = (kind: Kind | null): SourceOption | undefined =>
+  SOURCES.find((option) => option.value === kind);
+
+/** Point out a URL that does not match the kind that was chosen. */
+function uriMismatch(kind: Kind | null, connectionUri: string): string | null {
+  const uri = connectionUri.trim();
+  if (!uri) return null;
+  if (kind === "mqtt" && !/^mqtts?:\/\//i.test(uri)) {
+    return "A broker address starts with mqtt:// or mqtts://. For an HTTP or websocket service, choose HTTP / WebSocket instead.";
+  }
+  if (kind === "api" && /^mqtts?:\/\//i.test(uri)) {
+    return "That is a broker address - choose MQTT broker instead.";
+  }
+  return null;
+}
+
+/** An existing connection is matched back to the choice that would create it. */
+function kindOf(source: string, connectionUri: string): Kind {
+  if (source === "api" && /^mqtts?:\/\//i.test(connectionUri)) return "mqtt";
+  return source as Kind;
+}
 
 const ENVIRONMENTS = [
   { value: "local", label: "Local" },
@@ -96,7 +158,7 @@ export function ConnectionModal({
   const createConnection = useCreateConnection();
   const updateConnection = useUpdateConnection();
 
-  const [source, setSource] = useState<SourceConfig | null>(null);
+  const [kind, setKind] = useState<Kind | null>(null);
   const [name, setName] = useState("");
   const [connectionUri, setConnectionUri] = useState("");
   const [environment, setEnvironment] = useState<Environment>("local");
@@ -109,8 +171,15 @@ export function ConnectionModal({
   const [probe, setProbe] = useState<ConnectionProbeModel | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const option = optionFor(kind);
+  const source = option?.source ?? null;
+
+  // an mqtt:// URL under HTTP / WebSocket, or the reverse, is saved happily
+  // and then fails at the first click; saying so here is cheaper
+  const uriWarning = uriMismatch(kind, connectionUri);
+
   const reset = () => {
-    setSource(null);
+    setKind(null);
     setName("");
     setConnectionUri("");
     setEnvironment("local");
@@ -133,7 +202,7 @@ export function ConnectionModal({
     getConnection({ path: { connection_uid: connectionId! }, throwOnError: true })
       .then((response) => {
         if (cancelled || !response.data) return;
-        setSource(response.data.source);
+        setKind(kindOf(response.data.source, response.data.connection_uri ?? ""));
         setName(response.data.name);
         setConnectionUri(response.data.connection_uri);
         setEnvironment((response.data.environment ?? "local") as Environment);
@@ -154,7 +223,7 @@ export function ConnectionModal({
 
   useEffect(() => {
     setProbe(null);
-  }, [source, connectionUri, file]);
+  }, [kind, connectionUri, file]);
 
   const handleTest = async () => {
     if (!source) return;
@@ -225,7 +294,7 @@ export function ConnectionModal({
       }
 
       const label =
-        name.trim() || file?.name || `New ${source} connection`;
+        name.trim() || file?.name || `New ${option?.label ?? source} connection`;
 
       if (isEditMode) {
         await updateConnection.mutateAsync({
@@ -303,17 +372,17 @@ export function ConnectionModal({
                   <button
                     key={option.value}
                     type="button"
-                    onClick={() => setSource(option.value)}
+                    onClick={() => setKind(option.value)}
                     className={cn(
                       "flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-xs transition-colors",
-                      source === option.value
+                      kind === option.value
                         ? "border-primary bg-primary/10"
                         : "hover:bg-muted/60"
                     )}
                   >
                     <option.icon className="h-4 w-4 shrink-0" />
                     <span className="truncate">{option.label}</span>
-                    {source === option.value && (
+                    {kind === option.value && (
                       <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-primary" />
                     )}
                   </button>
@@ -321,7 +390,7 @@ export function ConnectionModal({
               </div>
             </div>
 
-            {source && (
+            {kind && option && (
               <>
                 <div className="space-y-1.5">
                   <Label htmlFor="connection-name" className="text-xs">
@@ -359,15 +428,21 @@ export function ConnectionModal({
                 ) : (
                   <div className="space-y-1.5">
                     <Label htmlFor="connection-uri" className="text-xs">
-                      {URI_LABEL[source] ?? "Connection URI"}
+                      {option.uriLabel ?? "Connection URI"}
                     </Label>
                     <Input
                       id="connection-uri"
                       value={connectionUri}
                       onChange={(event) => setConnectionUri(event.target.value)}
-                      placeholder={URI_PLACEHOLDER[source] ?? ""}
+                      placeholder={option.placeholder}
                       className="h-8 font-mono text-xs"
                     />
+                    {option.hint && (
+                      <p className="text-[11px] text-muted-foreground">{option.hint}</p>
+                    )}
+                    {uriWarning && (
+                      <p className="text-[11px] text-amber-500">{uriWarning}</p>
+                    )}
                   </div>
                 )}
 
