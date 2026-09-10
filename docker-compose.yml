@@ -15,6 +15,12 @@ services:
       MAX_ROWS: ${MAX_ROWS:-5000}
     volumes:
       - ./data:/app/server/data
+    # `localhost` inside this container is this container, so a database running
+    # on the host - or in another compose project - is reached through the host
+    # gateway. To reach a sibling container directly instead, put it on the same
+    # network (`docker network connect <network> datapilot`) and use its name.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
