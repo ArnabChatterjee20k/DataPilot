@@ -8,7 +8,7 @@ import websockets
 from fastapi import APIRouter, HTTPException, status
 
 from . import UPLOAD_DIR
-from .. import http_client
+from .. import http_client, mqtt_client
 from ..config import SourceConfig, supports_schemas
 from ..models import (
     ConnectionProbeModel,
@@ -45,16 +45,16 @@ def to_response(connection) -> ConnectionsModel:
 def validate_uri(source: str, connection_uri: str) -> None:
     """Reject a connection URI that cannot possibly work for its source."""
     if source == SourceConfig.API.value:
-        # ws:// and wss:// are accepted too, for a service that only speaks
-        # websocket - the proxy resolves either scheme
+        # ws:// and wss:// are accepted for a service that only speaks
+        # websocket, and mqtt:// for a broker - the proxies resolve each
         if not str(connection_uri or "").startswith(
-            ("http://", "https://", "ws://", "wss://")
+            ("http://", "https://", "ws://", "wss://", "mqtt://", "mqtts://")
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     "An API connection needs a base URL starting with "
-                    "http://, https://, ws:// or wss://"
+                    "http://, https://, ws://, wss://, mqtt:// or mqtts://"
                 ),
             )
         return
@@ -108,6 +108,32 @@ def unreachable_hint(source: str, connection_uri: str, detail: str) -> str:
     return http_client.container_hint(connection_uri, detail)
 
 
+async def probe_broker(base: str, started: float) -> ConnectionProbeModel:
+    """Connect to a broker and disconnect, which is the whole test."""
+    try:
+        address = mqtt_client.parse_broker_url(base)
+    except ValueError as error:
+        return ConnectionProbeModel(reachable=False, detail=str(error))
+
+    session = mqtt_client.MqttSession(
+        address, identifier=mqtt_client.client_id("dp-probe")
+    )
+    try:
+        await session.connect(timeout=PROBE_TIMEOUT)
+        await session.close()
+        return ConnectionProbeModel(
+            reachable=True,
+            detail=f"Connected to {address.display}",
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+    except Exception as error:
+        return ConnectionProbeModel(
+            reachable=False,
+            detail=mqtt_client.describe_failure(address, error),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+
+
 async def probe_api(connection_uri: str) -> ConnectionProbeModel:
     """Dial an API connection for real.
 
@@ -119,6 +145,9 @@ async def probe_api(connection_uri: str) -> ConnectionProbeModel:
     started = time.perf_counter()
 
     try:
+        if mqtt_client.is_mqtt_url(base):
+            return await probe_broker(base, started)
+
         if base.startswith(("ws://", "wss://")):
             connection = await asyncio.wait_for(
                 websockets.connect(base), timeout=PROBE_TIMEOUT

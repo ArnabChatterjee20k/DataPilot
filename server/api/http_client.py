@@ -321,6 +321,11 @@ async def send(
             f"'{url}' is a websocket URL - open it from the WebSocket tab rather "
             "than sending a request to it"
         )
+    if parsed.scheme in ("mqtt", "mqtts"):
+        raise ValueError(
+            f"'{url}' is a broker address - open it from the MQTT tab rather "
+            "than sending a request to it"
+        )
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Only http and https URLs can be sent, got '{url}'")
 
