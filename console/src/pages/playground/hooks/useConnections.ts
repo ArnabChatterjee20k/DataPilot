@@ -1,93 +1,108 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
-  listConnections,
-  getConnection,
   createConnection,
-  updateConnection,
   deleteConnection,
+  getConnection,
+  getConnectionStatus,
+  listConnections,
+  updateConnection,
+  type ConnectionsModel,
   type CreateConnectionData,
   type UpdateConnectionData,
-} from '@/lib/sdk';
-import type { DatabaseConnection } from '@/pages/playground/store/store';
+} from "@/lib/sdk";
+import type { DatabaseConnection } from "../store/store";
+import type { SourceType } from "@/lib/sql";
 
 export const connectionKeys = {
-  all: ['connections'] as const,
-  lists: () => [...connectionKeys.all, 'list'] as const,
-  list: () => [...connectionKeys.lists()] as const,
-  details: () => [...connectionKeys.all, 'detail'] as const,
-  detail: (id: string) => [...connectionKeys.details(), id] as const,
+  all: ["connections"] as const,
+  list: () => [...connectionKeys.all, "list"] as const,
+  detail: (id: string) => [...connectionKeys.all, "detail", id] as const,
+  status: (id: string) => [...connectionKeys.all, "status", id] as const,
 };
 
+export function toDatabaseConnection(model: ConnectionsModel): DatabaseConnection {
+  return {
+    id: model.uid,
+    name: model.name,
+    type: model.source as SourceType,
+    environment: model.environment ?? "local",
+    role: model.role ?? "primary",
+    readOnly: model.read_only ?? true,
+    supportsSchemas: model.supports_schemas ?? false,
+  };
+}
 
 export function useConnections() {
   return useQuery({
     queryKey: connectionKeys.list(),
     queryFn: async () => {
-      const response = await listConnections({throwOnError:true});
-      return (response.data?.connections || []).map((conn) => ({
-        id: conn.uid,
-        name: conn.name,
-        type: conn.source,
-      })) as DatabaseConnection[];
+      const response = await listConnections({ throwOnError: true });
+      return (response.data?.connections ?? []).map(toDatabaseConnection);
     },
   });
 }
 
 export function useConnection(connectionId: string | null | undefined) {
   return useQuery({
-    queryKey: connectionKeys.detail(connectionId || ''),
-    queryFn: async () => {
-      if (!connectionId) return null;
-      const response = await getConnection({
-        path: { connection_uid: connectionId },
-        throwOnError:true
-      });
-      if (!response.data) return null;
-      return {
-        id: response.data.uid,
-        name: response.data.name,
-        type: response.data.source,
-      } as DatabaseConnection;
-    },
+    queryKey: connectionKeys.detail(connectionId ?? ""),
     enabled: !!connectionId,
+    queryFn: async () => {
+      const response = await getConnection({
+        path: { connection_uid: connectionId! },
+        throwOnError: true,
+      });
+      return response.data ? toDatabaseConnection(response.data) : null;
+    },
+  });
+}
+
+/** Dials the connection so the sidebar can show whether it actually answers. */
+export function useConnectionStatus(connectionId: string | null | undefined) {
+  return useQuery({
+    queryKey: connectionKeys.status(connectionId ?? ""),
+    enabled: !!connectionId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const response = await getConnectionStatus({
+        path: { connection_uid: connectionId! },
+        throwOnError: true,
+      });
+      return response.data ?? null;
+    },
   });
 }
 
 export function useCreateConnection() {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async (data: CreateConnectionData['body']) => {
-      const response = await createConnection({ body: data, throwOnError:true });
+    mutationFn: async (body: CreateConnectionData["body"]) => {
+      const response = await createConnection({ body, throwOnError: true });
       return response.data;
     },
-    onSuccess: () => {
-      // Invalidate and refetch connections list
-      queryClient.invalidateQueries({ queryKey: connectionKeys.list() });
-    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: connectionKeys.list() }),
   });
 }
 
 export function useUpdateConnection() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async ({
       connectionId,
       data,
     }: {
       connectionId: string;
-      data: UpdateConnectionData['body'];
+      data: UpdateConnectionData["body"];
     }) => {
       const response = await updateConnection({
         path: { connection_uid: connectionId },
         body: data,
-        throwOnError:true
+        throwOnError: true,
       });
       return response.data;
     },
-    onSuccess: (_, variables) => {
-      // Invalidate connections list and specific connection
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: connectionKeys.list() });
       queryClient.invalidateQueries({
         queryKey: connectionKeys.detail(variables.connectionId),
@@ -98,19 +113,15 @@ export function useUpdateConnection() {
 
 export function useDeleteConnection() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (connectionId: string) => {
-      const response = await deleteConnection({
+      await deleteConnection({
         path: { connection_uid: connectionId },
-        throwOnError:true
+        throwOnError: true,
       });
-      return response.data;
+      return connectionId;
     },
-    onSuccess: () => {
-      // Invalidate connections list
-      queryClient.invalidateQueries({ queryKey: connectionKeys.list() });
-    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: connectionKeys.list() }),
   });
 }
-
