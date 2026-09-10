@@ -1,7 +1,7 @@
 # DataPilot server
 
 FastAPI over [LaserORM](https://github.com/ArnabChatterjee20k/LaserORM), which does
-the talking to SQLite and PostgreSQL.
+the talking to SQLite, PostgreSQL and MySQL.
 
 ## Setup
 
@@ -26,9 +26,9 @@ Configuration comes from `.env` (see `api/config.py`):
 MODE=TESTING uv run pytest
 ```
 
-PostgreSQL tests skip themselves when no server is reachable. Point them at one with
-`TEST_POSTGRES_HOST` / `TEST_POSTGRES_PORT` / `TEST_POSTGRES_USER` /
-`TEST_POSTGRES_PASSWORD` / `TEST_POSTGRES_DB`.
+PostgreSQL and MySQL tests skip themselves when no server is reachable. Point them
+at one with `TEST_POSTGRES_*` / `TEST_MYSQL_*` (`HOST`, `PORT`, `USER`, `PASSWORD`,
+`DB`).
 
 ## Regenerating the console SDK
 

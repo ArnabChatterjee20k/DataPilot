@@ -20,6 +20,10 @@ class BaseEntityTestMixin:
     @abstractmethod
     def get_test_tables(self) -> list[str]: ...
 
+    @property
+    def has_schemas(self) -> bool:
+        return self.source in ("postgres", "mysql")
+
     def _create_connection(self, client: httpx.Client, read_only: bool = True) -> str:
         response = client.post(
             "/connections",
@@ -52,8 +56,10 @@ class BaseEntityTestMixin:
         assert response.status_code == 200
         data = response.json()
 
-        if self.source == "postgres":
-            assert "public" in [schema["name"] for schema in data["schemas"]]
+        if self.has_schemas:
+            # Postgres calls it a schema, MySQL calls it a database
+            assert data["total"] > 0
+            assert all(schema["name"] for schema in data["schemas"])
         else:
             assert data["total"] == 0
 
