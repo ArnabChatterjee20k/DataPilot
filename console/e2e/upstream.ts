@@ -77,3 +77,38 @@ export function startUpstream(): Promise<Upstream> {
     );
   });
 }
+
+export const BROKER_PORT = 8022;
+export const BROKER_URL = `mqtt://127.0.0.1:${BROKER_PORT}`;
+
+export interface Broker {
+  stop: () => Promise<void>;
+}
+
+/**
+ * A real MQTT broker for the console to talk to.
+ *
+ * The point of the MQTT tab is acknowledgements and retained messages, and a
+ * stub would have to fake both - which is exactly the bug the tab exists to
+ * avoid shipping.
+ */
+export async function startBroker(): Promise<Broker> {
+  const { Aedes } = await import("aedes");
+  const { createServer: createTcpServer } = await import("node:net");
+
+  const aedes = await Aedes.createBroker();
+  // MQTT over plain TCP, which is what mqtt:// means; http.createServer here
+  // would give a broker that only speaks MQTT-over-websockets
+  const server = createTcpServer(aedes.handle as never);
+
+  await new Promise<void>((resolve) =>
+    server.listen(BROKER_PORT, "127.0.0.1", resolve)
+  );
+
+  return {
+    stop: () =>
+      new Promise<void>((done) => {
+        aedes.close(() => server.close(() => done()));
+      }),
+  };
+}

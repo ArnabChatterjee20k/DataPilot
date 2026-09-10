@@ -6,7 +6,7 @@ from urllib.parse import urlparse, urlunparse
 import websockets
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
-from .. import http_client
+from .. import http_client, mqtt_client
 from ..config import SourceConfig
 from ..models import (
     RequestResultModel,
@@ -470,3 +470,165 @@ async def proxy_socket(
             await websocket.close()
         except RuntimeError:
             pass
+
+
+@router.websocket("/connection/{connection_id}/mqtt")
+async def proxy_mqtt(websocket: WebSocket, connection_id: str):
+    """Hold an MQTT session for the browser and relay it over one socket.
+
+    The browser cannot speak MQTT unless the broker happens to expose it over
+    websockets, and the credentials would be readable by the page if it did.
+    Control frames carry subscribe, publish and unsubscribe in; messages,
+    acknowledgements and failures come back out.
+    """
+    await websocket.accept()
+
+    from ..database.db import storage
+    from ..database.models import Connections
+
+    try:
+        async with storage.session() as session:
+            connection = await session.get(
+                Connections, filters=Connections.uid == connection_id
+            )
+    except Exception as error:
+        await fail_socket(websocket, f"Could not load the connection: {error}")
+        return
+
+    if not connection:
+        await fail_socket(websocket, "Connection not found", code=1008)
+        return
+    if connection.source != SourceConfig.API.value:
+        await fail_socket(
+            websocket,
+            f"'{connection.name}' is a {connection.source} connection, not an API one",
+            code=1008,
+        )
+        return
+
+    variables = connection_variables(connection)
+    try:
+        address = mqtt_client.parse_broker_url(
+            str(http_client.interpolate(connection.connection_uri, variables))
+        )
+    except ValueError as error:
+        await fail_socket(websocket, str(error), code=1008)
+        return
+
+    username, password = mqtt_client.credentials(address, variables)
+    session = mqtt_client.MqttSession(
+        address, username=username, password=password
+    )
+
+    try:
+        await session.connect()
+    except mqtt_client.MqttError as error:
+        await fail_socket(websocket, str(error))
+        return
+    except Exception as error:
+        await fail_socket(websocket, mqtt_client.describe_failure(address, error))
+        return
+
+    # only now is there a session; the client id is worth showing, because a
+    # broker evicts a session when a second one arrives with the same id
+    await send_control(
+        websocket, "ready", f"{address.display} as {session.identifier}"
+    )
+
+    async def broker_to_browser():
+        async for message in session.messages():
+            await websocket.send_text(json.dumps(vars(message)))
+
+    async def browser_to_broker():
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                command = json.loads(raw)
+            except ValueError:
+                await send_control(
+                    websocket,
+                    "error",
+                    "That was not a command. Use the topic and payload fields.",
+                )
+                continue
+            await run_mqtt_command(websocket, session, command)
+
+    try:
+        await asyncio.gather(broker_to_browser(), browser_to_broker())
+    except WebSocketDisconnect:
+        pass
+    except mqtt_client.MqttError as error:
+        await try_control(websocket, "error", str(error))
+    except Exception as error:
+        await try_control(
+            websocket, "error", mqtt_client.describe_failure(address, error)
+        )
+    finally:
+        await session.close()
+
+
+async def try_control(websocket: WebSocket, status_name: str, detail: str):
+    """Report on a socket that may already be gone."""
+    try:
+        await send_control(websocket, status_name, detail)
+    except Exception:
+        pass
+
+
+async def run_mqtt_command(websocket: WebSocket, session, command: dict):
+    """Carry out one browser command, and say what happened either way.
+
+    Every branch waits for the broker's acknowledgement, so "subscribed" and
+    "published" report agreement rather than that a packet was written.
+    """
+    action = str(command.get("action") or "").lower()
+    topic = str(command.get("topic") or "")
+    qos = mqtt_client.normalise_qos(command.get("qos"))
+
+    handlers = {
+        "subscribe": (
+            lambda: session.subscribe(topic, qos=qos),
+            "subscribed",
+            lambda: {"topic": topic, "qos": qos},
+        ),
+        "unsubscribe": (
+            lambda: session.unsubscribe(topic),
+            "unsubscribed",
+            lambda: {"topic": topic},
+        ),
+        "publish": (
+            lambda: session.publish(
+                topic,
+                str(command.get("payload") or ""),
+                qos=qos,
+                retain=bool(command.get("retain")),
+            ),
+            "published",
+            lambda: {
+                "topic": topic,
+                "qos": qos,
+                "retain": bool(command.get("retain")),
+            },
+        ),
+    }
+
+    entry = handlers.get(action)
+    if not entry:
+        await send_control(websocket, "error", f"Unknown command '{action}'")
+        return
+
+    run, acknowledged, describe = entry
+    try:
+        await run()
+    except mqtt_client.MqttError as error:
+        # a refused command must not cost the session: a typo in a filter
+        # should not mean reconnecting
+        await send_control(websocket, "error", str(error))
+        return
+    except Exception as error:
+        await send_control(
+            websocket, "error", f"Could not {action} '{topic}': {error}"
+        )
+        return
+
+    await send_control(websocket, acknowledged, json.dumps(describe()))

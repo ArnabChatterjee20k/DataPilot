@@ -19,7 +19,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { looksLikeCurl, parseCurl } from "@/lib/curl";
 import { cn } from "@/lib/utils";
-import type { DatabaseConnection, RequestDraft, Tab } from "../store/store";
+import type {
+  DatabaseConnection,
+  KeyValueRow,
+  RequestDraft,
+  Tab,
+} from "../store/store";
 import { useTabsStore, type BodyType, type HttpMethod } from "../store/store";
 import { KeyValueEditor } from "./KeyValueEditor";
 import { RequestHistory } from "./RequestHistory";
@@ -104,7 +109,36 @@ export function RequestBuilder({
     return true;
   };
 
-  const target = describeTarget(request.path, connection?.baseUrl);
+  const target = describeTarget(request.path, connection?.baseUrl, request.params);
+
+  /**
+   * A query string typed or pasted into the URL becomes rows.
+   *
+   * Otherwise the two disagree: the rows are what is actually sent, and a
+   * `?page=1` left in the path would be sent as well, twice over.
+   */
+  const foldQueryIntoRows = () => {
+    const mark = request.path.indexOf("?");
+    if (mark < 0) return;
+
+    const search = request.path.slice(mark + 1);
+    if (!search) {
+      patch({ path: request.path.slice(0, mark) });
+      return;
+    }
+
+    const rows = request.params.filter((row) => row.key.trim());
+    for (const [key, value] of new URLSearchParams(search)) {
+      const existing = rows.findIndex((row) => row.key === key);
+      if (existing >= 0) rows[existing] = { ...rows[existing], value, enabled: true };
+      else rows.push({ key, value, enabled: true });
+    }
+
+    patch({
+      path: request.path.slice(0, mark),
+      params: [...rows, { key: "", value: "", enabled: true }],
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
@@ -216,8 +250,12 @@ export function RequestBuilder({
             const text = event.clipboardData.getData("text");
             if (acceptCurl(text)) event.preventDefault();
           }}
+          onBlur={foldQueryIntoRows}
           onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") onSend();
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              foldQueryIntoRows();
+              onSend();
+            }
           }}
           aria-label="Request path"
           placeholder={
@@ -242,6 +280,9 @@ export function RequestBuilder({
           >
             {target.text}
           </span>
+          {target.note && (
+            <span className="text-muted-foreground/70">{target.note}</span>
+          )}
         </div>
       )}
 
@@ -459,21 +500,23 @@ const NO_CONNECTION = "__none__";
  */
 function describeTarget(
   path: string,
-  baseUrl?: string
-): { text: string; mono: boolean; canSend: boolean } {
+  baseUrl: string | undefined,
+  params: KeyValueRow[]
+): { text: string; note?: string; mono: boolean; canSend: boolean } {
   const trimmed = (path ?? "").trim();
+  // the rows are what is actually sent, so the URL has to include them or the
+  // two disagree in front of you
+  const query = queryString(params);
 
-  // the URL is already in the field above, so this line only earns its place
-  // when it says something the field does not
   if (/^[a-z][\w+.-]*:\/\//i.test(trimmed)) {
     const canSend = /^https?:\/\//i.test(trimmed);
+    if (!canSend) {
+      return { text: "Only http:// and https:// URLs can be sent", mono: false, canSend };
+    }
     return {
-      text: !canSend
-        ? "Only http:// and https:// URLs can be sent"
-        : baseUrl
-          ? "Absolute URL - the connection's base is not used"
-          : "",
-      mono: false,
+      text: withQuery(trimmed, query),
+      note: baseUrl ? "the connection's base is not used" : undefined,
+      mono: true,
       canSend,
     };
   }
@@ -486,11 +529,24 @@ function describeTarget(
       canSend: false,
     };
   }
-  return {
-    text: `${baseUrl.replace(/\/+$/, "")}/${trimmed.replace(/^\/+/, "")}`,
-    mono: true,
-    canSend: true,
-  };
+
+  const resolved = `${baseUrl.replace(/\/+$/, "")}/${trimmed.replace(/^\/+/, "")}`;
+  return { text: withQuery(resolved, query), mono: true, canSend: true };
+}
+
+/** The rows that will actually be sent, in the order they are listed. */
+function queryString(params: KeyValueRow[]): string {
+  const search = new URLSearchParams();
+  for (const row of params) {
+    const key = row.key.trim();
+    if (key && row.enabled !== false) search.append(key, row.value ?? "");
+  }
+  return search.toString();
+}
+
+function withQuery(url: string, query: string): string {
+  if (!query) return url;
+  return url.includes("?") ? `${url}&${query}` : `${url}?${query}`;
 }
 
 function AuthField({

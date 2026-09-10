@@ -152,6 +152,84 @@ def echo_socket():
     server.stop()
 
 
+class Broker:
+    """A real MQTT broker, run on its own loop in a background thread.
+
+    The MQTT tests are about acknowledgements and retained messages, which a
+    stub would have to fake - and faking them is exactly how you ship a client
+    that reports "subscribed" before the broker agrees.
+    """
+
+    def __init__(self, port: int):
+        self.port = port
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.ready = threading.Event()
+        self.broker = None
+
+    def _run(self):
+        asyncio.set_event_loop(self.loop)
+        from amqtt.broker import Broker as AmqttBroker
+
+        async def serve():
+            self.broker = AmqttBroker(
+                {
+                    "listeners": {
+                        "default": {
+                            "type": "tcp",
+                            "bind": f"127.0.0.1:{self.port}",
+                            "max_connections": 50,
+                        }
+                    },
+                    "sys_interval": 0,
+                    "auth": {"allow-anonymous": True},
+                    "topic-check": {"enabled": False},
+                }
+            )
+            await self.broker.start()
+            self.ready.set()
+            await asyncio.Future()
+
+        try:
+            self.loop.run_until_complete(serve())
+        except (RuntimeError, asyncio.CancelledError):
+            pass
+
+    def start(self):
+        self.thread.start()
+        if not self.ready.wait(timeout=30):
+            raise RuntimeError("broker did not start")
+
+    def stop(self):
+        self.loop.call_soon_threadsafe(self.loop.stop)
+
+    @property
+    def base_url(self) -> str:
+        return f"mqtt://127.0.0.1:{self.port}"
+
+
+@pytest.fixture(scope="session")
+def broker():
+    server = Broker(free_port())
+    server.start()
+    yield server
+    server.stop()
+
+
+@pytest.fixture()
+def mqtt_connection(client, broker):
+    response = client.post(
+        "/connections",
+        json={
+            "source": "api",
+            "name": "Broker",
+            "connection_uri": broker.base_url,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 @pytest.fixture()
 def sqlite_connection_uri(client):
     """A minimal SQLite upload, for asserting the API routes refuse databases."""
