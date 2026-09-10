@@ -407,6 +407,72 @@ test.describe("empty states", () => {
     await openPlayground(page);
 
     await expect(page.getByText("No connections yet")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Add a connection" })).toBeVisible();
+    // offered in the sidebar and again in the empty state, since with nothing
+    // connected it is the only thing worth doing
+    await expect(page.getByRole("button", { name: "Add a connection" })).toHaveCount(2);
+    await expect(page.getByText("Nothing is connected yet")).toBeVisible();
+  });
+});
+
+test.describe("nothing that only leads nowhere", () => {
+  test("a new query tab starts on the connection you already have", async ({
+    page,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New query" }).first().click();
+
+    await expect(page.getByRole("combobox", { name: "Connection" })).toContainText(
+      connection.name
+    );
+    // and Run is live, rather than needing a choice with one possible answer
+    await expect(page.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
+    await page.getByLabel("SQL editor").fill("SELECT 1");
+    await expect(page.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
+  });
+
+  test("the result toolbar waits until there is a result", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New query" }).first().click();
+
+    // reloading, exporting, paging and choosing columns all act on a result
+    await expect(page.getByRole("button", { name: "Export" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Columns" })).toHaveCount(0);
+    await expect(page.getByText("Nothing has run yet")).toBeVisible();
+
+    await page.getByLabel("SQL editor").fill("SELECT 1 AS one");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+  });
+
+  test("statistics say why they are unavailable on a query", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New query" }).first().click();
+    await page.getByLabel("SQL editor").fill("SELECT 1");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+
+    const stats = page.getByRole("button", { name: /Stats/ });
+    await expect(stats).toBeDisabled();
+    await expect(stats).toHaveAttribute("title", /per table/);
+
+    // and are available on a table
+    await openTable(page, connection.name, "users");
+    await waitForRows(page);
+    await expect(page.getByRole("button", { name: /Stats/ })).toBeEnabled();
+  });
+
+  test("a query connection picker does not offer API connections", async ({
+    page,
+    request,
+  }) => {
+    await request.post(`${API_URL}/connections`, {
+      data: { source: "api", name: "An API", connection_uri: "http://127.0.0.1:9" },
+    });
+
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New query" }).first().click();
+    await page.getByRole("combobox", { name: "Connection" }).click();
+
+    await expect(page.getByRole("option", { name: connection.name })).toBeVisible();
+    await expect(page.getByRole("option", { name: "An API" })).toHaveCount(0);
   });
 });
