@@ -974,6 +974,396 @@
         }
       }
     },
+    "/connection/{connection_id}/request": {
+      "post": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Send Request",
+        "description": "Send a request from the server and return the whole response.\n\nRunning server-side is what makes this usable at all: the browser cannot\ncall an arbitrary origin because of CORS, and any credential it sent would\nbe readable by the page.",
+        "operationId": "send_request",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSpecModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestResultModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/requests": {
+      "get": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "List Requests",
+        "operationId": "list_requests",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedRequestListModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Create Request",
+        "operationId": "create_request",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSpecModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedRequestModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/requests/{request_uid}": {
+      "get": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Get Request",
+        "operationId": "get_request",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "request_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedRequestModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Update Request",
+        "operationId": "update_request",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "request_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Uid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSpecModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedRequestModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Delete Request",
+        "operationId": "delete_request",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "request_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Uid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/variables": {
+      "get": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Get Variables",
+        "description": "Variables for a connection, with secret-looking values masked.",
+        "operationId": "get_variables",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariablesModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Set Variables",
+        "operationId": "set_variables",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariablesModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariablesModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -993,6 +1383,78 @@
   },
   "components": {
     "schemas": {
+      "AuthModel": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "bearer",
+              "basic",
+              "header"
+            ],
+            "title": "Type",
+            "default": "none"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "title": "AuthModel"
+      },
       "Body_upload_file": {
         "properties": {
           "file": {
@@ -1390,6 +1852,29 @@
         ],
         "title": "IndexModel"
       },
+      "KeyValueModel": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "KeyValueModel"
+      },
       "QueryInsightModel": {
         "properties": {
           "connection_id": {
@@ -1601,6 +2086,174 @@
         "type": "object",
         "title": "QueryRiskModel"
       },
+      "RequestResultModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "request": {
+            "$ref": "#/components/schemas/SentRequestModel"
+          },
+          "response": {
+            "$ref": "#/components/schemas/ResponseModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "request",
+          "response"
+        ],
+        "title": "RequestResultModel"
+      },
+      "RequestSpecModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "Untitled request"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "title": "Method",
+            "default": "GET"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "default": ""
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/KeyValueModel"
+            },
+            "type": "array",
+            "title": "Params"
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/KeyValueModel"
+            },
+            "type": "array",
+            "title": "Headers"
+          },
+          "body_type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "json",
+              "form",
+              "text"
+            ],
+            "title": "Body Type",
+            "default": "none"
+          },
+          "body": {
+            "title": "Body",
+            "default": ""
+          },
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout": {
+            "type": "number",
+            "title": "Timeout",
+            "default": 30.0
+          },
+          "follow_redirects": {
+            "type": "boolean",
+            "title": "Follow Redirects",
+            "default": true
+          },
+          "verify_tls": {
+            "type": "boolean",
+            "title": "Verify Tls",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "RequestSpecModel",
+        "description": "What to send. A saved request stores exactly this."
+      },
+      "ResponseModel": {
+        "properties": {
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "headers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Headers"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "default": ""
+          },
+          "is_text": {
+            "type": "boolean",
+            "title": "Is Text",
+            "default": true
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "default": 0
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "elapsed_ms": {
+            "type": "number",
+            "title": "Elapsed Ms",
+            "default": 0.0
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ResponseModel"
+      },
       "RowPageModel": {
         "properties": {
           "connection_id": {
@@ -1721,6 +2374,128 @@
         "title": "RowPageModel",
         "description": "A page of rows fetched through the deterministic pagination endpoint."
       },
+      "SavedRequestListModel": {
+        "properties": {
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/SavedRequestModel"
+            },
+            "type": "array",
+            "title": "Requests"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requests",
+          "total"
+        ],
+        "title": "SavedRequestListModel"
+      },
+      "SavedRequestModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": "Untitled request"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE",
+              "HEAD",
+              "OPTIONS"
+            ],
+            "title": "Method",
+            "default": "GET"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "default": ""
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/KeyValueModel"
+            },
+            "type": "array",
+            "title": "Params"
+          },
+          "headers": {
+            "items": {
+              "$ref": "#/components/schemas/KeyValueModel"
+            },
+            "type": "array",
+            "title": "Headers"
+          },
+          "body_type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "json",
+              "form",
+              "text"
+            ],
+            "title": "Body Type",
+            "default": "none"
+          },
+          "body": {
+            "title": "Body",
+            "default": ""
+          },
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout": {
+            "type": "number",
+            "title": "Timeout",
+            "default": 30.0
+          },
+          "follow_redirects": {
+            "type": "boolean",
+            "title": "Follow Redirects",
+            "default": true
+          },
+          "verify_tls": {
+            "type": "boolean",
+            "title": "Verify Tls",
+            "default": true
+          },
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          },
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid",
+          "connection_id"
+        ],
+        "title": "SavedRequestModel"
+      },
       "ScanModel": {
         "properties": {
           "table": {
@@ -1805,6 +2580,43 @@
           "total"
         ],
         "title": "SchemaModelList"
+      },
+      "SentRequestModel": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "headers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Headers"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "url"
+        ],
+        "title": "SentRequestModel"
       },
       "SourceConfig": {
         "type": "string",
@@ -2092,6 +2904,26 @@
           "count"
         ],
         "title": "ValueCountModel"
+      },
+      "VariablesModel": {
+        "properties": {
+          "variables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Variables"
+          },
+          "secret": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Secret"
+          }
+        },
+        "type": "object",
+        "title": "VariablesModel"
       }
     }
   }

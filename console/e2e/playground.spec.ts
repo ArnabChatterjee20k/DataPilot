@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 import {
   createSqliteConnection,
@@ -18,7 +18,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.describe("browsing a table", () => {
-  test("shows the connection, its tables, and the rows of one", async ({ page }) => {
+  test("shows the connection, its tables, and the rows of one", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
 
     await expect(page.getByText(connection.name)).toBeVisible();
@@ -30,7 +30,7 @@ test.describe("browsing a table", () => {
     await expect(page.locator("table tbody tr")).toHaveCount(6);
   });
 
-  test("labels each column with its type and marks the primary key", async ({ page }) => {
+  test("labels each column with its type and marks the primary key", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -43,7 +43,7 @@ test.describe("browsing a table", () => {
     await expect(createdHeader).toContainText("time");
   });
 
-  test("distinguishes null from an empty string", async ({ page }) => {
+  test("distinguishes null from an empty string", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -52,7 +52,7 @@ test.describe("browsing a table", () => {
     await expect(page.getByText("empty", { exact: true }).first()).toBeVisible();
   });
 
-  test("masks a column that looks like a credential until revealed", async ({ page }) => {
+  test("masks a column that looks like a credential until revealed", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -67,7 +67,7 @@ test.describe("browsing a table", () => {
     await expect(aliceRow.getByText("tok_alice")).toBeVisible();
   });
 
-  test("reports row count and execution time", async ({ page }) => {
+  test("reports row count and execution time", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -79,9 +79,7 @@ test.describe("browsing a table", () => {
 });
 
 test.describe("filtering", () => {
-  test("clicking a cell filters by its value and the filter can be cleared", async ({
-    page,
-  }) => {
+  test("clicking a cell filters by its value and the filter can be cleared", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -98,7 +96,7 @@ test.describe("filtering", () => {
     await expect(page.locator("table tbody tr")).toHaveCount(6);
   });
 
-  test("stacks filters with AND", async ({ page }) => {
+  test("stacks filters with AND", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -118,7 +116,7 @@ test.describe("filtering", () => {
     await expect(page.getByText("Erin Blake")).toBeVisible();
   });
 
-  test("a filter that matches nothing says so", async ({ page }) => {
+  test("a filter that matches nothing says so", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -127,7 +125,7 @@ test.describe("filtering", () => {
     await expect(page.getByText("No rows match these filters")).toBeVisible();
   });
 
-  test("search survives a value containing a quote", async ({ page }) => {
+  test("search survives a value containing a quote", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -139,7 +137,7 @@ test.describe("filtering", () => {
 });
 
 test.describe("pagination", () => {
-  test("pages forward and back with a correct page number", async ({ page }) => {
+  test("pages forward and back with a correct page number", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
@@ -158,7 +156,7 @@ test.describe("pagination", () => {
     await expect(page.getByText("1 / 2")).toBeVisible();
   });
 
-  test("previous is disabled on the first page", async ({ page }) => {
+  test("previous is disabled on the first page", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
@@ -168,7 +166,7 @@ test.describe("pagination", () => {
 });
 
 test.describe("running queries", () => {
-  test("runs a query typed into the editor", async ({ page }) => {
+  test("runs a query typed into the editor", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await startQuery(page, connection.name);
 
@@ -180,9 +178,7 @@ test.describe("running queries", () => {
     await expect(page.getByRole("status")).toContainText("6 rows");
   });
 
-  test("shows the error instead of an empty grid when the query is wrong", async ({
-    page,
-  }) => {
+  test("shows the error instead of an empty grid when the query is wrong", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await startQuery(page, connection.name);
 
@@ -193,7 +189,7 @@ test.describe("running queries", () => {
     await expect(page.getByText(/Table not found/)).toBeVisible();
   });
 
-  test("refuses a write on a read-only connection", async ({ page }) => {
+  test("refuses a write on a read-only connection", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await startQuery(page, connection.name);
 
@@ -204,10 +200,7 @@ test.describe("running queries", () => {
     await expect(page.getByText(/This connection is read-only/)).toBeVisible();
   });
 
-  test("flags a dangerous statement once writes are allowed", async ({
-    page,
-    request,
-  }) => {
+  test("flags a dangerous statement once writes are allowed", async ({ page, request, pageErrors: _errors }) => {
     const writable = await createSqliteConnection(request, {
       name: "E2E Writable",
       readOnly: false,
@@ -227,7 +220,7 @@ test.describe("running queries", () => {
 });
 
 test.describe("row inspection", () => {
-  test("double-clicking a row opens the detail panel", async ({ page }) => {
+  test("double-clicking a row opens the detail panel", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -244,7 +237,7 @@ test.describe("row inspection", () => {
 });
 
 test.describe("columns", () => {
-  test("hides and restores a column", async ({ page }) => {
+  test("hides and restores a column", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -266,7 +259,7 @@ test.describe("columns", () => {
 });
 
 test.describe("tabs", () => {
-  test("opening the same table twice reuses its tab", async ({ page }) => {
+  test("opening the same table twice reuses its tab", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -275,7 +268,7 @@ test.describe("tabs", () => {
     await expect(page.getByRole("tab", { name: /users/ })).toHaveCount(1);
   });
 
-  test("closing a tab leaves the others intact", async ({ page }) => {
+  test("closing a tab leaves the others intact", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -291,18 +284,17 @@ test.describe("tabs", () => {
 });
 
 test.describe("connection modal", () => {
-  test("offers every supported backend", async ({ page }) => {
+  test("offers every supported backend", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await page.getByRole("button", { name: "New connection" }).click();
 
     await expect(page.getByRole("button", { name: "PostgreSQL" })).toBeVisible();
     await expect(page.getByRole("button", { name: "MySQL" })).toBeVisible();
     await expect(page.getByRole("button", { name: "SQLite file" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "HTTP API" })).toBeVisible();
   });
 
-  test("asks for a URI for a server backend and a file for SQLite", async ({
-    page,
-  }) => {
+  test("asks for a URI for a server backend and a file for SQLite", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await page.getByRole("button", { name: "New connection" }).click();
 
@@ -318,12 +310,18 @@ test.describe("connection modal", () => {
       /^postgresql:\/\//
     );
 
+    await page.getByRole("button", { name: "HTTP API" }).click();
+    await expect(page.getByLabel("Base URL")).toHaveAttribute(
+      "placeholder",
+      /^https:\/\//
+    );
+
     await page.getByRole("button", { name: "SQLite file" }).click();
     await expect(page.getByLabel("Connection URI")).toHaveCount(0);
     await expect(page.getByText("SQLite file", { exact: true }).first()).toBeVisible();
   });
 
-  test("defaults a new connection to read-only", async ({ page }) => {
+  test("defaults a new connection to read-only", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await page.getByRole("button", { name: "New connection" }).click();
     await page.getByRole("button", { name: "MySQL" }).click();
@@ -333,7 +331,7 @@ test.describe("connection modal", () => {
 });
 
 test.describe("empty states", () => {
-  test("says so when there are no connections", async ({ page, request }) => {
+  test("says so when there are no connections", async ({ page, request, pageErrors: _errors }) => {
     await deleteAllConnections(request);
     await openPlayground(page);
 

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 import {
   createSqliteConnection,
@@ -18,7 +18,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.describe("command palette", () => {
-  test("opens with the keyboard and jumps to a table", async ({ page }) => {
+  test("opens with the keyboard and jumps to a table", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     // wait until the palette has tables to offer
     await expect(
@@ -36,7 +36,7 @@ test.describe("command palette", () => {
     await waitForRows(page);
   });
 
-  test("says when nothing matches", async ({ page }) => {
+  test("says when nothing matches", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await page.getByRole("button", { name: "Command palette" }).click();
 
@@ -47,7 +47,7 @@ test.describe("command palette", () => {
     await expect(page.getByText(/Nothing matches/)).toBeVisible();
   });
 
-  test("closes on Escape", async ({ page }) => {
+  test("closes on Escape", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await page.keyboard.press("ControlOrMeta+k");
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -58,7 +58,7 @@ test.describe("command palette", () => {
 });
 
 test.describe("keyboard navigation", () => {
-  test("slash focuses the table search", async ({ page }) => {
+  test("slash focuses the table search", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -67,9 +67,7 @@ test.describe("keyboard navigation", () => {
     await expect(page.getByPlaceholder("Search this table…")).toBeFocused();
   });
 
-  test("arrow keys move the focused cell and Enter expands the row", async ({
-    page,
-  }) => {
+  test("arrow keys move the focused cell and Enter expands the row", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -84,9 +82,7 @@ test.describe("keyboard navigation", () => {
 });
 
 test.describe("comparing rows", () => {
-  test("selecting two rows offers a diff that highlights the differences", async ({
-    page,
-  }) => {
+  test("selecting two rows offers a diff that highlights the differences", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -103,7 +99,7 @@ test.describe("comparing rows", () => {
     await expect(page.getByText("Row B")).toBeVisible();
   });
 
-  test("compare is only offered for exactly two rows", async ({ page }) => {
+  test("compare is only offered for exactly two rows", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -120,7 +116,7 @@ test.describe("comparing rows", () => {
 });
 
 test.describe("stats panel", () => {
-  test("reports null share, cardinality and top values", async ({ page }) => {
+  test("reports null share, cardinality and top values", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -140,7 +136,7 @@ test.describe("stats panel", () => {
 });
 
 test.describe("query plan", () => {
-  test("shows the plan and flags a scan without an index", async ({ page }) => {
+  test("shows the plan and flags a scan without an index", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await startQuery(page, connection.name);
 
@@ -156,7 +152,7 @@ test.describe("query plan", () => {
     await expect(plan.getByRole("cell", { name: "sequential" })).toBeVisible();
   });
 
-  test("reports an index scan when one is available", async ({ page }) => {
+  test("reports an index scan when one is available", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await startQuery(page, connection.name);
 
@@ -174,7 +170,7 @@ test.describe("query plan", () => {
 });
 
 test.describe("column controls", () => {
-  test("warns before filtering on a column with no index", async ({ page }) => {
+  test("warns before filtering on a column with no index", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -186,7 +182,7 @@ test.describe("column controls", () => {
     await expect(page.getByText(/Not indexed/)).toBeVisible();
   });
 
-  test("filters from the column menu", async ({ page }) => {
+  test("filters from the column menu", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -204,7 +200,7 @@ test.describe("column controls", () => {
     await expect(page.getByText("Dan Wu")).toBeVisible();
   });
 
-  test("reordering a column persists across a reload", async ({ page }) => {
+  test("reordering a column persists across a reload", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);

@@ -1,0 +1,80 @@
+import { useCallback, useState } from "react";
+
+import { sendRequest, type RequestSpecModel } from "@/lib/sdk";
+import { errorMessage } from "@/lib/errors";
+import type { RequestDraft, Tab } from "../store/store";
+import { useTabsStore } from "../store/store";
+import { useSaveRequest } from "./useSavedRequests";
+
+/** A request tab's draft, in the shape the API expects. */
+export function toSpec(draft: RequestDraft): RequestSpecModel {
+  const body =
+    draft.body_type === "form"
+      ? safeRows(draft.body)
+      : draft.body_type === "none"
+        ? ""
+        : draft.body;
+
+  return {
+    name: draft.name,
+    method: draft.method,
+    path: draft.path,
+    params: draft.params.filter((row) => row.key.trim()),
+    headers: draft.headers.filter((row) => row.key.trim()),
+    body_type: draft.body_type,
+    body,
+    auth: draft.auth.type === "none" ? null : draft.auth,
+  };
+}
+
+function safeRows(body: string) {
+  try {
+    const parsed = JSON.parse(body || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function useRequestRunner(tab: Tab) {
+  const setRequestResult = useTabsStore((state) => state.setRequestResult);
+  const updateTab = useTabsStore((state) => state.updateTab);
+  const result = useTabsStore((state) => state.requestResults[tab.id]);
+  const saveRequest = useSaveRequest(tab.connectionId);
+
+  const [isSending, setIsSending] = useState(false);
+
+  const send = useCallback(async () => {
+    if (!tab.connectionId || !tab.request) return;
+
+    setIsSending(true);
+    try {
+      const response = await sendRequest({
+        path: { connection_id: tab.connectionId },
+        body: toSpec(tab.request),
+        throwOnError: true,
+      });
+      setRequestResult(tab.id, { result: response.data, ranAt: Date.now() });
+    } catch (error) {
+      setRequestResult(tab.id, {
+        error: errorMessage(error, "Could not send the request"),
+        ranAt: Date.now(),
+      });
+    } finally {
+      setIsSending(false);
+    }
+  }, [tab.connectionId, tab.request, tab.id, setRequestResult]);
+
+  const save = useCallback(async () => {
+    if (!tab.connectionId || !tab.request) return;
+    const saved = await saveRequest.mutateAsync({
+      requestId: tab.requestId,
+      spec: toSpec(tab.request),
+    });
+    // a newly saved request adopts its id, so saving again updates rather than
+    // creating a second copy
+    if (saved?.uid && !tab.requestId) updateTab(tab.id, { requestId: saved.uid });
+  }, [tab.connectionId, tab.request, tab.requestId, tab.id, saveRequest, updateTab]);
+
+  return { result, isSending, isSaving: saveRequest.isPending, send, save };
+}

@@ -5,6 +5,36 @@ export type ClientOptions = {
 };
 
 /**
+ * AuthModel
+ */
+export type AuthModel = {
+    /**
+     * Type
+     */
+    type?: 'none' | 'bearer' | 'basic' | 'header';
+    /**
+     * Token
+     */
+    token?: string | null;
+    /**
+     * Username
+     */
+    username?: string | null;
+    /**
+     * Password
+     */
+    password?: string | null;
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+};
+
+/**
  * Body_upload_file
  */
 export type BodyUploadFile = {
@@ -249,6 +279,24 @@ export type IndexModel = {
 };
 
 /**
+ * KeyValueModel
+ */
+export type KeyValueModel = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Value
+     */
+    value?: string;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+};
+
+/**
  * QueryInsightModel
  *
  * What the planner intends to do, without running the query.
@@ -378,6 +426,111 @@ export type QueryRiskModel = {
 };
 
 /**
+ * RequestResultModel
+ */
+export type RequestResultModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    request: SentRequestModel;
+    response: ResponseModel;
+};
+
+/**
+ * RequestSpecModel
+ *
+ * What to send. A saved request stores exactly this.
+ */
+export type RequestSpecModel = {
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Method
+     */
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+    /**
+     * Path
+     */
+    path?: string;
+    /**
+     * Params
+     */
+    params?: Array<KeyValueModel>;
+    /**
+     * Headers
+     */
+    headers?: Array<KeyValueModel>;
+    /**
+     * Body Type
+     */
+    body_type?: 'none' | 'json' | 'form' | 'text';
+    /**
+     * Body
+     */
+    body?: unknown;
+    auth?: AuthModel | null;
+    /**
+     * Timeout
+     */
+    timeout?: number;
+    /**
+     * Follow Redirects
+     */
+    follow_redirects?: boolean;
+    /**
+     * Verify Tls
+     */
+    verify_tls?: boolean;
+};
+
+/**
+ * ResponseModel
+ */
+export type ResponseModel = {
+    /**
+     * Status
+     */
+    status: number;
+    /**
+     * Reason
+     */
+    reason?: string;
+    /**
+     * Headers
+     */
+    headers?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Body
+     */
+    body?: string;
+    /**
+     * Is Text
+     */
+    is_text?: boolean;
+    /**
+     * Size
+     */
+    size?: number;
+    /**
+     * Truncated
+     */
+    truncated?: boolean;
+    /**
+     * Elapsed Ms
+     */
+    elapsed_ms?: number;
+    /**
+     * Content Type
+     */
+    content_type?: string | null;
+};
+
+/**
  * RowPageModel
  *
  * A page of rows fetched through the deterministic pagination endpoint.
@@ -446,6 +599,79 @@ export type RowPageModel = {
 };
 
 /**
+ * SavedRequestListModel
+ */
+export type SavedRequestListModel = {
+    /**
+     * Requests
+     */
+    requests: Array<SavedRequestModel>;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * SavedRequestModel
+ */
+export type SavedRequestModel = {
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Method
+     */
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+    /**
+     * Path
+     */
+    path?: string;
+    /**
+     * Params
+     */
+    params?: Array<KeyValueModel>;
+    /**
+     * Headers
+     */
+    headers?: Array<KeyValueModel>;
+    /**
+     * Body Type
+     */
+    body_type?: 'none' | 'json' | 'form' | 'text';
+    /**
+     * Body
+     */
+    body?: unknown;
+    auth?: AuthModel | null;
+    /**
+     * Timeout
+     */
+    timeout?: number;
+    /**
+     * Follow Redirects
+     */
+    follow_redirects?: boolean;
+    /**
+     * Verify Tls
+     */
+    verify_tls?: boolean;
+    /**
+     * Uid
+     */
+    uid: string;
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Position
+     */
+    position?: number;
+};
+
+/**
  * ScanModel
  */
 export type ScanModel = {
@@ -493,6 +719,30 @@ export type SchemaModelList = {
      * Total
      */
     total: number;
+};
+
+/**
+ * SentRequestModel
+ */
+export type SentRequestModel = {
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Headers
+     */
+    headers?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Body
+     */
+    body?: string | null;
 };
 
 /**
@@ -651,6 +901,22 @@ export type ValueCountModel = {
      * Count
      */
     count: number;
+};
+
+/**
+ * VariablesModel
+ */
+export type VariablesModel = {
+    /**
+     * Variables
+     */
+    variables?: {
+        [key: string]: string;
+    };
+    /**
+     * Secret
+     */
+    secret?: Array<string>;
 };
 
 export type ListConnectionsData = {
@@ -1195,6 +1461,258 @@ export type ExportEntityResponses = {
      */
     200: unknown;
 };
+
+export type SendRequestData = {
+    body: RequestSpecModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/request';
+};
+
+export type SendRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SendRequestError = SendRequestErrors[keyof SendRequestErrors];
+
+export type SendRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: RequestResultModel;
+};
+
+export type SendRequestResponse = SendRequestResponses[keyof SendRequestResponses];
+
+export type ListRequestsData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/requests';
+};
+
+export type ListRequestsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListRequestsError = ListRequestsErrors[keyof ListRequestsErrors];
+
+export type ListRequestsResponses = {
+    /**
+     * Successful Response
+     */
+    200: SavedRequestListModel;
+};
+
+export type ListRequestsResponse = ListRequestsResponses[keyof ListRequestsResponses];
+
+export type CreateRequestData = {
+    body: RequestSpecModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/requests';
+};
+
+export type CreateRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateRequestError = CreateRequestErrors[keyof CreateRequestErrors];
+
+export type CreateRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: SavedRequestModel;
+};
+
+export type CreateRequestResponse = CreateRequestResponses[keyof CreateRequestResponses];
+
+export type DeleteRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Request Uid
+         */
+        request_uid: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/requests/{request_uid}';
+};
+
+export type DeleteRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteRequestError = DeleteRequestErrors[keyof DeleteRequestErrors];
+
+export type DeleteRequestResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteRequestResponse = DeleteRequestResponses[keyof DeleteRequestResponses];
+
+export type GetRequestData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Request Uid
+         */
+        request_uid: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/requests/{request_uid}';
+};
+
+export type GetRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetRequestError = GetRequestErrors[keyof GetRequestErrors];
+
+export type GetRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: SavedRequestModel;
+};
+
+export type GetRequestResponse = GetRequestResponses[keyof GetRequestResponses];
+
+export type UpdateRequestData = {
+    body: RequestSpecModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Request Uid
+         */
+        request_uid: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/requests/{request_uid}';
+};
+
+export type UpdateRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateRequestError = UpdateRequestErrors[keyof UpdateRequestErrors];
+
+export type UpdateRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: SavedRequestModel;
+};
+
+export type UpdateRequestResponse = UpdateRequestResponses[keyof UpdateRequestResponses];
+
+export type GetVariablesData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/variables';
+};
+
+export type GetVariablesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetVariablesError = GetVariablesErrors[keyof GetVariablesErrors];
+
+export type GetVariablesResponses = {
+    /**
+     * Successful Response
+     */
+    200: VariablesModel;
+};
+
+export type GetVariablesResponse = GetVariablesResponses[keyof GetVariablesResponses];
+
+export type SetVariablesData = {
+    body: VariablesModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/variables';
+};
+
+export type SetVariablesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetVariablesError = SetVariablesErrors[keyof SetVariablesErrors];
+
+export type SetVariablesResponses = {
+    /**
+     * Successful Response
+     */
+    200: VariablesModel;
+};
+
+export type SetVariablesResponse = SetVariablesResponses[keyof SetVariablesResponses];
 
 export type HealthData = {
     body?: never;
