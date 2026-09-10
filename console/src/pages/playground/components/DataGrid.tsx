@@ -5,6 +5,7 @@ import {
   ChevronsUpDown,
   Eye,
   Filter as FilterIcon,
+  GripVertical,
   Maximize2,
   PanelRightOpen,
   TableIcon,
@@ -30,7 +31,7 @@ import {
 import { distinctCounts } from "@/lib/columns";
 import { rowIdentity, type Filter } from "@/lib/sql";
 import type { Column, Row } from "../store/store";
-import { ColumnTypeBadge, CopyButton, EmptyState } from "./primitives";
+import { ColumnTypeBadge, CopyButton, EmptyState, useCopy } from "./primitives";
 
 const SELECT_COLUMN_WIDTH = 64;
 const MIN_COLUMN_WIDTH = 72;
@@ -43,6 +44,7 @@ export interface DataGridProps {
   onSort?: (column: string) => void;
   onFilter?: (filter: Filter) => void;
   onHideColumn?: (column: string) => void;
+  onReorder?: (from: string, to: string) => void;
   selectedRows: Set<string>;
   onSelectionChange?: (next: Set<string>) => void;
   onOpenRow?: (row: Row, identity: string) => void;
@@ -58,6 +60,7 @@ export function DataGrid({
   onSort,
   onFilter,
   onHideColumn,
+  onReorder,
   selectedRows,
   onSelectionChange,
   onOpenRow,
@@ -67,9 +70,15 @@ export function DataGrid({
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [expandedCell, setExpandedCell] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [focus, setFocus] = useState<{ row: number; column: number } | null>(null);
+  const [dragColumn, setDragColumn] = useState<string | null>(null);
+  const [dropColumn, setDropColumn] = useState<string | null>(null);
+
   const resizing = useRef<{ column: string; startX: number; startWidth: number } | null>(
     null
   );
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { copy } = useCopy();
 
   // widths are derived from content, but a column the user dragged keeps its size
   const measured = useMemo(() => {
@@ -89,7 +98,10 @@ export function DataGrid({
     const handleMove = (event: MouseEvent) => {
       const state = resizing.current;
       if (!state) return;
-      const width = Math.max(MIN_COLUMN_WIDTH, state.startWidth + event.clientX - state.startX);
+      const width = Math.max(
+        MIN_COLUMN_WIDTH,
+        state.startWidth + event.clientX - state.startX
+      );
       setWidths((current) => ({ ...current, [state.column]: width }));
     };
     const handleUp = () => {
@@ -121,13 +133,16 @@ export function DataGrid({
     onSelectionChange(allSelected ? new Set() : new Set(identities));
   };
 
-  const toggleRow = (identity: string) => {
-    if (!onSelectionChange) return;
-    const next = new Set(selectedRows);
-    if (next.has(identity)) next.delete(identity);
-    else next.add(identity);
-    onSelectionChange(next);
-  };
+  const toggleRow = useCallback(
+    (identity: string) => {
+      if (!onSelectionChange) return;
+      const next = new Set(selectedRows);
+      if (next.has(identity)) next.delete(identity);
+      else next.add(identity);
+      onSelectionChange(next);
+    },
+    [onSelectionChange, selectedRows]
+  );
 
   const startResize = (column: Column, event: React.MouseEvent) => {
     event.preventDefault();
@@ -141,9 +156,68 @@ export function DataGrid({
     document.body.style.userSelect = "none";
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!rows.length || !columns.length) return;
+    const current = focus ?? { row: 0, column: 0 };
+
+    const move = (rowDelta: number, columnDelta: number) => {
+      event.preventDefault();
+      setFocus({
+        row: Math.min(Math.max(current.row + rowDelta, 0), rows.length - 1),
+        column: Math.min(Math.max(current.column + columnDelta, 0), columns.length - 1),
+      });
+    };
+
+    switch (event.key) {
+      case "ArrowDown":
+        return move(1, 0);
+      case "ArrowUp":
+        return move(-1, 0);
+      case "ArrowRight":
+        return move(0, 1);
+      case "ArrowLeft":
+        return move(0, -1);
+      case "Home":
+        event.preventDefault();
+        return setFocus({ row: current.row, column: 0 });
+      case "End":
+        event.preventDefault();
+        return setFocus({ row: current.row, column: columns.length - 1 });
+      case "Enter":
+        event.preventDefault();
+        return onOpenRow?.(rows[current.row], identities[current.row]);
+      case " ":
+        event.preventDefault();
+        return toggleRow(identities[current.row]);
+      default:
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          const column = columns[current.column];
+          const value = formatCell(rows[current.row]?.[column.name], {
+            kind: column.kind,
+            relativeDates: false,
+          }).full;
+          void copy(value);
+        }
+    }
+  };
+
+  useEffect(() => {
+    if (!focus) return;
+    scrollRef.current
+      ?.querySelector(`[data-cell="${focus.row}:${focus.column}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [focus]);
+
+  useEffect(() => {
+    setFocus(null);
+  }, [rows]);
+
   const sortIcon = (name: string) => {
     if (sort?.column !== name)
-      return <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-0 group-hover/head:opacity-50" />;
+      return (
+        <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-0 group-hover/head:opacity-50" />
+      );
     return sort.direction === "asc" ? (
       <ChevronUp className="h-3 w-3 shrink-0 text-foreground" />
     ) : (
@@ -162,7 +236,14 @@ export function DataGrid({
   }
 
   return (
-    <div className="relative h-full w-full overflow-auto">
+    <div
+      ref={scrollRef}
+      tabIndex={0}
+      role="grid"
+      aria-label="Query results"
+      onKeyDown={handleKeyDown}
+      className="relative h-full w-full overflow-auto outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
       <table
         className="w-full min-w-max border-separate border-spacing-0 text-sm"
         style={{ tableLayout: "fixed" }}
@@ -178,27 +259,50 @@ export function DataGrid({
 
         <thead>
           <tr>
-            <th
-              className={cn(
-                "sticky left-0 top-0 z-30 border-b border-r bg-background px-3 py-2",
-                "align-top"
-              )}
-            >
+            <th className="sticky left-0 top-0 z-30 border-b border-r bg-background px-3 py-2 align-top">
               <Checkbox
                 checked={allSelected ? true : someSelected ? "indeterminate" : false}
                 onCheckedChange={toggleAll}
                 aria-label="Select all rows on this page"
               />
             </th>
+
             {columns.map((column, columnIndex) => (
               <th
                 key={column.name}
+                draggable={!!onReorder}
+                onDragStart={() => setDragColumn(column.name)}
+                onDragEnd={() => {
+                  setDragColumn(null);
+                  setDropColumn(null);
+                }}
+                onDragOver={(event) => {
+                  if (!onReorder || !dragColumn || dragColumn === column.name) return;
+                  event.preventDefault();
+                  setDropColumn(column.name);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (onReorder && dragColumn && dragColumn !== column.name) {
+                    onReorder(dragColumn, column.name);
+                  }
+                  setDragColumn(null);
+                  setDropColumn(null);
+                }}
                 className={cn(
                   "group/head sticky top-0 z-20 border-b bg-background px-3 py-2 text-left align-top",
-                  columnIndex === 0 && "sticky left-16 z-30 border-r"
+                  columnIndex === 0 && "sticky left-16 z-30 border-r",
+                  dragColumn === column.name && "opacity-50",
+                  dropColumn === column.name && "border-l-2 border-l-primary"
                 )}
               >
                 <div className="flex items-start justify-between gap-1">
+                  {onReorder && (
+                    <GripVertical
+                      className="mt-0.5 h-3 w-3 shrink-0 cursor-grab text-muted-foreground opacity-0 group-hover/head:opacity-60"
+                      aria-hidden
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={() => onSort?.(column.name)}
@@ -208,55 +312,19 @@ export function DataGrid({
                     <span className="truncate text-xs font-semibold">{column.name}</span>
                     {sortIcon(column.name)}
                   </button>
-                  {onHideColumn && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover/head:opacity-100"
-                          aria-label={`Options for ${column.name}`}
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                          {column.name}
-                          {column.type ? ` · ${column.type}` : ""}
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onSort?.(column.name)}>
-                          Sort
-                        </DropdownMenuItem>
-                        {onFilter && (
-                          <>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                onFilter({ column: column.name, operator: "is null" })
-                              }
-                            >
-                              Filter: is null
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                onFilter({ column: column.name, operator: "is not null" })
-                              }
-                            >
-                              Filter: is not null
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onHideColumn(column.name)}>
-                          Hide column
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+
+                  <ColumnMenu
+                    column={column}
+                    onSort={onSort}
+                    onFilter={onFilter}
+                    onHideColumn={onHideColumn}
+                  />
                 </div>
+
                 <div className="mt-0.5">
                   <ColumnTypeBadge column={column} />
                 </div>
+
                 <span
                   role="separator"
                   aria-orientation="vertical"
@@ -273,6 +341,7 @@ export function DataGrid({
                 />
               </th>
             ))}
+
             <th
               className="sticky top-0 z-20 border-b bg-background px-3 py-2"
               aria-hidden
@@ -295,21 +364,24 @@ export function DataGrid({
             rows.map((row, rowIndex) => {
               const identity = identities[rowIndex];
               const isSelected = selectedRows.has(identity);
+              const pinnedBackground = isSelected
+                ? "bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))]"
+                : "bg-background group-hover/row:bg-[color-mix(in_oklch,var(--muted)_40%,var(--background))]";
+
               return (
                 <tr
                   key={identity}
                   className={cn(
                     "group/row transition-colors",
-                    isSelected ? "bg-primary/10" : "hover:bg-muted/40"
+                    isSelected ? "bg-primary/10" : "hover:bg-muted/40",
+                    focus?.row === rowIndex && "bg-muted/50"
                   )}
                   onDoubleClick={() => onOpenRow?.(row, identity)}
                 >
                   <td
                     className={cn(
                       "sticky left-0 z-10 border-b border-r px-3 py-1.5",
-                      isSelected
-                        ? "bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))]"
-                        : "bg-background group-hover/row:bg-[color-mix(in_oklch,var(--muted)_40%,var(--background))]"
+                      pinnedBackground
                     )}
                   >
                     <div className="flex items-center gap-0.5">
@@ -342,19 +414,21 @@ export function DataGrid({
                     const enumLike =
                       cell.state === "value" &&
                       looksEnumLike(column.kind, distinct[column.name], rows.length);
+                    const isFocused =
+                      focus?.row === rowIndex && focus?.column === columnIndex;
 
                     return (
                       <td
                         key={column.name}
+                        data-cell={`${rowIndex}:${columnIndex}`}
+                        onMouseDown={() =>
+                          setFocus({ row: rowIndex, column: columnIndex })
+                        }
                         className={cn(
                           "border-b px-3 py-1.5 align-top",
+                          isFocused && "outline outline-1 -outline-offset-1 outline-ring",
                           columnIndex === 0 &&
-                            cn(
-                              "sticky left-16 z-10 border-r",
-                              isSelected
-                                ? "bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))]"
-                                : "bg-background group-hover/row:bg-[color-mix(in_oklch,var(--muted)_40%,var(--background))]"
-                            )
+                            cn("sticky left-16 z-10 border-r", pinnedBackground)
                         )}
                       >
                         <Cell
@@ -388,6 +462,7 @@ export function DataGrid({
                       </td>
                     );
                   })}
+
                   <td className="border-b" aria-hidden />
                 </tr>
               );
@@ -396,6 +471,100 @@ export function DataGrid({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ColumnMenu({
+  column,
+  onSort,
+  onFilter,
+  onHideColumn,
+}: {
+  column: Column;
+  onSort?: (column: string) => void;
+  onFilter?: (filter: Filter) => void;
+  onHideColumn?: (column: string) => void;
+}) {
+  const [term, setTerm] = useState("");
+  if (!onHideColumn && !onFilter && !onSort) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover/head:opacity-100"
+          aria-label={`Options for ${column.name}`}
+        >
+          <ChevronDown className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+          {column.name}
+          {column.type ? ` · ${column.type}` : ""}
+          {onFilter && !column.indexed && !column.primary_key && (
+            <span className="mt-0.5 block text-amber-400">
+              Not indexed — filtering here scans the table
+            </span>
+          )}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+
+        {onSort && (
+          <DropdownMenuItem onClick={() => onSort(column.name)}>Sort</DropdownMenuItem>
+        )}
+
+        {onFilter && (
+          <>
+            <DropdownMenuItem
+              onClick={() => onFilter({ column: column.name, operator: "is null" })}
+            >
+              Filter: is null
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onFilter({ column: column.name, operator: "is not null" })}
+            >
+              Filter: is not null
+            </DropdownMenuItem>
+            <div
+              className="px-2 py-1.5"
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <input
+                value={term}
+                onChange={(event) => setTerm(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" || !term.trim()) return;
+                  event.preventDefault();
+                  onFilter({
+                    column: column.name,
+                    operator: column.kind === "number" ? "=" : "contains",
+                    value: term.trim(),
+                  });
+                  setTerm("");
+                }}
+                placeholder={
+                  column.kind === "number" ? "equals…  (Enter)" : "contains…  (Enter)"
+                }
+                aria-label={`Filter ${column.name}`}
+                className="h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </>
+        )}
+
+        {onHideColumn && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onHideColumn(column.name)}>
+              Hide column
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
