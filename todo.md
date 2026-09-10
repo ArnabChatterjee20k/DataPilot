@@ -239,23 +239,42 @@ Raised while using the console. Ordered by how much they hurt.
 A third protocol alongside HTTP and WebSocket, under the same API connection
 kind. Reference: [mqtt-appwrite-testing](https://github.com/ArnabChatterjee20k/mqtt-appwrite-testing/blob/master/appwrite_mqtt/mqtt.py).
 
-- [ ] **Broker connection** — `mqtt://` / `mqtts://` base URL, username and
+- [x] **Broker connection** — `mqtt://` / `mqtts://` base URL, username and
       password or a token, TLS on by default for 8883
-- [ ] **Subscribe** to one or more topic filters, with wildcards, and watch
+- [x] **Subscribe** to one or more topic filters, with wildcards, and watch
       messages arrive with their topic, QoS and retain flag
-- [ ] **Publish** to a topic, with QoS and retain
-- [ ] Unsubscribe, and disconnect cleanly
+- [x] **Publish** to a topic, with QoS and retain
+- [x] Unsubscribe, and disconnect cleanly
 
-Two things the reference gets right and we should copy:
+Both things the reference gets right are copied:
 
-- **Wait for SUBACK before reporting "subscribed".** A publish issued straight
-  after a subscribe otherwise races ahead of the broker registering it and the
-  message is simply dropped — MQTT has no retained replay for that case. This
-  is the same failure as reporting a websocket "connected" before the upstream
-  is up.
-- **A unique client id per connection.** Brokers evict an existing session when
-  a new one connects with the same id, so a shared id makes two tabs kick each
-  other off.
+- [x] **Wait for SUBACK before reporting "subscribed".** A publish issued
+  straight after a subscribe otherwise races ahead of the broker registering it
+  and the message is simply dropped — MQTT has no retained replay for that
+  case. This is the same failure as reporting a websocket "connected" before
+  the upstream is up.
+- [x] **A unique client id per connection.** Brokers evict an existing session
+  when a new one connects with the same id, so a shared id makes two tabs kick
+  each other off.
+
+Also found while building it: `paho` is used directly rather than through an
+asyncio wrapper, because the wrappers register the socket with the event loop
+and Windows' default (proactor) loop cannot do that at all.
+
+### Slow queries — *from the database's own performance schema*
+- [ ] Read the slow statements the server already tracks, rather than timing
+      queries DataPilot happened to run: `pg_stat_statements` on PostgreSQL,
+      `performance_schema.events_statements_summary_by_digest` on MySQL. Both
+      keep a normalised digest, total and mean time, calls and rows
+- [ ] Say what to do when the source is not there — `pg_stat_statements` needs
+      `shared_preload_libraries` and a `CREATE EXTENSION`; MySQL's
+      performance schema can be compiled out — rather than failing with the
+      driver's word for "no such table"
+- [ ] SQLite has no such view. Say so plainly instead of showing an empty table
+- [ ] **Store them**, so a snapshot survives the counters being reset and two
+      snapshots can be compared. The `QueryLogs` table already exists
+- [ ] Show them where the query insights already live, ordered by total time,
+      with the digest, calls, mean and total, and rows per call
 
 ---
 
