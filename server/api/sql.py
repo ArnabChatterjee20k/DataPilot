@@ -217,10 +217,32 @@ def apply_limit_offset(sql: str, limit: Optional[int], offset: Optional[int]) ->
     return statement
 
 
+#: Declared types that carry no meaning beyond "some string".
+GENERIC_TEXT_TYPES = ("text", "varchar", "char", "clob", "string", "citext")
+
+
+def kind_from_name(column_name: str) -> Optional[str]:
+    """Guess a kind from a column name.
+
+    SQLite has no date or uuid type, so a timestamp is usually just `TEXT`.
+    Without this, `created_at` on SQLite would render as plain text and lose
+    relative-time formatting.
+    """
+    name = (column_name or "").lower()
+    if not name:
+        return None
+    if name.endswith("_at") or name in ("created", "updated", "timestamp", "date", "time"):
+        return "timestamp"
+    if name.endswith("_date") or name.endswith("_time") or name.endswith("_on"):
+        return "timestamp"
+    if name == "uuid" or name.endswith("_uuid") or name in ("uid", "guid"):
+        return "uuid"
+    return None
+
+
 def semantic_kind(db_type: Optional[str], column_name: str = "") -> str:
     """Map a backend column type to the small set of kinds the UI renders."""
     declared = (db_type or "").lower()
-    name = (column_name or "").lower()
 
     if "uuid" in declared or "guid" in declared:
         return "uuid"
@@ -246,14 +268,15 @@ def semantic_kind(db_type: Optional[str], column_name: str = "") -> str:
         )
     ):
         return "number"
-    if declared:
-        return "text"
 
-    # SQLite columns can be declared with no type at all
-    if name.endswith("_at") or name in ("created", "updated", "timestamp"):
-        return "timestamp"
-    if name == "id" or name.endswith("_id"):
-        return "text"
+    is_generic_text = not declared or any(
+        token in declared for token in GENERIC_TEXT_TYPES
+    )
+    if is_generic_text:
+        guessed = kind_from_name(column_name)
+        if guessed:
+            return guessed
+
     return "text"
 
 

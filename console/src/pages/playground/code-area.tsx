@@ -1,12 +1,8 @@
+import { useEffect, useRef } from "react";
+import { Loader2, PlayIcon, ShieldAlert } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PlayIcon, Loader2 } from "lucide-react";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 import {
   Select,
   SelectContent,
@@ -16,177 +12,196 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-import { useRef } from "react";
-import { useTabsStore, type Tab } from "./store/store";
-import { useConnections } from "./hooks";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import type { DatabaseConnection, Tab } from "./store/store";
+import { useTabsStore } from "./store/store";
+import { EnvironmentBadge } from "./components/primitives";
 
 interface CodeAreaProps {
   tab: Tab;
-  content: string;
-  onChange: (content: string) => void;
-  onRun?: (query: string) => void;
-  isRunning?: boolean;
+  connection?: DatabaseConnection;
+  connections: DatabaseConnection[];
+  onRun: (query: string) => void;
+  isRunning: boolean;
 }
 
 export function CodeArea({
   tab,
-  content,
-  onChange,
+  connection,
+  connections,
   onRun,
-  isRunning = false,
+  isRunning,
 }: CodeAreaProps) {
+  const updateTab = useTabsStore((state) => state.updateTab);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const textarea = textareaRef.current;
-      if (!textarea) return;
+  const isTableTab = tab.type === "table";
+  const content = tab.content ?? "";
 
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newContent =
-        content.substring(0, start) + "\t" + content.substring(end);
-      onChange(newContent);
+  useEffect(() => {
+    if (!isTableTab) textareaRef.current?.focus();
+  }, [tab.id, isTableTab]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      onRun(content);
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const { selectionStart, selectionEnd } = textarea;
+      const next =
+        content.slice(0, selectionStart) + "  " + content.slice(selectionEnd);
+      updateTab(tab.id, { content: next });
+      // restore the caret after React re-renders with the new value
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = selectionStart + 2;
+      });
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(e.target.value);
-  };
-
-  const { setApplyLimitOffset } = useTabsStore();
-  const applyLimitOffset = tab.applyLimitOffset !== false;
-
   return (
-    <div className="h-full flex flex-col">
-      <div className="bg-[#0f0f0f] border-r border-[#1a1a1a] px-4 py-3 font-mono text-sm flex justify-between items-center gap-4">
-        <TableBreadCrumb tab={tab} />
-        <div className="flex items-center gap-3">
-          {tab.type === "query" && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id={`limit-offset-${tab.id}`}
-                checked={applyLimitOffset}
-                onCheckedChange={(checked) =>
-                  setApplyLimitOffset(tab.id, checked === true)
-                }
-              />
-              <Label
-                htmlFor={`limit-offset-${tab.id}`}
-                className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap"
-              >
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
+        <ConnectionPicker
+          tab={tab}
+          connection={connection}
+          connections={connections}
+          disabled={isTableTab}
+        />
+
+        {tab.tableName && (
+          <span className="text-xs text-muted-foreground">
+            {tab.schemaName ? `${tab.schemaName}.` : ""}
+            <span className="font-medium text-foreground">{tab.tableName}</span>
+          </span>
+        )}
+
+        {connection && (
+          <EnvironmentBadge
+            environment={connection.environment}
+            role={connection.role}
+            readOnly={connection.readOnly}
+          />
+        )}
+
+        <div className="ml-auto flex items-center gap-3">
+          {!isTableTab && (
+            <>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Checkbox
+                  checked={tab.applyLimitOffset}
+                  onCheckedChange={(checked) =>
+                    updateTab(tab.id, { applyLimitOffset: checked === true })
+                  }
+                />
                 Add limit/offset
-              </Label>
-            </div>
+              </label>
+
+              {connection?.readOnly && (
+                <label
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs",
+                    tab.allowWrites ? "text-amber-400" : "text-muted-foreground"
+                  )}
+                  title="This connection is read-only. Tick to allow this tab to run writes."
+                >
+                  <Checkbox
+                    checked={tab.allowWrites}
+                    onCheckedChange={(checked) =>
+                      updateTab(tab.id, { allowWrites: checked === true })
+                    }
+                  />
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Allow writes
+                </label>
+              )}
+            </>
           )}
+
           <Button
             size="sm"
-            variant="outline"
-            className="cursor-pointer"
-            onClick={() => onRun && onRun(textareaRef.current?.value || "")}
-            disabled={isRunning || !onRun}
+            className="h-8 gap-1.5 px-3 text-xs"
+            onClick={() => onRun(content)}
+            disabled={isRunning || !content.trim() || !tab.connectionId}
+            title="Run (⌘/Ctrl + Enter)"
           >
             {isRunning ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Running...
-              </>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <>
-                <PlayIcon className="mr-2 h-4 w-4" />
-                Run
-              </>
+              <PlayIcon className="h-3.5 w-3.5" />
             )}
+            {isRunning ? "Running…" : "Run"}
           </Button>
         </div>
       </div>
-      {/* 
-        TODO: on change tab need to save the query state into the zustand store first -> need to be async and non blocking 
-        Not save on every key store as it would slow down the editor
-      */}
-      <div className="flex h-3.5 flex-1 overflow-hidden p-3 bg-[#0f0f0f] border-r border-[#1a1a1a]">
-        <div className="flex-1 overflow-hidden relative bg-[#0a0a0a] rounded">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={content}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            placeholder="# ⌘ B to get AI assistant"
-            className="absolute inset-0 w-full h-full font-mono text-sm text-white placeholder:opacity-35 bg-transparent resize-none outline-none px-4 py-4 leading-6"
-            style={{
-              color: "transparent",
-              caretColor: "white",
-              textShadow: "0 0 0 #d1d5db",
-              backgroundColor: "#0a0a0a",
-            }}
-            spellCheck="false"
-          />
-        </div>
+
+      <div className="min-h-0 flex-1 p-2">
+        <textarea
+          ref={textareaRef}
+          value={content}
+          readOnly={isTableTab}
+          onChange={(event) => updateTab(tab.id, { content: event.target.value })}
+          onKeyDown={handleKeyDown}
+          placeholder="SELECT * FROM …    (⌘/Ctrl + Enter to run)"
+          spellCheck={false}
+          aria-label="SQL editor"
+          className={cn(
+            "h-full w-full resize-none rounded-md border bg-background p-3",
+            "font-mono text-[13px] leading-6 text-foreground caret-primary",
+            "placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring",
+            isTableTab && "text-muted-foreground"
+          )}
+        />
       </div>
     </div>
   );
 }
 
-function TableBreadCrumb({ tab }: { tab: Tab }) {
-  return (
-    <Breadcrumb>
-      <BreadcrumbList>
-        {tab.connectionId ? (
-          <>
-            <BreadcrumbItem>{tab.connectionId}</BreadcrumbItem>
-            <BreadcrumbSeparator />
-          </>
-        ) : null}
-        {tab.databaseName ? (
-          <>
-            <BreadcrumbItem>{tab.databaseName}</BreadcrumbItem>
-          </>
-        ) : (
-          <QueryConnectionConfig tab={tab} />
-        )}
-      </BreadcrumbList>
-    </Breadcrumb>
-  );
-}
+function ConnectionPicker({
+  tab,
+  connection,
+  connections,
+  disabled,
+}: {
+  tab: Tab;
+  connection?: DatabaseConnection;
+  connections: DatabaseConnection[];
+  disabled?: boolean;
+}) {
+  const updateTab = useTabsStore((state) => state.updateTab);
 
-function QueryConnectionConfig({ tab }: { tab: Tab }) {
-  const { updateTabConnection } = useTabsStore();
-  const {data: connectionsData} = useConnections()
-  const connections = connectionsData || []
-  function getConnectionName(connectionId: string) {
-    return connections.find((con) => con.id === connectionId)?.name;
+  if (disabled) {
+    return (
+      <span className="text-xs font-medium">
+        {connection?.name ?? "Unknown connection"}
+      </span>
+    );
   }
 
   return (
-    <div>
-      <Select
-        value={tab.connectionId}
-        onValueChange={(connectionId) =>
-          // using placeholder as it is not required
-          updateTabConnection(
-            tab.id,
-            connectionId,
-            getConnectionName(connectionId),
-            "placeholder_table"
-          )
-        }
-      >
-        <SelectTrigger className="w-[200px]">
-          <SelectValue placeholder="Select Connection" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectLabel>Select Connection</SelectLabel>
-            {connections.map((connection) => (
-              <SelectItem value={connection.id}>{connection.name}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </div>
+    <Select
+      value={tab.connectionId ?? ""}
+      onValueChange={(connectionId) => updateTab(tab.id, { connectionId })}
+    >
+      <SelectTrigger className="h-8 w-[200px] text-xs" aria-label="Connection">
+        <SelectValue placeholder="Select a connection" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>Connections</SelectLabel>
+          {connections.map((item) => (
+            <SelectItem key={item.id} value={item.id}>
+              {item.name}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }

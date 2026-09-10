@@ -206,6 +206,8 @@ class BaseEntityTestMixin:
         assert data["query"].endswith("LIMIT 1")
         assert len(data["rows"]) == 1
         assert data["truncated"] is True
+        # the applied LIMIT clears the "unbounded SELECT" warning
+        assert data["risk"]["warnings"] == []
 
     def test_empty_query_is_rejected(self, client: httpx.Client):
         connection_uid = self._create_connection(client)

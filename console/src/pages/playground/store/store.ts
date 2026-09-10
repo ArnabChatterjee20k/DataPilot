@@ -1,9 +1,18 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+
+import type { QueryRiskModel } from "@/lib/sdk";
+import type { Column } from "@/lib/columns";
+import type { Filter, SourceType } from "@/lib/sql";
 
 export interface DatabaseConnection {
   id: string;
   name: string;
-  type: string;
+  type: SourceType;
+  environment: "local" | "staging" | "production";
+  role: "primary" | "replica";
+  readOnly: boolean;
+  supportsSchemas: boolean;
 }
 
 export interface Schema {
@@ -17,389 +26,265 @@ export interface Table {
   schemaId?: string;
 }
 
-export interface Column {
-  id: string;
-  name: string;
-  type: string;
-  nullable?: boolean;
-  defaultValue?: string;
-}
+export type Row = Record<string, unknown>;
+export type { Column };
 
-export type Row = Record<string, string>;
+export type SortState = { column: string; direction: "asc" | "desc" } | null;
 
 export type TabType = "query" | "table";
+
 export interface Tab {
   id: string;
   name: string;
   type: TabType;
-  content?: string;
-  tableName?: string;
-  tableId?: string;
-  databaseName?: string;
+  content: string;
   connectionId?: string;
+  /** Table tabs only. */
+  tableName?: string;
+  schemaName?: string | null;
   isNew?: boolean;
-  filters: Record<string, string>;
-  tableWindowSize?: string;
-  queryWindowSize?: string;
+  filters: Filter[];
+  search: string;
+  sort: SortState;
+  hiddenColumns: string[];
+  columnOrder: string[];
   rowsLimit: number;
   rowsOffset: number;
-  /** When false, run query as-is without appending LIMIT/OFFSET */
-  applyLimitOffset?: boolean;
+  /** When false the query runs exactly as typed. */
+  applyLimitOffset: boolean;
+  /** Explicitly opted into running writes on a read-only connection. */
+  allowWrites: boolean;
 }
 
-export interface QueryResult {
+export interface QueryResultState {
   columns: Column[];
   rows: Row[];
   query?: string;
   error?: string;
+  rowCount: number;
+  rowsAffected: number;
+  returnsRows: boolean;
+  truncated: boolean;
+  executionMs: number;
+  risk?: QueryRiskModel;
+  ranAt: number;
 }
 
 const NEW_TAB_ID = "new";
+const DEFAULT_LIMIT = 100;
 
-const getNewQueryTab = (): Tab => ({
-  id: NEW_TAB_ID,
-  name: "+ New Query",
-  type: "query",
-  content: "",
-  isNew: true,
-  filters: {},
-  rowsLimit: 100,
-  rowsOffset: 0,
-  applyLimitOffset: true,
-});
+export const ROWS_LIMITS = [50, 100, 250, 500];
 
-const getDefaultNewQueryTab = (tabId: string): Tab => ({
-  id: tabId,
-  name: "Query",
-  type: "query",
-  content: "",
-  isNew: false,
-  filters: {},
-  rowsLimit: 100,
-  rowsOffset: 0,
-  applyLimitOffset: true,
-});
+export const getTableTabId = (connectionId: string, schema: string | null | undefined, table: string) =>
+  `table:${connectionId}:${schema ?? ""}:${table}`;
 
-export const getTableTabId = (tableId: string) => `table-${tableId}`;
-
-interface ActiveTableView {
-  table: Table;
-  database: DatabaseConnection;
+function baseTab(id: string, name: string, type: TabType): Tab {
+  return {
+    id,
+    name,
+    type,
+    content: "",
+    filters: [],
+    search: "",
+    sort: null,
+    hiddenColumns: [],
+    columnOrder: [],
+    rowsLimit: DEFAULT_LIMIT,
+    rowsOffset: 0,
+    applyLimitOffset: true,
+    allowWrites: false,
+  };
 }
+
+const newPlaceholderTab = (): Tab => ({
+  ...baseTab(NEW_TAB_ID, "+ New Query", "query"),
+  isNew: true,
+});
 
 interface TabStore {
   tabs: Tab[];
   activeTabId: string;
-  queryResults: Record<string, QueryResult>; // { [tabId]: QueryResult }
-  activeTableView: ActiveTableView | null; // Table view shown below query
+  results: Record<string, QueryResultState>;
   setActiveTabId: (id: string) => void;
-  addNewQueryTab: () => string;
-  openTableTab: (table: Table, database: DatabaseConnection) => void;
-  setActiveTableView: (table: Table, database: DatabaseConnection) => void;
-  clearActiveTableView: () => void;
+  addQueryTab: (connectionId?: string) => string;
+  openTableTab: (table: Table, connection: DatabaseConnection) => string;
   closeTab: (tabId: string) => void;
-  updateTabContent: (tabId: string, content: string) => void;
-  setQueryResult: (tabId: string, result: QueryResult) => void;
-  updateTabConnection: (
-    tabId: string,
-    connectionId: string,
-    databaseId?: string,
-    tableId?: string
-  ) => void;
-  updateTableFilters: (tabId: string, filters: Record<string, string>) => void;
-  updateTabPagination: (tabId: string, limits: number, offset?: number) => void;
-  setApplyLimitOffset: (tabId: string, apply: boolean) => void;
+  updateTab: (tabId: string, patch: Partial<Tab>) => void;
+  setResult: (tabId: string, result: QueryResultState | undefined) => void;
+  addFilter: (tabId: string, filter: Filter) => void;
+  removeFilter: (tabId: string, key: string) => void;
+  clearFilters: (tabId: string) => void;
+  toggleColumn: (tabId: string, column: string) => void;
+  showAllColumns: (tabId: string) => void;
+  toggleSort: (tabId: string, column: string) => void;
 }
 
-export const useTabsStore = create<TabStore>((set, get) => ({
-  tabs: [getNewQueryTab()],
-  activeTabId: NEW_TAB_ID,
-  queryResults: {},
-  activeTableView: null,
-  setActiveTabId: (id) => set({ activeTabId: id }),
-  addNewQueryTab: () => {
-    const tabId = `query-${Date.now()}`;
-    const newTab = getDefaultNewQueryTab(tabId);
-    set((state) => ({
-      tabs: [...state.tabs, newTab],
-      activeTabId: tabId,
-    }));
-    return tabId;
-  },
-  openTableTab: (table: Table, database: DatabaseConnection) => {
-    const state = get();
-    const existingTab = state.tabs.find(
-      (tab) => tab.type === "table" && tab.tableName === table.name
-    );
+export const useTabsStore = create<TabStore>()(
+  persist(
+    (set, get) => ({
+      tabs: [newPlaceholderTab()],
+      activeTabId: NEW_TAB_ID,
+      results: {},
 
-    if (existingTab) {
-      set({ activeTabId: existingTab.id });
-      return;
-    }
+      setActiveTabId: (id) => set({ activeTabId: id }),
 
-    const newTabId = getTableTabId(table.id);
-    const newTab: Tab = {
-      id: newTabId,
-      name: table.name,
-      type: "table",
-      tableName: table.name,
-      tableId: table.id,
-      databaseName: database.name,
-      connectionId: database.id,
-      filters: {},
-      rowsLimit: 100,
-      rowsOffset: 0,
-      applyLimitOffset: true,
-    };
-    set((state) => ({
-      tabs: [...state.tabs, newTab],
-      activeTabId: newTabId,
-    }));
-  },
-  setActiveTableView: (table: Table, database: DatabaseConnection) => {
-    set({ activeTableView: { table, database } });
-  },
-  clearActiveTableView: () => {
-    set({ activeTableView: null });
-  },
-  closeTab: (tabId: string) => {
-    if (tabId === NEW_TAB_ID) return; // Don't close the +New tab
-
-    set((state) => {
-      const newTabs = state.tabs.filter((tab) => tab.id !== tabId);
-      // Ensure +New tab always exists
-      const hasNewTab = newTabs.some((tab) => tab.id === NEW_TAB_ID);
-      if (!hasNewTab) {
-        newTabs.push(getNewQueryTab());
-      }
-
-      let newActiveTabId = state.activeTabId;
-      if (state.activeTabId === tabId) {
-        // If closing active tab, switch to the +New tab or the last tab
-        const remainingTabs = newTabs.filter((t) => t.id !== NEW_TAB_ID);
-        newActiveTabId =
-          remainingTabs.length > 0
-            ? remainingTabs[remainingTabs.length - 1].id
-            : NEW_TAB_ID;
-      }
-
-      return {
-        tabs: newTabs,
-        activeTabId: newActiveTabId,
-      };
-    });
-  },
-  updateTabContent: (tabId: string, content: string) => {
-    set((state) => ({
-      tabs: state.tabs.map((tab) =>
-        tab.id === tabId ? { ...tab, content } : tab
-      ),
-    }));
-  },
-  setQueryResult: (tabId: string, result: QueryResult) => {
-    set((state) => ({
-      queryResults: { ...state.queryResults, [tabId]: result },
-    }));
-  },
-  updateTabConnection: (
-    tabId: string,
-    connectionId?: string,
-    databaseName?: string,
-    tableId?: string
-  ) => {
-    set((state) => ({
-      tabs: state.tabs.map((tab) =>
-        tab.id === tabId
-          ? {
-              ...tab,
-              ...(connectionId !== undefined && { connectionId }),
-              ...(databaseName !== undefined && { databaseName }),
-              ...(tableId !== undefined && { tableId }),
-            }
-          : tab
-      ),
-    }));
-  },
-  updateTableFilters: (tabId: string, filters: Record<string, string>) => {
-    set((state) => ({
-      tabs: state.tabs.map((tab) => {
-        if (tab.id !== tabId) return tab;
-
-        const hasFilters = Object.keys(filters).length > 0;
-
-        return {
-          ...tab,
-          filters: hasFilters ? { ...(tab.filters ?? {}), ...filters } : {},
+      addQueryTab: (connectionId) => {
+        const tabId = `query:${Date.now()}`;
+        const existing = get().tabs.filter((tab) => tab.type === "query" && !tab.isNew);
+        const tab: Tab = {
+          ...baseTab(tabId, `Query ${existing.length + 1}`, "query"),
+          connectionId,
         };
-      }),
-    }));
-  },
-  updateTabPagination: (tabId: string, limit: number, offset?: number) => {
-    set((state) => ({
-      tabs: state.tabs.map((tab) => {
-        if (tab.id !== tabId) return tab;
-
-        return {
-          ...tab,
-          rowsLimit: limit,
-          rowsOffset: offset || 0,
-        };
-      }),
-    }));
-  },
-  setApplyLimitOffset: (tabId: string, apply: boolean) => {
-    set((state) => ({
-      tabs: state.tabs.map((tab) =>
-        tab.id === tabId ? { ...tab, applyLimitOffset: apply } : tab
-      ),
-    }));
-  },
-}));
-
-// Database Store
-interface DatabaseStore {
-  connections: DatabaseConnection[];
-  schemas: Record<string, Schema[]>; // { [databaseId]: Schema[] }
-  tables: Record<string, Table[]>; // { [databaseId]: Table[] }
-  columns: Record<string, Column[]>; // { [tableId]: Column[] }
-  rows: Record<string, Row[]>; // { [tableId]: Row[] }
-  setConnections: (connection: DatabaseConnection[]) => void;
-  addConnection: (connection: DatabaseConnection) => void;
-  removeConnection: (id: string) => void;
-  updateConnection: (
-    id: string,
-    connection: Partial<DatabaseConnection>
-  ) => void;
-  setSchemasForConnections: (connectionId: string, schema: Schema[]) => void;
-  getSchemasForConnectionId: (connectionId: string) => Schema[];
-  setTables: (tables: Record<string, Table[]>) => void;
-  // can be used for both setting to connection and schema as schemaId is part of the table only
-  setTablesForConnection: (connectionId: string, tables: Table[]) => void;
-  addTable: (connectionId: string, table: Table) => void;
-  removeTable: (connectionId: string, tableId: string) => void;
-  updateTable: (
-    connectionId: string,
-    tableId: string,
-    table: Partial<Table>
-  ) => void;
-  getTablesForConnection: (connectionId: string) => Table[];
-  setColumns: (tableId: string, columns: Column[]) => void;
-  setRows: (tableId: string, rows: Row[]) => void;
-  getColumns: (tableId: string) => Column[];
-  getRows: (tableId: string) => Row[];
-}
-
-export const useDatabaseStore = create<DatabaseStore>((set, get) => ({
-  connections: [],
-  schemas: {},
-  tables: {},
-  columns: {},
-  rows: {},
-  setConnections: (connections: DatabaseConnection[]) =>
-    set(() => ({
-      connections: connections,
-    })),
-  addConnection: (connection) =>
-    set((state) => ({
-      connections: [...state.connections, connection],
-    })),
-  removeConnection: (id) =>
-    set((state) => {
-      const newTables = { ...state.tables };
-      delete newTables[id];
-      return {
-        connections: state.connections.filter((conn) => conn.id !== id),
-        tables: newTables,
-      };
-    }),
-  updateConnection: (id, updates) =>
-    set((state) => ({
-      connections: state.connections.map((conn) =>
-        conn.id === id ? { ...conn, ...updates } : conn
-      ),
-    })),
-  setSchemasForConnections: (connectionId: string, schema: Schema[]) =>
-    set((state) => ({
-      schemas: {
-        ...state.schemas,
-        [connectionId]: [...schema], // Create a new array reference to ensure reactivity
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
       },
-    })),
-  getSchemasForConnectionId: (connectionId: string) => {
-    const state = get();
-    return state.schemas[connectionId] || [];
-  },
-  setTables: (tables: Record<string, Table[]>) =>
-    set(() => ({
-      tables: tables,
-    })),
-  setTablesForConnection: (connectionId: string, tables: Table[]) =>
-    set((state) => ({
-      tables: { ...state.tables, [connectionId]: tables },
-    })),
-  addTable: (connectionId: string, table: Table) =>
-    set((state) => {
-      const connectionTables = state.tables[connectionId] || [];
-      return {
-        tables: {
-          ...state.tables,
-          [connectionId]: [...connectionTables, table],
-        },
-      };
-    }),
-  removeTable: (connectionId: string, tableId: string) =>
-    set((state) => {
-      const newColumns = { ...state.columns };
-      const newRows = { ...state.rows };
-      delete newColumns[tableId];
-      delete newRows[tableId];
 
-      const connectionTables = state.tables[connectionId] || [];
-      return {
-        tables: {
-          ...state.tables,
-          [connectionId]: connectionTables.filter(
-            (table) => table.id !== tableId
+      openTableTab: (table, connection) => {
+        const tabId = getTableTabId(connection.id, table.schemaId, table.name);
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const tab: Tab = {
+          ...baseTab(tabId, table.name, "table"),
+          connectionId: connection.id,
+          tableName: table.name,
+          schemaName: table.schemaId ?? null,
+        };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      closeTab: (tabId) => {
+        if (tabId === NEW_TAB_ID) return;
+        set((state) => {
+          const index = state.tabs.findIndex((tab) => tab.id === tabId);
+          const tabs = state.tabs.filter((tab) => tab.id !== tabId);
+          if (!tabs.some((tab) => tab.id === NEW_TAB_ID)) tabs.push(newPlaceholderTab());
+
+          const results = { ...state.results };
+          delete results[tabId];
+
+          let activeTabId = state.activeTabId;
+          if (activeTabId === tabId) {
+            // step to the neighbour rather than jumping to the end
+            const candidates = tabs.filter((tab) => tab.id !== NEW_TAB_ID);
+            const neighbour =
+              candidates[Math.min(Math.max(index - 1, 0), candidates.length - 1)];
+            activeTabId = neighbour?.id ?? NEW_TAB_ID;
+          }
+
+          return { tabs, results, activeTabId };
+        });
+      },
+
+      updateTab: (tabId, patch) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...patch } : tab)),
+        })),
+
+      setResult: (tabId, result) =>
+        set((state) => {
+          const results = { ...state.results };
+          if (result) results[tabId] = result;
+          else delete results[tabId];
+          return { results };
+        }),
+
+      addFilter: (tabId, filter) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab;
+            const exists = tab.filters.some(
+              (existing) =>
+                existing.column === filter.column &&
+                existing.operator === filter.operator &&
+                existing.value === filter.value
+            );
+            if (exists) return tab;
+            return { ...tab, filters: [...tab.filters, filter], rowsOffset: 0 };
+          }),
+        })),
+
+      removeFilter: (tabId, key) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  rowsOffset: 0,
+                  filters: tab.filters.filter(
+                    (filter) =>
+                      `${filter.column}:${filter.operator}:${String(filter.value ?? "")}` !==
+                      key
+                  ),
+                }
+              : tab
           ),
-        },
-        columns: newColumns,
-        rows: newRows,
-      };
-    }),
-  updateTable: (
-    connectionId: string,
-    tableId: string,
-    updates: Partial<Table>
-  ) =>
-    set((state) => {
-      const connectionTables = state.tables[connectionId] || [];
-      return {
-        tables: {
-          ...state.tables,
-          [connectionId]: connectionTables.map((table) =>
-            table.id === tableId ? { ...table, ...updates } : table
+        })),
+
+      clearFilters: (tabId) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, filters: [], search: "", rowsOffset: 0 } : tab
           ),
-        },
-      };
+        })),
+
+      toggleColumn: (tabId, column) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab;
+            const hidden = new Set(tab.hiddenColumns);
+            if (hidden.has(column)) hidden.delete(column);
+            else hidden.add(column);
+            return { ...tab, hiddenColumns: [...hidden] };
+          }),
+        })),
+
+      showAllColumns: (tabId) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, hiddenColumns: [] } : tab
+          ),
+        })),
+
+      toggleSort: (tabId, column) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId) return tab;
+            if (tab.sort?.column !== column) {
+              return { ...tab, sort: { column, direction: "asc" }, rowsOffset: 0 };
+            }
+            if (tab.sort.direction === "asc") {
+              return { ...tab, sort: { column, direction: "desc" }, rowsOffset: 0 };
+            }
+            return { ...tab, sort: null, rowsOffset: 0 };
+          }),
+        })),
     }),
-  getTablesForConnection: (connectionId: string) => {
-    const state = get();
-    return state.tables[connectionId] || [];
-  },
-  setColumns: (tableId, columns) =>
-    set((state) => ({
-      columns: { ...state.columns, [tableId]: columns },
-    })),
-  setRows: (tableId, rows) =>
-    set((state) => ({
-      rows: { ...state.rows, [tableId]: rows },
-    })),
-  getColumns: (tableId) => {
-    const state = get();
-    return state.columns[tableId] || [];
-  },
-  getRows: (tableId) => {
-    const state = get();
-    return state.rows[tableId] || [];
-  },
-}));
+    {
+      name: "datapilot.tabs",
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+      // results are re-fetched on open; persisting them would show stale data
+      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<TabStore> | undefined;
+        const tabs = saved?.tabs?.length ? saved.tabs : current.tabs;
+        if (!tabs.some((tab) => tab.id === NEW_TAB_ID)) tabs.push(newPlaceholderTab());
+        return {
+          ...current,
+          tabs,
+          activeTabId: tabs.some((tab) => tab.id === saved?.activeTabId)
+            ? saved!.activeTabId!
+            : NEW_TAB_ID,
+        };
+      },
+    }
+  )
+);
+
+export const useActiveTab = () =>
+  useTabsStore((state) => state.tabs.find((tab) => tab.id === state.activeTabId));

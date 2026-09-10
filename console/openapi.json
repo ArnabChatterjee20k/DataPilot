@@ -1,0 +1,2098 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/connections": {
+      "get": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "List Connections",
+        "operationId": "list_connections",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsModelList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Create Connection",
+        "operationId": "create_connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectionsModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections/{connection_uid}": {
+      "get": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Get Connection",
+        "operationId": "get_connection",
+        "parameters": [
+          {
+            "name": "connection_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Update Connection",
+        "operationId": "update_connection",
+        "parameters": [
+          {
+            "name": "connection_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Uid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectionsModel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Delete Connection",
+        "operationId": "delete_connection",
+        "parameters": [
+          {
+            "name": "connection_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Uid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connections/{connection_uid}/status": {
+      "get": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Get Connection Status",
+        "description": "Dial the connection and report whether it answers, without running a query.",
+        "operationId": "get_connection_status",
+        "parameters": [
+          {
+            "name": "connection_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatusModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bucket": {
+      "post": {
+        "tags": [
+          "buckets"
+        ],
+        "summary": "Upload File",
+        "operationId": "upload_file",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BucketModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/schema": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Get Schemas",
+        "description": "List schemas for a connection. Backends without schemas return an empty list.",
+        "operationId": "get_schemas",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaModelList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/table": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Get Tables",
+        "description": "List the tables of a connection, optionally within a schema.",
+        "operationId": "get_tables",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableModelList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/entities/{entity_name}/columns": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Get Entity Columns",
+        "description": "Column types, nullability, defaults, primary key and indexes for a table.",
+        "operationId": "get_entity_columns",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "entity_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Name"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "include_row_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Row Count"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableSchemaModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/entities/{entity_name}/rows": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Get Entity Rows",
+        "description": "Read a page of rows with a stable ordering.\n\nWhen the table has a single-column primary key the page is fetched with a\nkeyset scan (`WHERE pk > after`), which stays correct and fast as the offset\ngrows. Otherwise it falls back to OFFSET and says so in `warnings`.",
+        "operationId": "get_entity_rows",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "entity_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Name"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RowPageModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/entities/{entity_name}/queries": {
+      "get": {
+        "tags": [
+          "queries"
+        ],
+        "summary": "Execute Query",
+        "description": "Run an arbitrary query, reporting its risk, timing and column metadata.\n\nA connection marked read-only rejects anything that writes unless the caller\nexplicitly passes `allow_writes`.",
+        "operationId": "execute_query",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "entity_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Name"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "allow_writes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Allow Writes"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/entities/{entity_name}/explain": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Explain Query",
+        "description": "Report the plan for a query without executing it.\n\nSays whether an index is used, how many rows the planner expects and which\nspeed bucket that falls into.",
+        "operationId": "explain_query",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "entity_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Name"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Query"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryInsightModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/entities/{entity_name}/stats": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Get Entity Stats",
+        "description": "Null share, distinct count and most common values, per column.",
+        "operationId": "get_entity_stats",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "entity_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Name"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "top_values",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Top Values"
+            }
+          },
+          {
+            "name": "sample",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 100,
+              "default": 20000,
+              "title": "Sample"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableStatsModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/entities/{entity_name}/export": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Export Entity",
+        "description": "Export rows as CSV, JSON or NDJSON.\n\nExports what the user is looking at: pass the same `query` the grid ran and\na `columns` list to keep only the visible columns, in their displayed order.\nValues keep their type \u2014 timestamps go out as ISO 8601, UUIDs as text, JSON\nas JSON, binary as base64.",
+        "operationId": "export_entity",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "entity_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Name"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Columns"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(csv|json|ndjson)$",
+              "default": "csv",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 1,
+              "default": 5000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_file": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_file"
+      },
+      "BucketModel": {
+        "properties": {
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "connection_uri": {
+            "type": "string",
+            "title": "Connection Uri"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid",
+          "filename",
+          "connection_uri"
+        ],
+        "title": "BucketModel"
+      },
+      "ColumnModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "uuid",
+              "text",
+              "number",
+              "boolean",
+              "timestamp",
+              "json",
+              "binary"
+            ],
+            "title": "Kind",
+            "default": "text"
+          },
+          "nullable": {
+            "type": "boolean",
+            "title": "Nullable",
+            "default": true
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "primary_key": {
+            "type": "boolean",
+            "title": "Primary Key",
+            "default": false
+          },
+          "indexed": {
+            "type": "boolean",
+            "title": "Indexed",
+            "default": false
+          },
+          "sensitive": {
+            "type": "boolean",
+            "title": "Sensitive",
+            "default": false
+          },
+          "monospace": {
+            "type": "boolean",
+            "title": "Monospace",
+            "default": false
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ColumnModel"
+      },
+      "ColumnStatsModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "uuid",
+              "text",
+              "number",
+              "boolean",
+              "timestamp",
+              "json",
+              "binary"
+            ],
+            "title": "Kind",
+            "default": "text"
+          },
+          "null_count": {
+            "type": "integer",
+            "title": "Null Count",
+            "default": 0
+          },
+          "null_percent": {
+            "type": "number",
+            "title": "Null Percent",
+            "default": 0.0
+          },
+          "distinct_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distinct Count"
+          },
+          "top_values": {
+            "items": {
+              "$ref": "#/components/schemas/ValueCountModel"
+            },
+            "type": "array",
+            "title": "Top Values"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ColumnStatsModel"
+      },
+      "ConnectionRole": {
+        "type": "string",
+        "enum": [
+          "primary",
+          "replica"
+        ],
+        "title": "ConnectionRole"
+      },
+      "ConnectionStatusModel": {
+        "properties": {
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          },
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "server_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid",
+          "reachable"
+        ],
+        "title": "ConnectionStatusModel",
+        "description": "Result of dialling a connection without running a user query."
+      },
+      "ConnectionsModel": {
+        "properties": {
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "connection_uri": {
+            "type": "string",
+            "title": "Connection Uri"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceConfig"
+          },
+          "environment": {
+            "$ref": "#/components/schemas/Environment",
+            "default": "local"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ConnectionRole",
+            "default": "primary"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "default": true
+          },
+          "supports_schemas": {
+            "type": "boolean",
+            "title": "Supports Schemas",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid",
+          "name",
+          "connection_uri",
+          "source"
+        ],
+        "title": "ConnectionsModel"
+      },
+      "ConnectionsModelList": {
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionsModel"
+            },
+            "type": "array",
+            "title": "Connections"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connections",
+          "total"
+        ],
+        "title": "ConnectionsModelList"
+      },
+      "CreateConnectionsModel": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceConfig"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "connection_uri": {
+            "type": "string",
+            "title": "Connection Uri"
+          },
+          "environment": {
+            "$ref": "#/components/schemas/Environment",
+            "default": "local"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ConnectionRole",
+            "default": "primary"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "name",
+          "connection_uri"
+        ],
+        "title": "CreateConnectionsModel"
+      },
+      "Environment": {
+        "type": "string",
+        "enum": [
+          "local",
+          "staging",
+          "production"
+        ],
+        "title": "Environment",
+        "description": "Where a connection points, so the UI can warn before touching production."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IndexModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "unique": {
+            "type": "boolean",
+            "title": "Unique",
+            "default": false
+          },
+          "primary": {
+            "type": "boolean",
+            "title": "Primary",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "columns"
+        ],
+        "title": "IndexModel"
+      },
+      "QueryInsightModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "supported": {
+            "type": "boolean",
+            "title": "Supported",
+            "default": true
+          },
+          "scans": {
+            "items": {
+              "$ref": "#/components/schemas/ScanModel"
+            },
+            "type": "array",
+            "title": "Scans"
+          },
+          "estimated_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Rows"
+          },
+          "estimated_cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Cost"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fast",
+                  "medium",
+                  "slow"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "uses_index": {
+            "type": "boolean",
+            "title": "Uses Index",
+            "default": false
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "plan": {
+            "items": {},
+            "type": "array",
+            "title": "Plan"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "query"
+        ],
+        "title": "QueryInsightModel",
+        "description": "What the planner intends to do, without running the query."
+      },
+      "QueryResult": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset"
+          },
+          "rows": {
+            "items": {},
+            "type": "array",
+            "title": "Rows"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnModel"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "default": 0
+          },
+          "rows_affected": {
+            "type": "integer",
+            "title": "Rows Affected",
+            "default": 0
+          },
+          "returns_rows": {
+            "type": "boolean",
+            "title": "Returns Rows",
+            "default": false
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "execution_time_ms": {
+            "type": "number",
+            "title": "Execution Time Ms",
+            "default": 0.0
+          },
+          "risk": {
+            "$ref": "#/components/schemas/QueryRiskModel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "connection_id",
+          "entity_name",
+          "rows",
+          "columns"
+        ],
+        "title": "QueryResult"
+      },
+      "QueryRiskModel": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "caution",
+              "dangerous"
+            ],
+            "title": "Level",
+            "default": "safe"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement",
+            "default": "UNKNOWN"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "default": true
+          },
+          "statement_count": {
+            "type": "integer",
+            "title": "Statement Count",
+            "default": 0
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "title": "QueryRiskModel"
+      },
+      "RowPageModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "schema_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Name"
+          },
+          "rows": {
+            "items": {},
+            "type": "array",
+            "title": "Rows"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnModel"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count"
+          },
+          "total_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rows"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "cursor_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor Column"
+          },
+          "keyset": {
+            "type": "boolean",
+            "title": "Keyset",
+            "default": false
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "execution_time_ms": {
+            "type": "number",
+            "title": "Execution Time Ms",
+            "default": 0.0
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "entity_name",
+          "rows",
+          "columns",
+          "row_count",
+          "limit",
+          "query"
+        ],
+        "title": "RowPageModel",
+        "description": "A page of rows fetched through the deterministic pagination endpoint."
+      },
+      "ScanModel": {
+        "properties": {
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "estimated_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "ScanModel"
+      },
+      "SchemaModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "SchemaModel"
+      },
+      "SchemaModelList": {
+        "properties": {
+          "schemas": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaModel"
+            },
+            "type": "array",
+            "title": "Schemas"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schemas",
+          "total"
+        ],
+        "title": "SchemaModelList"
+      },
+      "SourceConfig": {
+        "type": "string",
+        "enum": [
+          "postgres",
+          "sqlite",
+          "mysql",
+          "api"
+        ],
+        "title": "SourceConfig"
+      },
+      "TableModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TableModel"
+      },
+      "TableModelList": {
+        "properties": {
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableModel"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tables",
+          "total"
+        ],
+        "title": "TableModelList"
+      },
+      "TableSchemaModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "schema_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Name"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnModel"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "indexes": {
+            "items": {
+              "$ref": "#/components/schemas/IndexModel"
+            },
+            "type": "array",
+            "title": "Indexes"
+          },
+          "primary_key": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Primary Key"
+          },
+          "row_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Count"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "entity_name",
+          "columns",
+          "indexes",
+          "primary_key",
+          "total"
+        ],
+        "title": "TableSchemaModel"
+      },
+      "TableStatsModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "schema_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Name"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count",
+            "default": 0
+          },
+          "scanned_rows": {
+            "type": "integer",
+            "title": "Scanned Rows",
+            "default": 0
+          },
+          "sampled": {
+            "type": "boolean",
+            "title": "Sampled",
+            "default": false
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnStatsModel"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "execution_time_ms": {
+            "type": "number",
+            "title": "Execution Time Ms",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "entity_name"
+        ],
+        "title": "TableStatsModel"
+      },
+      "UpdateConnectionsModel": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "connection_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Uri"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Environment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "read_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Only"
+          }
+        },
+        "type": "object",
+        "title": "UpdateConnectionsModel"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValueCountModel": {
+        "properties": {
+          "value": {
+            "title": "Value"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "ValueCountModel"
+      }
+    }
+  }
+}

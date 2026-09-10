@@ -319,6 +319,9 @@ async def execute_query(
         )
 
     statement = sql_analysis.apply_limit_offset(query, limit, offset)
+    # report the risk of what actually runs: appending LIMIT/OFFSET can clear
+    # the "no LIMIT" warning the raw query would have raised
+    risk = sql_analysis.analyze(statement)
 
     async with open_session(connection) as session:
         known = {

@@ -130,6 +130,26 @@ class TestColumnClassification:
         assert sql.semantic_kind(None, "title") == "text"
 
     @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("created_at", "timestamp"),
+            ("updated_at", "timestamp"),
+            ("published_on", "timestamp"),
+            ("start_date", "timestamp"),
+            ("uuid", "uuid"),
+            ("session_uuid", "uuid"),
+            ("title", "text"),
+        ],
+    )
+    def test_text_column_named_like_a_timestamp(self, name, expected):
+        assert sql.semantic_kind("TEXT", name) == expected
+
+    def test_name_never_overrides_a_meaningful_type(self):
+        # a numeric epoch column stays a number
+        assert sql.semantic_kind("INTEGER", "created_at") == "number"
+        assert sql.semantic_kind("jsonb", "config_at") == "json"
+
+    @pytest.mark.parametrize(
         "name", ["password", "api_key", "access_token", "user_secret", "card_number"]
     )
     def test_sensitive_names(self, name):
