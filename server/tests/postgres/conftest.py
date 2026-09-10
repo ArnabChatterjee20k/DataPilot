@@ -7,7 +7,7 @@ import pytest
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 SEED_STATEMENTS = (
-    "DROP TABLE IF EXISTS users, products, accounts CASCADE",
+    "DROP TABLE IF EXISTS users, products, accounts, nullable, typed CASCADE",
     """
     CREATE TABLE users (
         id SERIAL PRIMARY KEY,
@@ -31,6 +31,21 @@ SEED_STATEMENTS = (
     )
     """,
     "CREATE INDEX accounts_username_idx ON accounts (username)",
+    """
+    CREATE TABLE nullable (
+        id SERIAL PRIMARY KEY,
+        note VARCHAR(255),
+        category VARCHAR(255)
+    )
+    """,
+    """
+    CREATE TABLE typed (
+        id SERIAL PRIMARY KEY,
+        created_at TIMESTAMP,
+        payload JSONB,
+        amount NUMERIC(10, 2)
+    )
+    """,
 )
 
 SEED_ROWS = (
@@ -45,6 +60,14 @@ SEED_ROWS = (
     (
         "INSERT INTO accounts (username, password_hash, api_token) VALUES (%s, %s, %s)",
         ("bob", "hash-2", "token-2"),
+    ),
+    ("INSERT INTO nullable (note, category) VALUES (%s, %s)", ("first", "a")),
+    ("INSERT INTO nullable (note, category) VALUES (%s, %s)", (None, "a")),
+    ("INSERT INTO nullable (note, category) VALUES (%s, %s)", (None, "a")),
+    ("INSERT INTO nullable (note, category) VALUES (%s, %s)", ("fourth", "b")),
+    (
+        "INSERT INTO typed (created_at, payload, amount) VALUES (%s, %s, %s)",
+        ("2024-01-02T03:04:05", '{"a": 1}', 12.5),
     ),
 )
 

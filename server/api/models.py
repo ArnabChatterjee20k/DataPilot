@@ -160,6 +160,56 @@ class RowPageModel(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+# Insights
+class ScanModel(BaseModel):
+    table: Optional[str] = None
+    type: str
+    index: Optional[str] = None
+    detail: str = ""
+    estimated_rows: Optional[int] = None
+
+
+class QueryInsightModel(BaseModel):
+    """What the planner intends to do, without running the query."""
+
+    connection_id: str
+    query: str
+    supported: bool = True
+    scans: list[ScanModel] = Field(default_factory=list)
+    estimated_rows: Optional[int] = None
+    estimated_cost: Optional[float] = None
+    speed: Optional[Literal["fast", "medium", "slow"]] = None
+    uses_index: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    plan: list[Any] = Field(default_factory=list)
+
+
+class ValueCountModel(BaseModel):
+    value: Any = None
+    count: int
+
+
+class ColumnStatsModel(BaseModel):
+    name: str
+    kind: ColumnKind = "text"
+    null_count: int = 0
+    null_percent: float = 0.0
+    distinct_count: Optional[int] = None
+    top_values: list[ValueCountModel] = Field(default_factory=list)
+
+
+class TableStatsModel(BaseModel):
+    connection_id: str
+    entity_name: str
+    schema_name: Optional[str] = None
+    row_count: int = 0
+    scanned_rows: int = 0
+    #: True when stats came from a bounded sample rather than the whole table.
+    sampled: bool = False
+    columns: list[ColumnStatsModel] = Field(default_factory=list)
+    execution_time_ms: float = 0.0
+
+
 # Tables
 class TableModel(BaseModel):
     name: str
