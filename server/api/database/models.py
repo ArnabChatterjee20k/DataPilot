@@ -14,6 +14,26 @@ class Connections(Model):
     environment: str = Environment.LOCAL.value
     role: str = ConnectionRole.PRIMARY.value
     read_only: bool = True
+    #: `{{name}}` values interpolated into API requests on this connection
+    variables: dict | None = None
+
+
+class ApiRequests(Model):
+    """A saved request under an API connection, the way a table sits under a
+    database."""
+
+    uid: str = lambda: str(uuid4())
+    connection_id: str
+    name: str
+    method: str = "GET"
+    path: str = ""
+    #: query params, headers and form fields, each [{key, value, enabled}]
+    params: list | None = None
+    headers: list | None = None
+    body_type: str = "none"
+    body: str = ""
+    auth: dict | None = None
+    position: int = 0
 
 
 class QueryLogs(Model):
@@ -28,4 +48,4 @@ class Bucket(Model):
     metadata: dict
 
 
-models = [Connections, QueryLogs, Bucket]
+models = [Connections, ApiRequests, QueryLogs, Bucket]
