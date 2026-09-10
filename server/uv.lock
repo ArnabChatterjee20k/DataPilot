@@ -408,8 +408,8 @@ wheels = [
 
 [[package]]
 name = "laserorm"
-version = "0.1.0"
-source = { git = "https://github.com/ArnabChatterjee20k/LaserORM.git#01f9fed60e0247dafc82439f8c0d3737b0bde83d" }
+version = "0.2.0"
+source = { git = "https://github.com/ArnabChatterjee20k/LaserORM.git#8877a15246cfa6cf4c536cda7a22880dcf9180b9" }
 
 [package.optional-dependencies]
 postgres = [
