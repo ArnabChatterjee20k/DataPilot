@@ -1,0 +1,8 @@
+# The mounted volume: the config database and uploaded SQLite files the
+# container writes. Per-machine state, not source.
+# (server/ and console/ carry their own .gitignore for their own artefacts.)
+/data/
+
+# OS
+.DS_Store
+Thumbs.db
