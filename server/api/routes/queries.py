@@ -3,6 +3,7 @@ from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from .. import serialization
 from .. import sql as sql_analysis
 from ..config import AppConfig, supports_schemas
 from ..models import (
@@ -244,7 +245,7 @@ async def get_entity_rows(
         except Exception:
             total_rows = None
 
-    rows = result.rows or []
+    rows = serialization.jsonable_rows(result.rows or [])
     next_cursor = None
     if cursor_column and len(rows) == limit:
         last = rows[-1].get(cursor_column)
@@ -331,7 +332,7 @@ async def execute_query(
         result = await session.execute(statement, force_commit=not risk.read_only)
         elapsed = (time.perf_counter() - started) * 1000
 
-    rows = result.rows or []
+    rows = serialization.jsonable_rows(result.rows or [])
     truncated = bool(limit) and len(rows) >= limit
 
     return QueryResult(
