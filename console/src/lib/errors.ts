@@ -24,3 +24,12 @@ export function errorMessage(error: unknown, fallback = "Something went wrong"):
   if (candidate.message) return candidate.message;
   return fallback;
 }
+
+/**
+ * A status the server uses when it could not reach the database at all, as
+ * opposed to the query being wrong. The difference matters: one is fixed in
+ * the editor, the other is fixed somewhere else entirely.
+ */
+export function isUnreachable(status: number | undefined): boolean {
+  return status === 503 || status === 502 || status === 504;
+}

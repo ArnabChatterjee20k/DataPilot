@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { executeQuery } from "@/lib/sdk";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, isUnreachable } from "@/lib/errors";
 import { toColumns } from "@/lib/columns";
 import { buildSelect, defaultSortColumn, primaryKeyOf } from "@/lib/sql";
 import type { DatabaseConnection, QueryResultState, Tab } from "../store/store";
@@ -79,6 +79,8 @@ export function useTabData(tab: Tab | undefined, connection?: DatabaseConnection
       const token = ++runToken.current;
       setIsRunning(true);
       try {
+        // not throwOnError: the status code is what separates "the query was
+        // wrong" from "the database is not there", and throwing loses it
         const response = await executeQuery({
           path: {
             connection_id: tab.connectionId,
@@ -92,11 +94,26 @@ export function useTabData(tab: Tab | undefined, connection?: DatabaseConnection
             ...(tab.schemaName ? { schema: tab.schemaName } : {}),
             ...(options.allowWrites ? { allow_writes: true } : {}),
           },
-          throwOnError: true,
         });
 
         // a slower earlier run must not overwrite a newer one
         if (token !== runToken.current) return;
+
+        if (response.error || !response.response?.ok) {
+          setResult(tab.id, {
+            columns: [],
+            rows: [],
+            error: errorMessage(response.error, "Could not run the query"),
+            errorKind: isUnreachable(response.response?.status) ? "connection" : "query",
+            rowCount: 0,
+            rowsAffected: 0,
+            returnsRows: false,
+            truncated: false,
+            executionMs: 0,
+            ranAt: Date.now(),
+          });
+          return;
+        }
 
         const data = response.data;
         const next: QueryResultState = {
@@ -118,7 +135,9 @@ export function useTabData(tab: Tab | undefined, connection?: DatabaseConnection
         setResult(tab.id, {
           columns: [],
           rows: [],
-          error: errorMessage(error, "Could not run the query"),
+          // nothing came back at all, so DataPilot itself is unreachable
+          error: errorMessage(error, "Could not reach DataPilot to run the query"),
+          errorKind: "connection",
           rowCount: 0,
           rowsAffected: 0,
           returnsRows: false,

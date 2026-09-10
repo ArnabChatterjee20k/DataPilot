@@ -1,4 +1,12 @@
-import { AlertTriangle, CheckCircle2, Clock, Loader2, ShieldAlert, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  PlugZap,
+  ShieldAlert,
+  XCircle,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatCount, formatDuration } from "@/lib/format";
@@ -18,10 +26,17 @@ export function QueryStatusBar({
   result,
   isRunning,
   className,
+  onRetest,
+  isRetesting,
+  retestOutcome,
 }: {
   result?: QueryResultState;
   isRunning?: boolean;
   className?: string;
+  /** Re-dial the connection, for a failure that was not about the query. */
+  onRetest?: () => void;
+  isRetesting?: boolean;
+  retestOutcome?: { reachable: boolean; detail?: string | null } | null;
 }) {
   if (isRunning) {
     return (
@@ -40,18 +55,50 @@ export function QueryStatusBar({
   if (!result) return null;
 
   if (result.error) {
+    // a query that is wrong is fixed in the editor; a database that is not
+    // there is fixed somewhere else, so they must not read the same
+    const unreachable = result.errorKind === "connection";
     return (
       <div
         className={cn(
           "flex items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs",
           className
         )}
+        role="alert"
       >
-        <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-        <div className="min-w-0">
-          <p className="font-medium text-destructive">Query failed</p>
+        {unreachable ? (
+          <PlugZap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+        ) : (
+          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-destructive">
+            {unreachable ? "Cannot reach the database" : "Query failed"}
+          </p>
           <p className="mt-0.5 break-words text-destructive/80">{result.error}</p>
+          {retestOutcome && (
+            <p
+              className={cn(
+                "mt-1.5 break-words",
+                retestOutcome.reachable ? "text-emerald-400" : "text-destructive/80"
+              )}
+            >
+              {retestOutcome.reachable
+                ? "The connection answers now - run the query again."
+                : `Still unreachable: ${retestOutcome.detail || "no answer"}`}
+            </p>
+          )}
         </div>
+        {unreachable && onRetest && (
+          <button
+            type="button"
+            onClick={onRetest}
+            disabled={isRetesting}
+            className="shrink-0 rounded border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10 disabled:opacity-60"
+          >
+            {isRetesting ? "Testing…" : "Test connection"}
+          </button>
+        )}
       </div>
     );
   }

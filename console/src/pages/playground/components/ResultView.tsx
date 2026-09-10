@@ -44,6 +44,7 @@ import { PlanPanel } from "./PlanPanel";
 import { RowDiffPanel } from "./RowDiffPanel";
 import { StatsPanel } from "./StatsPanel";
 import { ViewsMenu } from "./ViewsMenu";
+import { useConnectionProbe } from "../hooks/useConnections";
 import { useEntityStats, useQueryPlan } from "../hooks/useInsights";
 import { FilterBar } from "./FilterBar";
 import { QueryStatusBar } from "./QueryStatusBar";
@@ -77,6 +78,7 @@ export function ResultView({
   onExport,
   onWrite,
 }: ResultViewProps) {
+  const connectionProbe = useConnectionProbe(tab.connectionId);
   const {
     updateTab,
     addFilter,
@@ -457,7 +459,13 @@ export function ResultView({
         }}
       />
 
-      <QueryStatusBar result={result} isRunning={isLoading && !result} />
+      <QueryStatusBar
+        result={result}
+        isRunning={isLoading && !result}
+        onRetest={connectionProbe.probe}
+        isRetesting={connectionProbe.isProbing}
+        retestOutcome={connectionProbe.outcome}
+      />
 
       {selectedRows.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-4 py-1.5 text-xs">
@@ -537,7 +545,11 @@ export function ResultView({
           <EmptyState
             icon={Database}
             title="No results"
-            description="Fix the error above and run again."
+            description={
+              result.errorKind === "connection"
+                ? "Nothing ran - the database could not be reached."
+                : "Fix the error above and run again."
+            }
           />
         ) : !result.returnsRows ? (
           <EmptyState

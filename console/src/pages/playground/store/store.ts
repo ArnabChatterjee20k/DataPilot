@@ -142,6 +142,8 @@ export interface QueryResultState {
   rows: Row[];
   query?: string;
   error?: string;
+  /** Whether the query was wrong, or the database could not be reached at all. */
+  errorKind?: "query" | "connection";
   rowCount: number;
   rowsAffected: number;
   returnsRows: boolean;
