@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-import type { QueryRiskModel } from "@/lib/sdk";
+import type {
+  AuthModel,
+  KeyValueModel,
+  QueryRiskModel,
+  RequestResultModel,
+  RequestSpecModel,
+} from "@/lib/sdk";
 import type { Column } from "@/lib/columns";
 import type { Filter, SourceType } from "@/lib/sql";
 
@@ -31,7 +37,43 @@ export type { Column };
 
 export type SortState = { column: string; direction: "asc" | "desc" } | null;
 
-export type TabType = "query" | "table";
+export type TabType = "query" | "table" | "request" | "socket";
+
+export type KeyValueRow = KeyValueModel;
+export type HttpMethod = NonNullable<RequestSpecModel["method"]>;
+export type BodyType = NonNullable<RequestSpecModel["body_type"]>;
+
+/** The request a request tab is editing. Saved requests store the same shape. */
+export interface RequestDraft {
+  name: string;
+  method: HttpMethod;
+  path: string;
+  params: KeyValueRow[];
+  headers: KeyValueRow[];
+  body_type: BodyType;
+  body: string;
+  auth: AuthModel;
+}
+
+export const emptyRow = (): KeyValueRow => ({ key: "", value: "", enabled: true });
+
+export const newRequestDraft = (): RequestDraft => ({
+  name: "Untitled request",
+  method: "GET",
+  path: "",
+  params: [emptyRow()],
+  headers: [emptyRow()],
+  body_type: "none",
+  body: "",
+  auth: { type: "none" },
+});
+
+export interface SocketMessage {
+  id: string;
+  direction: "sent" | "received" | "system";
+  text: string;
+  at: number;
+}
 
 export interface Tab {
   id: string;
@@ -54,6 +96,12 @@ export interface Tab {
   applyLimitOffset: boolean;
   /** Explicitly opted into running writes on a read-only connection. */
   allowWrites: boolean;
+  /** Request tabs only. */
+  request?: RequestDraft;
+  /** Set when the tab is editing a request that has been saved. */
+  requestId?: string;
+  /** Socket tabs only. */
+  socketPath?: string;
 }
 
 /**
@@ -80,6 +128,12 @@ export const tableKeyOf = (
   schema: string | null | undefined,
   table: string | undefined
 ) => `${connectionId ?? ""}:${schema ?? ""}:${table ?? ""}`;
+
+export interface RequestResultState {
+  result?: RequestResultModel;
+  error?: string;
+  ranAt: number;
+}
 
 export interface QueryResultState {
   columns: Column[];
@@ -130,9 +184,21 @@ interface TabStore {
   tabs: Tab[];
   activeTabId: string;
   results: Record<string, QueryResultState>;
+  requestResults: Record<string, RequestResultState>;
+  socketLogs: Record<string, SocketMessage[]>;
   views: SavedView[];
   setActiveTabId: (id: string) => void;
   addQueryTab: (connectionId?: string) => string;
+  addRequestTab: (
+    connectionId: string,
+    request?: Partial<RequestDraft>,
+    requestId?: string
+  ) => string;
+  addSocketTab: (connectionId: string) => string;
+  updateRequest: (tabId: string, patch: Partial<RequestDraft>) => void;
+  setRequestResult: (tabId: string, result: RequestResultState | undefined) => void;
+  appendSocketMessage: (tabId: string, message: SocketMessage) => void;
+  clearSocketLog: (tabId: string) => void;
   openTableTab: (table: Table, connection: DatabaseConnection) => string;
   closeTab: (tabId: string) => void;
   updateTab: (tabId: string, patch: Partial<Tab>) => void;
@@ -156,6 +222,8 @@ export const useTabsStore = create<TabStore>()(
       tabs: [newPlaceholderTab()],
       activeTabId: NEW_TAB_ID,
       results: {},
+      requestResults: {},
+      socketLogs: {},
       views: [],
 
       setActiveTabId: (id) => set({ activeTabId: id }),
@@ -170,6 +238,71 @@ export const useTabsStore = create<TabStore>()(
         set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
         return tabId;
       },
+
+      addRequestTab: (connectionId, request, requestId) => {
+        const tabId = requestId ? `request:${requestId}` : `request:${Date.now()}`;
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const draft: RequestDraft = { ...newRequestDraft(), ...request };
+        const tab: Tab = {
+          ...baseTab(tabId, draft.name, "request"),
+          connectionId,
+          request: draft,
+          requestId,
+        };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      addSocketTab: (connectionId) => {
+        const tabId = `socket:${connectionId}`;
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const tab: Tab = {
+          ...baseTab(tabId, "WebSocket", "socket"),
+          connectionId,
+          socketPath: "",
+        };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      updateRequest: (tabId, patch) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id !== tabId || !tab.request) return tab;
+            const request = { ...tab.request, ...patch };
+            return { ...tab, request, name: request.name || tab.name };
+          }),
+        })),
+
+      setRequestResult: (tabId, result) =>
+        set((state) => {
+          const requestResults = { ...state.requestResults };
+          if (result) requestResults[tabId] = result;
+          else delete requestResults[tabId];
+          return { requestResults };
+        }),
+
+      appendSocketMessage: (tabId, message) =>
+        set((state) => ({
+          socketLogs: {
+            ...state.socketLogs,
+            // keep the log bounded; a chatty socket should not grow forever
+            [tabId]: [...(state.socketLogs[tabId] ?? []), message].slice(-500),
+          },
+        })),
+
+      clearSocketLog: (tabId) =>
+        set((state) => ({ socketLogs: { ...state.socketLogs, [tabId]: [] } })),
 
       openTableTab: (table, connection) => {
         const tabId = getTableTabId(connection.id, table.schemaId, table.name);
@@ -198,6 +331,10 @@ export const useTabsStore = create<TabStore>()(
 
           const results = { ...state.results };
           delete results[tabId];
+          const requestResults = { ...state.requestResults };
+          delete requestResults[tabId];
+          const socketLogs = { ...state.socketLogs };
+          delete socketLogs[tabId];
 
           let activeTabId = state.activeTabId;
           if (activeTabId === tabId) {
@@ -208,7 +345,7 @@ export const useTabsStore = create<TabStore>()(
             activeTabId = neighbour?.id ?? NEW_TAB_ID;
           }
 
-          return { tabs, results, activeTabId };
+          return { tabs, results, requestResults, socketLogs, activeTabId };
         });
       },
 
