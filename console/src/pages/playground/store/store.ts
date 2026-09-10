@@ -39,7 +39,7 @@ export type { Column };
 
 export type SortState = { column: string; direction: "asc" | "desc" } | null;
 
-export type TabType = "query" | "table" | "request" | "socket";
+export type TabType = "query" | "table" | "request" | "socket" | "mqtt";
 
 export type KeyValueRow = KeyValueModel;
 export type HttpMethod = NonNullable<RequestSpecModel["method"]>;
@@ -88,6 +88,12 @@ export interface RequestRun {
 /** Enough history to retrace a session, not so much that it fills storage. */
 export const MAX_HISTORY = 50;
 
+/** One topic filter this tab has subscribed to, with the QoS the broker gave. */
+export interface Subscription {
+  topic: string;
+  qos: number;
+}
+
 export interface SocketMessage {
   id: string;
   direction: "sent" | "received" | "system";
@@ -118,6 +124,11 @@ export interface Tab {
   allowWrites: boolean;
   /** Request tabs only. */
   request?: RequestDraft;
+  /** The topic the MQTT tab is about to subscribe or publish to. */
+  mqttTopic?: string;
+  mqttQos?: number;
+  mqttRetain?: boolean;
+  subscriptions?: Subscription[];
   /** Set when the tab is editing a request that has been saved. */
   requestId?: string;
   /** Socket tabs only. */
@@ -218,6 +229,7 @@ interface TabStore {
     requestId?: string
   ) => string;
   addSocketTab: (connectionId: string) => string;
+  addMqttTab: (connectionId: string) => string;
   updateRequest: (tabId: string, patch: Partial<RequestDraft>) => void;
   setRequestResult: (tabId: string, result: RequestResultState | undefined) => void;
   recordRequestRun: (run: Omit<RequestRun, "id">) => void;
@@ -296,6 +308,25 @@ export const useTabsStore = create<TabStore>()(
           ...baseTab(tabId, "WebSocket", "socket"),
           connectionId,
           socketPath: "",
+        };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      addMqttTab: (connectionId) => {
+        const tabId = `mqtt:${connectionId}`;
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const tab: Tab = {
+          ...baseTab(tabId, "MQTT", "mqtt"),
+          connectionId,
+          mqttTopic: "",
+          mqttQos: 0,
+          subscriptions: [],
         };
         set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
         return tabId;
