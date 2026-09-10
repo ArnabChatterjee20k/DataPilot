@@ -1,9 +1,6 @@
 from fastapi import APIRouter
-from pathlib import Path
-from ..config import AppConfig
 
-UPLOAD_DIR = Path(AppConfig.BUCKET_DIR)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+from ..config import UPLOAD_DIR
 
 router = APIRouter()
 
@@ -24,4 +21,4 @@ router.include_router(ConnectionsRouter)
 router.include_router(BucketRouter)
 router.include_router(QueryRouter)
 
-__all__ = [router]
+__all__ = ["router", "UPLOAD_DIR"]
