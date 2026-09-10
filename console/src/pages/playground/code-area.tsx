@@ -129,7 +129,13 @@ export function CodeArea({
             className="h-8 gap-1.5 px-3 text-xs"
             onClick={() => onRun(content)}
             disabled={isRunning || !content.trim() || !tab.connectionId}
-            title="Run (⌘/Ctrl + Enter)"
+            title={
+              !tab.connectionId
+                ? "Pick a connection first"
+                : !content.trim()
+                  ? "Write a query first"
+                  : "Run (⌘/Ctrl + Enter)"
+            }
           >
             {isRunning ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -195,11 +201,13 @@ function ConnectionPicker({
       <SelectContent>
         <SelectGroup>
           <SelectLabel>Connections</SelectLabel>
-          {connections.map((item) => (
-            <SelectItem key={item.id} value={item.id}>
-              {item.name}
-            </SelectItem>
-          ))}
+          {connections
+            .filter((item) => item.type !== "api")
+            .map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name}
+              </SelectItem>
+            ))}
         </SelectGroup>
       </SelectContent>
     </Select>
