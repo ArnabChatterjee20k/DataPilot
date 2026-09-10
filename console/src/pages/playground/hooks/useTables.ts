@@ -21,6 +21,7 @@ export function useTables(queries: TableQueryParams[]) {
   return useQueries({
     queries: queries.map(({ connectionId, schemaName }) => ({
       queryKey: tableKeys.table(connectionId, schemaName),
+      retry: false,
       queryFn: async (): Promise<Table[]> => {
         const response = await getTables({
           path: { connection_id: connectionId },
