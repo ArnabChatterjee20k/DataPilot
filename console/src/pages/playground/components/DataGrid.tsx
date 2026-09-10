@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   ChevronDown,
   ChevronUp,
@@ -29,12 +30,17 @@ import {
   type FormattedCell,
 } from "@/lib/format";
 import { distinctCounts } from "@/lib/columns";
+import { NO_CHANGES, type RowChanges } from "@/lib/changes";
 import { rowIdentity, type Filter } from "@/lib/sql";
 import type { Column, Row } from "../store/store";
 import { ColumnTypeBadge, CopyButton, EmptyState, useCopy } from "./primitives";
 
 const SELECT_COLUMN_WIDTH = 64;
 const MIN_COLUMN_WIDTH = 72;
+/** Starting guess for a row's height; measured per row once rendered. */
+const ESTIMATED_ROW_HEIGHT = 33;
+/** Rows above this are windowed rather than all mounted. */
+const VIRTUALISE_ABOVE = 60;
 
 export interface DataGridProps {
   columns: Column[];
@@ -48,6 +54,7 @@ export interface DataGridProps {
   selectedRows: Set<string>;
   onSelectionChange?: (next: Set<string>) => void;
   onOpenRow?: (row: Row, identity: string) => void;
+  changes?: RowChanges;
   emptyTitle?: string;
   emptyDescription?: string;
 }
@@ -64,6 +71,7 @@ export function DataGrid({
   selectedRows,
   onSelectionChange,
   onOpenRow,
+  changes = NO_CHANGES,
   emptyTitle = "0 rows returned",
   emptyDescription = "The query ran successfully but matched no rows.",
 }: DataGridProps) {
@@ -124,6 +132,28 @@ export function DataGrid({
   );
 
   const distinct = useMemo(() => distinctCounts(columns, rows), [columns, rows]);
+
+  const isVirtual = rows.length > VIRTUALISE_ABOVE;
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ESTIMATED_ROW_HEIGHT,
+    overscan: 16,
+    enabled: isVirtual,
+  });
+
+  const virtualRows = virtualizer.getVirtualItems();
+  // spacer rows stand in for what is not mounted, so the scrollbar and the
+  // sticky header behave as if every row were present
+  const paddingTop = isVirtual && virtualRows.length ? virtualRows[0].start : 0;
+  const paddingBottom =
+    isVirtual && virtualRows.length
+      ? virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+      : 0;
+
+  const visible = isVirtual
+    ? virtualRows.map((item) => ({ row: rows[item.index], index: item.index, item }))
+    : rows.map((row, index) => ({ row, index, item: null }));
 
   const allSelected = rows.length > 0 && identities.every((id) => selectedRows.has(id));
   const someSelected = !allSelected && identities.some((id) => selectedRows.has(id));
@@ -204,10 +234,11 @@ export function DataGrid({
 
   useEffect(() => {
     if (!focus) return;
+    if (isVirtual) virtualizer.scrollToIndex(focus.row, { align: "auto" });
     scrollRef.current
       ?.querySelector(`[data-cell="${focus.row}:${focus.column}"]`)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [focus]);
+  }, [focus, isVirtual, virtualizer]);
 
   useEffect(() => {
     setFocus(null);
@@ -361,9 +392,18 @@ export function DataGrid({
               </td>
             </tr>
           ) : (
-            rows.map((row, rowIndex) => {
+            <>
+              {paddingTop > 0 && (
+                <tr aria-hidden>
+                  <td colSpan={columns.length + 2} style={{ height: paddingTop }} />
+                </tr>
+              )}
+              {visible.map(({ row, index: rowIndex, item }) => {
               const identity = identities[rowIndex];
               const isSelected = selectedRows.has(identity);
+              const isChanged = changes.changed.has(identity);
+              const isAdded = changes.added.has(identity);
+              const isRecent = changes.recent.has(identity);
               const pinnedBackground = isSelected
                 ? "bg-[color-mix(in_oklch,var(--primary)_10%,var(--background))]"
                 : "bg-background group-hover/row:bg-[color-mix(in_oklch,var(--muted)_40%,var(--background))]";
@@ -371,10 +411,16 @@ export function DataGrid({
               return (
                 <tr
                   key={identity}
+                  data-index={item?.index}
+                  ref={item ? virtualizer.measureElement : undefined}
+                  data-changed={isChanged || isAdded ? "true" : undefined}
+                  data-recent={isRecent ? "true" : undefined}
                   className={cn(
                     "group/row transition-colors",
                     isSelected ? "bg-primary/10" : "hover:bg-muted/40",
-                    focus?.row === rowIndex && "bg-muted/50"
+                    focus?.row === rowIndex && "bg-muted/50",
+                    isAdded && "bg-emerald-500/5",
+                    isChanged && !isAdded && "bg-amber-500/5"
                   )}
                   onDoubleClick={() => onOpenRow?.(row, identity)}
                 >
@@ -383,8 +429,31 @@ export function DataGrid({
                       "sticky left-0 z-10 border-b border-r px-3 py-1.5",
                       pinnedBackground
                     )}
+                    style={{ position: "sticky" }}
                   >
                     <div className="flex items-center gap-0.5">
+                      <span
+                        aria-hidden
+                        title={
+                          isAdded
+                            ? "New since the last load"
+                            : isChanged
+                              ? "Changed since the last load"
+                              : isRecent
+                                ? "Updated in the last 24 hours"
+                                : undefined
+                        }
+                        className={cn(
+                          "absolute left-0 top-0 h-full w-0.5",
+                          isAdded
+                            ? "bg-emerald-500"
+                            : isChanged
+                              ? "bg-amber-500"
+                              : isRecent
+                                ? "bg-sky-500/60"
+                                : "bg-transparent"
+                        )}
+                      />
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => toggleRow(identity)}
@@ -466,7 +535,13 @@ export function DataGrid({
                   <td className="border-b" aria-hidden />
                 </tr>
               );
-            })
+              })}
+              {paddingBottom > 0 && (
+                <tr aria-hidden>
+                  <td colSpan={columns.length + 2} style={{ height: paddingBottom }} />
+                </tr>
+              )}
+            </>
           )}
         </tbody>
       </table>

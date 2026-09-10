@@ -195,19 +195,30 @@ export const KIND_CLASS: Record<ColumnKind, string> = {
   binary: "text-rose-400",
 };
 
-/** Width in characters a column needs, sampled from the first rows. */
+/** Space the header spends on the drag grip, sort arrow and options chevron. */
+const HEADER_CHROME = 80;
+const CELL_PADDING = 34;
+const MIN_WIDTH = 104;
+const MAX_WIDTH = 420;
+
+/** Width a column needs, from its header and the first rows of data. */
 export function estimateColumnWidth(
   column: Column,
   rows: Record<string, unknown>[],
   sample = 30
 ): number {
-  let widest = column.name.length + 4;
+  const characterWidth = column.monospace ? 8.6 : 7.9;
+
+  // the header carries controls as well as the name, so it is measured
+  // separately - otherwise a short name like "total" gets clipped by them
+  let width = column.name.length * 7.4 + HEADER_CHROME;
+
   for (const row of rows.slice(0, sample)) {
     const value = row[column.name];
     if (value === null || value === undefined) continue;
-    const length = stringify(value).length;
-    if (length > widest) widest = length;
+    const cellWidth = stringify(value).length * characterWidth + CELL_PADDING;
+    if (cellWidth > width) width = cellWidth;
   }
-  const characterWidth = column.monospace ? 8.2 : 7.3;
-  return Math.round(Math.min(Math.max(widest * characterWidth + 32, 96), 420));
+
+  return Math.round(Math.min(Math.max(width, MIN_WIDTH), MAX_WIDTH));
 }
