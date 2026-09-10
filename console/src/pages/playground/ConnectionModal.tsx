@@ -277,8 +277,8 @@ export function ConnectionModal({
           <DialogTitle>{isEditMode ? "Edit connection" : "New connection"}</DialogTitle>
           <DialogDescription>
             {isEditMode
-              ? "Update how DataPilot reaches this database."
-              : "Point DataPilot at a database. Connections are read-only until you say otherwise."}
+              ? "Update how DataPilot reaches this connection."
+              : "Point DataPilot at a database or an API. Database connections are read-only until you say otherwise."}
           </DialogDescription>
         </DialogHeader>
 
@@ -297,7 +297,7 @@ export function ConnectionModal({
             )}
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Database</Label>
+              <Label className="text-xs">What are you connecting to?</Label>
               <div className="grid grid-cols-2 gap-2">
                 {SOURCES.map((option) => (
                   <button
