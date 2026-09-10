@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "generate:sdk": "openapi-ts",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -40,6 +43,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@hey-api/openapi-ts": "^0.99.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.9.2",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
