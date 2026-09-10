@@ -287,6 +287,48 @@ test.describe("tabs", () => {
   });
 });
 
+test.describe("connection modal", () => {
+  test("offers every supported backend", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+
+    await expect(page.getByRole("button", { name: "PostgreSQL" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "MySQL" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "SQLite file" })).toBeVisible();
+  });
+
+  test("asks for a URI for a server backend and a file for SQLite", async ({
+    page,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+
+    await page.getByRole("button", { name: "MySQL" }).click();
+    await expect(page.getByLabel("Connection URI")).toHaveAttribute(
+      "placeholder",
+      /^mysql:\/\//
+    );
+
+    await page.getByRole("button", { name: "PostgreSQL" }).click();
+    await expect(page.getByLabel("Connection URI")).toHaveAttribute(
+      "placeholder",
+      /^postgresql:\/\//
+    );
+
+    await page.getByRole("button", { name: "SQLite file" }).click();
+    await expect(page.getByLabel("Connection URI")).toHaveCount(0);
+    await expect(page.getByText("SQLite file", { exact: true }).first()).toBeVisible();
+  });
+
+  test("defaults a new connection to read-only", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "MySQL" }).click();
+
+    await expect(page.getByRole("checkbox", { name: /Read-only/ })).toBeChecked();
+  });
+});
+
 test.describe("empty states", () => {
   test("says so when there are no connections", async ({ page, request }) => {
     await deleteAllConnections(request);

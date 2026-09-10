@@ -16,6 +16,11 @@ class BaseConnectionTestMixin:
     @abstractmethod
     def connection_uri(self) -> str: ...
 
+    @property
+    def has_schemas(self) -> bool:
+        """Backends with a namespace above the table."""
+        return self.source in ("postgres", "mysql")
+
     def _payload(self, **overrides) -> dict:
         payload = {
             "source": self.source,
@@ -44,7 +49,7 @@ class BaseConnectionTestMixin:
         assert data["environment"] == "local"
         assert data["role"] == "primary"
         assert data["read_only"] is True
-        assert data["supports_schemas"] == (self.source == "postgres")
+        assert data["supports_schemas"] is self.has_schemas
 
     def test_create_connection_with_metadata(self, client: httpx.Client):
         data = self._create(

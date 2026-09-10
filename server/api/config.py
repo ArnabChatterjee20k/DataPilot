@@ -1,4 +1,5 @@
 from enum import Enum
+from laserorm.storage.mysql import MySQL
 from laserorm.storage.postgresql import PostgreSQL
 from laserorm.storage.sqlite import SQLite
 from dotenv import load_dotenv
@@ -57,6 +58,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ADAPTERS = {
     SourceConfig.POSTGRES: PostgreSQL,
     SourceConfig.SQLITE: SQLite,
+    SourceConfig.MYSQL: MySQL,
 }
 
 
@@ -70,8 +72,12 @@ def get_adapter(source: str):
     return ADAPTERS.get(source_enum)
 
 
+#: Backends with a namespace above the table.
+SCHEMA_BACKENDS = {SourceConfig.POSTGRES, SourceConfig.MYSQL}
+
+
 def supports_schemas(source: str) -> bool:
-    return SourceConfig(source) is SourceConfig.POSTGRES
+    return SourceConfig(source) in SCHEMA_BACKENDS
 
 
 __all__ = [

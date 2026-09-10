@@ -182,9 +182,6 @@ That’s the bar.
 
 - **Virtualised rows.** The grid renders every row of a page. 500 rows is fine;
   a larger page size would not be.
-- **MySQL.** `SourceConfig` names it and the SQL builder already quotes for it,
-  but there is no adapter in LaserORM, so `get_adapter` returns `None` and the
-  API answers 400.
 - **Row-level change highlighting**, per Change Awareness above.
 - **Filter presets** — the filter stack is per tab and persists, but cannot be
   named and recalled.

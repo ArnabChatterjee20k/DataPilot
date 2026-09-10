@@ -77,6 +77,8 @@ def explain_statement(source: str, query: str) -> str:
     statement = (query or "").strip().rstrip(";")
     if source == "postgres":
         return f"EXPLAIN (FORMAT JSON) {statement}"
+    if source == "mysql":
+        return f"EXPLAIN FORMAT=JSON {statement}"
     return f"EXPLAIN QUERY PLAN {statement}"
 
 
@@ -95,6 +97,8 @@ def speed_from_cost(cost: Optional[float], rows: Optional[int]) -> Optional[str]
 def parse(source: str, rows: list[dict]) -> QueryInsight:
     if source == "postgres":
         return _parse_postgres(rows)
+    if source == "mysql":
+        return _parse_mysql(rows)
     return _parse_sqlite(rows)
 
 
@@ -136,6 +140,75 @@ def _parse_postgres(rows: list[dict]) -> QueryInsight:
             walk(child)
 
     walk(root)
+    _finalise(insight)
+    return insight
+
+
+#: MySQL access types that read rows without consulting an index.
+MYSQL_SEQUENTIAL_ACCESS = {"ALL", "unknown"}
+
+
+def _parse_mysql(rows: list[dict]) -> QueryInsight:
+    """MySQL nests its plan under query_block, with tables appearing inside
+    nested_loop, ordering_operation, grouping_operation and materialised
+    subqueries - so every "table" entry is collected by walking the tree."""
+    if not rows:
+        return QueryInsight(supported=False)
+
+    payload = next(iter(rows[0].values()))
+    if isinstance(payload, (bytes, bytearray)):
+        payload = payload.decode("utf-8")
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    if not isinstance(payload, dict):
+        return QueryInsight(supported=False)
+
+    block = payload.get("query_block", {})
+    insight = QueryInsight(plan=[payload])
+
+    cost = (block.get("cost_info") or {}).get("query_cost")
+    if cost is not None:
+        try:
+            insight.estimated_cost = float(cost)
+        except (TypeError, ValueError):
+            insight.estimated_cost = None
+
+    def walk(node):
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+            return
+        if not isinstance(node, dict):
+            return
+
+        table = node.get("table")
+        if isinstance(table, dict):
+            access = table.get("access_type") or "unknown"
+            insight.scans.append(
+                Scan(
+                    table=table.get("table_name"),
+                    type=(
+                        "sequential"
+                        if access in MYSQL_SEQUENTIAL_ACCESS
+                        else "index"
+                    ),
+                    index=table.get("key"),
+                    detail=access,
+                    estimated_rows=table.get("rows_examined_per_scan"),
+                )
+            )
+
+        for key, value in node.items():
+            if key != "table":
+                walk(value)
+
+    walk(block)
+
+    if insight.scans:
+        insight.estimated_rows = max(
+            (scan.estimated_rows or 0) for scan in insight.scans
+        )
+
     _finalise(insight)
     return insight
 

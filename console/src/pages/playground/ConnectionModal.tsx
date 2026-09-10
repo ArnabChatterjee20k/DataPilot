@@ -32,6 +32,21 @@ import { useCreateConnection, useUpdateConnection } from "./hooks";
 
 const SQLITE_SUFFIXES = [".db", ".sqlite", ".sqlite3", ".db3"];
 
+const SOURCES = [
+  { value: "postgres", label: "PostgreSQL", icon: Database },
+  { value: "mysql", label: "MySQL", icon: Database },
+  { value: "sqlite", label: "SQLite file", icon: FileUp },
+] as const satisfies readonly {
+  value: SourceConfig;
+  label: string;
+  icon: typeof Database;
+}[];
+
+const URI_PLACEHOLDER: Partial<Record<SourceConfig, string>> = {
+  postgres: "postgresql://user:password@host:5432/database",
+  mysql: "mysql://user:password@host:3306/database",
+};
+
 const ENVIRONMENTS = [
   { value: "local", label: "Local" },
   { value: "staging", label: "Staging" },
@@ -225,27 +240,23 @@ export function ConnectionModal({
 
             <div className="space-y-1.5">
               <Label className="text-xs">Database</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {(["postgres", "sqlite"] as const).map((option) => (
+              <div className="grid grid-cols-3 gap-2">
+                {SOURCES.map((option) => (
                   <button
-                    key={option}
+                    key={option.value}
                     type="button"
-                    onClick={() => setSource(option)}
+                    onClick={() => setSource(option.value)}
                     className={cn(
-                      "flex items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors",
-                      source === option
+                      "flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-xs transition-colors",
+                      source === option.value
                         ? "border-primary bg-primary/10"
                         : "hover:bg-muted/60"
                     )}
                   >
-                    {option === "sqlite" ? (
-                      <FileUp className="h-4 w-4" />
-                    ) : (
-                      <Database className="h-4 w-4" />
-                    )}
-                    {option === "sqlite" ? "SQLite file" : "PostgreSQL"}
-                    {source === option && (
-                      <CheckCircle2 className="ml-auto h-3.5 w-3.5 text-primary" />
+                    <option.icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{option.label}</span>
+                    {source === option.value && (
+                      <CheckCircle2 className="ml-auto h-3.5 w-3.5 shrink-0 text-primary" />
                     )}
                   </button>
                 ))}
@@ -296,7 +307,7 @@ export function ConnectionModal({
                       id="connection-uri"
                       value={connectionUri}
                       onChange={(event) => setConnectionUri(event.target.value)}
-                      placeholder="postgresql://user:password@host:5432/database"
+                      placeholder={URI_PLACEHOLDER[source] ?? ""}
                       className="h-8 font-mono text-xs"
                     />
                   </div>
