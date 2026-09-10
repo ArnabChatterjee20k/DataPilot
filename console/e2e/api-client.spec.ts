@@ -389,9 +389,8 @@ test.describe("where the request goes", () => {
     await page.getByRole("button", { name: "New request" }).click();
 
     await page.getByLabel("Request path").fill(`${UPSTREAM_URL}/teapot`);
-    await expect(page.getByTestId("request-target")).toContainText(
-      "the connection's base is not used"
-    );
+    await expect(page.getByTestId("request-target")).toHaveText(`${UPSTREAM_URL}/teapot`);
+    await expect(page.getByText("the connection's base is not used")).toBeVisible();
 
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("status")).toContainText("418");
@@ -554,5 +553,73 @@ test.describe("variables", () => {
     await expect(page.getByLabel("Response body", { exact: true })).toContainText(
       "supersecrettoken"
     );
+  });
+});
+
+test.describe("the URL and the params agree", () => {
+  test("a param row shows up in the URL the request will go to", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+    await page.getByLabel("Request path").fill("/echo");
+
+    await page.getByLabel("Query parameter key 1").fill("userId");
+    await page.getByLabel("Query parameter value 1").fill("1");
+
+    await expect(page.getByTestId("request-target")).toHaveText(
+      `${UPSTREAM_URL}/echo?userId=1`
+    );
+
+    // and a row switched off leaves the URL, because it leaves the request
+    await page.getByRole("checkbox", { name: "Enable userId" }).click();
+    await expect(page.getByTestId("request-target")).toHaveText(`${UPSTREAM_URL}/echo`);
+  });
+
+  test("a query string typed into the URL becomes rows", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await page.getByLabel("Request path").fill("/echo?page=2&q=ada");
+    // leaving the field is what folds it in, so it does not fight the typing
+    await page.getByLabel("Request name").click();
+
+    await expect(page.getByLabel("Request path")).toHaveValue("/echo");
+    await expect(page.getByLabel("Query parameter key 1")).toHaveValue("page");
+    await expect(page.getByLabel("Query parameter value 1")).toHaveValue("2");
+    await expect(page.getByLabel("Query parameter key 2")).toHaveValue("q");
+    await expect(page.getByLabel("Query parameter value 2")).toHaveValue("ada");
+  });
+
+  test("the params that are shown are the ones that are sent", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await page.getByLabel("Request path").fill("/echo?page=2");
+    // leaving the field folds the query string into row 1
+    await page.getByLabel("Request name").click();
+    await expect(page.getByLabel("Query parameter key 1")).toHaveValue("page");
+
+    await page.getByLabel("Query parameter key 2").fill("q");
+    await page.getByLabel("Query parameter value 2").fill("ada");
+
+    await expect(page.getByTestId("request-target")).toHaveText(
+      `${UPSTREAM_URL}/echo?page=2&q=ada`
+    );
+
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    const body = page.getByLabel("Response body", { exact: true });
+    // page=2 was folded out of the path into a row, so it is sent once
+    await expect(body).toContainText('"page": "2"');
+    await expect(body).toContainText('"q": "ada"');
+    await expect(body).toContainText('"path": "/echo"');
   });
 });
