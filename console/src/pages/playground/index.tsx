@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { Plus, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Command as CommandIcon, Plus, X } from "lucide-react";
 
 import {
   ResizableHandle,
@@ -11,26 +11,74 @@ import { client } from "@/lib/sdk/client.gen";
 import { CodeArea } from "./code-area";
 import DatabaseSidebar from "./DatabaseSidebar";
 import { ResultView } from "./components/ResultView";
+import {
+  CommandPalette,
+  buildTableCommands,
+  type Command,
+} from "./components/CommandPalette";
 import { useConnections } from "./hooks";
 import { useTabData } from "./hooks/useTabData";
 import { useTabsStore, type Tab } from "./store/store";
+import { useAllTables } from "./hooks/useAllTables";
+
+function isTypingInto(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  if (!element) return false;
+  return (
+    element.isContentEditable ||
+    ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)
+  );
+}
 
 export default function Playground() {
-  const { tabs, activeTabId, setActiveTabId, addQueryTab, closeTab } = useTabsStore();
+  const { tabs, activeTabId, setActiveTabId, addQueryTab, closeTab, openTableTab } =
+    useTabsStore();
   const { data: connections = [] } = useConnections();
+  const tablesByConnection = useAllTables(connections);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
+  const commands = useMemo<Command[]>(
+    () => [
+      ...buildTableCommands(connections, tablesByConnection, openTableTab),
+      {
+        id: "action:new-query",
+        label: "New query",
+        group: "Actions",
+        icon: Plus,
+        run: () => addQueryTab(activeTab?.connectionId),
+      },
+    ],
+    [connections, tablesByConnection, openTableTab, addQueryTab, activeTab?.connectionId]
+  );
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
+      const key = event.key.toLowerCase();
+      const modified = event.metaKey || event.ctrlKey;
+
+      if (modified && key === "k") {
+        event.preventDefault();
+        setIsPaletteOpen((open) => !open);
+        return;
+      }
+      if (modified && key === "t") {
         event.preventDefault();
         addQueryTab(activeTab?.connectionId);
+        return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w") {
-        if (activeTab && !activeTab.isNew) {
+      if (modified && key === "w" && activeTab && !activeTab.isNew) {
+        event.preventDefault();
+        closeTab(activeTab.id);
+        return;
+      }
+      // "/" focuses search, but only when it is not already being typed into
+      if (event.key === "/" && !modified && !isTypingInto(event.target)) {
+        const search = document.querySelector<HTMLInputElement>('input[type="search"]:not([disabled])');
+        if (search) {
           event.preventDefault();
-          closeTab(activeTab.id);
+          search.focus();
         }
       }
     };
@@ -55,6 +103,7 @@ export default function Playground() {
               onSelect={setActiveTabId}
               onNew={() => addQueryTab(activeTab?.connectionId)}
               onClose={closeTab}
+              onOpenPalette={() => setIsPaletteOpen(true)}
             />
 
             {activeTab && !activeTab.isNew ? (
@@ -79,6 +128,12 @@ export default function Playground() {
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <CommandPalette
+        open={isPaletteOpen}
+        onOpenChange={setIsPaletteOpen}
+        commands={commands}
+      />
     </div>
   );
 }
@@ -89,12 +144,14 @@ function TabStrip({
   onSelect,
   onNew,
   onClose,
+  onOpenPalette,
 }: {
   tabs: Tab[];
   activeTabId: string;
   onSelect: (id: string) => void;
   onNew: () => void;
   onClose: (id: string) => void;
+  onOpenPalette: () => void;
 }) {
   return (
     <div
@@ -145,6 +202,17 @@ function TabStrip({
         className="ml-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
       >
         <Plus className="h-4 w-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onOpenPalette}
+        title="Command palette (Ctrl/Cmd + K)"
+        aria-label="Command palette"
+        className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <CommandIcon className="h-3 w-3" />
+        <span className="hidden sm:inline">K</span>
       </button>
     </div>
   );

@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BarChart3,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Columns3,
   Database,
+  Columns2,
   Download,
+  Gauge,
   Plus,
   RefreshCw,
   SearchIcon,
+  Table2,
   Trash2,
 } from "lucide-react";
 
@@ -23,7 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { refineColumns } from "@/lib/columns";
+import { applyColumnOrder, moveColumn, refineColumns } from "@/lib/columns";
 import { formatCount } from "@/lib/format";
 import { buildDelete, primaryKeyOf, rowIdentity, type Filter } from "@/lib/sql";
 import type {
@@ -35,10 +39,14 @@ import type {
 } from "../store/store";
 import { ROWS_LIMITS, useTabsStore } from "../store/store";
 import { DataGrid } from "./DataGrid";
+import { PlanPanel } from "./PlanPanel";
+import { RowDiffPanel } from "./RowDiffPanel";
+import { StatsPanel } from "./StatsPanel";
+import { useEntityStats, useQueryPlan } from "../hooks/useInsights";
 import { FilterBar } from "./FilterBar";
 import { QueryStatusBar } from "./QueryStatusBar";
 import { RowDetailPanel } from "./RowDetailPanel";
-import { EmptyState, GridSkeleton } from "./primitives";
+import { CopyButton, EmptyState, GridSkeleton } from "./primitives";
 import { RowEditorDialog } from "./RowEditorDialog";
 
 interface ResultViewProps {
@@ -67,8 +75,16 @@ export function ResultView({
   onExport,
   onWrite,
 }: ResultViewProps) {
-  const { updateTab, addFilter, removeFilter, clearFilters, toggleColumn, showAllColumns, toggleSort } =
-    useTabsStore();
+  const {
+    updateTab,
+    addFilter,
+    removeFilter,
+    clearFilters,
+    toggleColumn,
+    showAllColumns,
+    reorderColumns,
+    toggleSort,
+  } = useTabsStore();
 
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<Row | null>(null);
@@ -76,17 +92,22 @@ export function ResultView({
   const [isInserting, setIsInserting] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   const [searchDraft, setSearchDraft] = useState(tab.search);
+  const [panel, setPanel] = useState<"data" | "stats" | "plan">("data");
+  const [isComparing, setIsComparing] = useState(false);
 
   const isTableTab = tab.type === "table" && !!tab.tableName;
   const rows = result?.rows ?? [];
 
   const allColumns = useMemo(
     () =>
-      refineColumns(
-        result?.columns?.length ? result.columns : (tableColumns ?? []),
-        rows
+      applyColumnOrder(
+        refineColumns(
+          result?.columns?.length ? result.columns : (tableColumns ?? []),
+          rows
+        ),
+        tab.columnOrder
       ),
-    [result?.columns, tableColumns, rows]
+    [result?.columns, tableColumns, rows, tab.columnOrder]
   );
 
   const columns = useMemo(() => {
@@ -123,6 +144,19 @@ export function ResultView({
   const handleFilter = useCallback(
     (filter: Filter) => addFilter(tab.id, filter),
     [addFilter, tab.id]
+  );
+
+  const statsQuery = useEntityStats(
+    tab.connectionId,
+    tab.tableName,
+    tab.schemaName,
+    panel === "stats" && isTableTab
+  );
+  const planQuery = useQueryPlan(
+    tab.connectionId,
+    tab.tableName,
+    result?.query ?? tab.content,
+    panel === "plan"
   );
 
   const page = Math.floor(tab.rowsOffset / Math.max(tab.rowsLimit, 1)) + 1;
@@ -195,6 +229,33 @@ export function ResultView({
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <div className="mr-1 flex items-center rounded-md border p-0.5">
+            {(
+              [
+                ["data", "Data", Table2],
+                ["stats", "Stats", BarChart3],
+                ["plan", "Plan", Gauge],
+              ] as const
+            ).map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPanel(value)}
+                aria-pressed={panel === value}
+                title={label}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors",
+                  panel === value
+                    ? "bg-muted font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+
           <span className="mr-1 hidden text-xs text-muted-foreground sm:inline">
             {totalRows !== null && totalRows !== undefined
               ? `${formatCount(totalRows)} rows`
@@ -350,7 +411,7 @@ export function ResultView({
       <QueryStatusBar result={result} isRunning={isLoading && !result} />
 
       {selectedRows.size > 0 && (
-        <div className="flex items-center gap-3 border-b bg-primary/5 px-4 py-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-4 py-1.5 text-xs">
           <span>
             {selectedRows.size} row{selectedRows.size === 1 ? "" : "s"} selected
           </span>
@@ -362,6 +423,31 @@ export function ResultView({
           >
             Clear
           </Button>
+          {selectedRows.size === 2 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 gap-1.5 px-2 text-xs"
+              onClick={() => setIsComparing(true)}
+            >
+              <Columns2 className="h-3.5 w-3.5" />
+              Compare
+            </Button>
+          )}
+          <CopyButton
+            value={JSON.stringify(selectedRowObjects, null, 2)}
+            label="Copy selected rows as JSON"
+            className="h-6 w-6"
+          />
+          {primaryKey && (
+            <CopyButton
+              value={selectedRowObjects
+                .map((row) => String(row[primaryKey.name]))
+                .join(String.fromCharCode(10))}
+              label={`Copy ${primaryKey.name} values`}
+              className="h-6 w-6"
+            />
+          )}
           {isTableTab && onWrite && primaryKey && (
             <Button
               size="sm"
@@ -378,7 +464,19 @@ export function ResultView({
       )}
 
       <div className="min-h-0 flex-1">
-        {isLoading && !result ? (
+        {panel === "stats" ? (
+          <StatsPanel
+            stats={statsQuery.data}
+            isLoading={statsQuery.isLoading}
+            error={statsQuery.error}
+          />
+        ) : panel === "plan" ? (
+          <PlanPanel
+            plan={planQuery.data}
+            isLoading={planQuery.isLoading}
+            error={planQuery.error}
+          />
+        ) : isLoading && !result ? (
           <GridSkeleton columns={Math.max(allColumns.length || 6, 4)} />
         ) : !result ? (
           <EmptyState
@@ -409,6 +507,16 @@ export function ResultView({
             onSort={isTableTab ? (column) => toggleSort(tab.id, column) : undefined}
             onFilter={isTableTab ? handleFilter : undefined}
             onHideColumn={(column) => toggleColumn(tab.id, column)}
+            onReorder={(from, to) =>
+              reorderColumns(
+                tab.id,
+                moveColumn(
+                  allColumns.map((column) => column.name),
+                  from,
+                  to
+                )
+              )
+            }
             selectedRows={selectedRows}
             onSelectionChange={setSelectedRows}
             onOpenRow={(row) => setDetailRow(row)}
@@ -423,6 +531,17 @@ export function ResultView({
           />
         )}
       </div>
+
+      <RowDiffPanel
+        rows={
+          selectedRowObjects.length === 2
+            ? [selectedRowObjects[0], selectedRowObjects[1]]
+            : null
+        }
+        columns={allColumns}
+        open={isComparing && selectedRowObjects.length === 2}
+        onOpenChange={(open) => !open && setIsComparing(false)}
+      />
 
       <RowDetailPanel
         row={detailRow}

@@ -61,6 +61,11 @@ SEED_ROWS = (
         "INSERT INTO accounts (username, password_hash, api_token) VALUES (%s, %s, %s)",
         ("bob", "hash-2", "token-2"),
     ),
+    # a repeated username so the column is not entirely unique
+    (
+        "INSERT INTO accounts (username, password_hash, api_token) VALUES (%s, %s, %s)",
+        ("alice", "hash-3", None),
+    ),
     ("INSERT INTO nullable (note, category) VALUES (%s, %s)", ("first", "a")),
     ("INSERT INTO nullable (note, category) VALUES (%s, %s)", (None, "a")),
     ("INSERT INTO nullable (note, category) VALUES (%s, %s)", (None, "a")),

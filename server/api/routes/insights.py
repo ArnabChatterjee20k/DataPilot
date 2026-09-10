@@ -143,6 +143,10 @@ async def get_entity_stats(
             for column, entry in zip(columns, stats):
                 if column.kind in UNGROUPABLE_KINDS or column.sensitive:
                     continue
+                # a primary key, or any column where every value is unique, has
+                # no "most common" value - ranking it just lists arbitrary rows
+                if column.primary_key or entry.distinct_count == scanned:
+                    continue
                 name = quote(column.name)
                 ranked = await session.execute(
                     f"SELECT {name} AS value, COUNT(*) AS occurrences FROM {source} "

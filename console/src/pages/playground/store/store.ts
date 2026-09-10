@@ -116,6 +116,7 @@ interface TabStore {
   clearFilters: (tabId: string) => void;
   toggleColumn: (tabId: string, column: string) => void;
   showAllColumns: (tabId: string) => void;
+  reorderColumns: (tabId: string, order: string[]) => void;
   toggleSort: (tabId: string, column: string) => void;
 }
 
@@ -247,6 +248,13 @@ export const useTabsStore = create<TabStore>()(
         set((state) => ({
           tabs: state.tabs.map((tab) =>
             tab.id === tabId ? { ...tab, hiddenColumns: [] } : tab
+          ),
+        })),
+
+      reorderColumns: (tabId, order) =>
+        set((state) => ({
+          tabs: state.tabs.map((tab) =>
+            tab.id === tabId ? { ...tab, columnOrder: order } : tab
           ),
         })),
 

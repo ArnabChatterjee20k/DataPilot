@@ -134,6 +134,17 @@ class BaseInsightTestMixin:
         assert top[0]["value"] == "a"
         assert top[0]["count"] == 3
 
+    def test_stats_skip_top_values_for_unique_columns(self, client: httpx.Client):
+        connection_uid = self._create_connection(client)
+
+        response = client.get(f"/connection/{connection_uid}/entities/users/stats")
+        assert response.status_code == 200
+        by_name = {column["name"]: column for column in response.json()["columns"]}
+
+        # every id and every name is unique here, so there is no "top" value
+        assert by_name["id"]["top_values"] == []
+        assert by_name["name"]["top_values"] == []
+
     def test_stats_skip_sensitive_top_values(self, client: httpx.Client):
         connection_uid = self._create_connection(client)
 

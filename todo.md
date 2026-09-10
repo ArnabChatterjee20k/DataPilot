@@ -143,6 +143,14 @@
 
 ---
 
+### API client
+A very similar to postman. It will be api client as well option with option to add url, query string ,headers,etc in a kv format as well.
+Think about more here
+Option for http and ws clients
+
+Having option to chain requests in a flow like sequence, parallel, branching,etc in a visual way while passing data among each other
+option for copying as curl and js fetch and js ws
+
 ## ❌ OUT OF SCOPE (Do NOT Build)
 > These dilute the product and create maintenance debt.
 

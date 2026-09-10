@@ -111,3 +111,32 @@ export function distinctCounts(
   }
   return counts;
 }
+
+/**
+ * Apply a saved column order, keeping columns the order does not mention (a
+ * table can gain a column between sessions) in their natural position.
+ */
+export function applyColumnOrder(columns: Column[], order: string[]): Column[] {
+  if (!order.length) return columns;
+
+  const byName = new Map(columns.map((column) => [column.name, column]));
+  const ordered: Column[] = [];
+
+  for (const name of order) {
+    const column = byName.get(name);
+    if (column) {
+      ordered.push(column);
+      byName.delete(name);
+    }
+  }
+  return [...ordered, ...columns.filter((column) => byName.has(column.name))];
+}
+
+/** Move `from` to sit where `to` currently is. */
+export function moveColumn(names: string[], from: string, to: string): string[] {
+  const next = names.filter((name) => name !== from);
+  const target = next.indexOf(to);
+  if (target === -1) return names;
+  next.splice(target, 0, from);
+  return next;
+}

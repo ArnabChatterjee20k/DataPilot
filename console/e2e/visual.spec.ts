@@ -78,5 +78,32 @@ test.describe("visual sweep", () => {
     await page.getByRole("button", { name: "Run" }).click();
     await expect(page.getByText("0 rows returned")).toBeVisible();
     await shot("09-zero-rows");
+
+    await openTable(page, connection.name, "users");
+    await waitForRows(page);
+
+    await page.getByRole("button", { name: "Stats" }).click();
+    await expect(page.getByRole("region", { name: "Column statistics" })).toBeVisible();
+    await shot("10-stats-panel");
+
+    await page.getByRole("button", { name: "Plan" }).click();
+    await expect(page.getByRole("region", { name: "Query plan" })).toBeVisible();
+    await shot("11-plan-panel");
+
+    await page.getByRole("button", { name: "Data" }).click();
+    await page.getByRole("checkbox", { name: "Select row 1" }).click();
+    await page.getByRole("checkbox", { name: "Select row 2" }).click();
+    await page.getByRole("button", { name: "Compare" }).click();
+    await expect(page.getByRole("heading", { name: "Compare rows" })).toBeVisible();
+    await page.waitForTimeout(400);
+    await shot("12-row-compare");
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(
+      page.getByRole("textbox", { name: "Command palette search" })
+    ).toBeVisible();
+    await page.waitForTimeout(400);
+    await shot("13-command-palette");
   });
 });

@@ -54,9 +54,11 @@ export async function deleteAllConnections(request: APIRequestContext) {
   }
 }
 
-/** Start from a clean slate: no persisted tabs from an earlier test. */
+/**
+ * Each test gets a fresh browser context, so localStorage already starts empty
+ * - clearing it on every navigation would also wipe state a reload should keep.
+ */
 export async function openPlayground(page: Page) {
-  await page.addInitScript(() => window.localStorage.clear());
   await page.goto("/playground");
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
 }
