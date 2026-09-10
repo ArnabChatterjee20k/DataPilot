@@ -200,9 +200,11 @@ Raised while using the console. Ordered by how much they hurt.
       method, URL, headers, body and auth
 - [x] **Arbitrary URLs** — the builder shows where the request will actually
       go, and `POST /request` sends one with no connection at all
-- [ ] Request **history** — past runs, replayable
-- [ ] A **variables** editor in the console (the API stores and masks them
-      already)
+- [x] Request **history** — past runs, replayable, including the ones that
+      failed
+- [x] A **variables** editor in the console, which also fixed the round trip:
+      reading gave masks and writing took them literally, so saving would have
+      replaced each secret with its own mask
 
 ### Errors
 - [x] Audit every failure path end to end and make sure the message says what

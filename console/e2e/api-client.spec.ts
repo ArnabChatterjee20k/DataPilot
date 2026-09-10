@@ -1,6 +1,11 @@
 import { expect, test } from "./fixtures";
 
-import { API_URL, deleteAllConnections, openPlayground } from "./helpers";
+import {
+  API_URL,
+  deleteAllConnections,
+  expandConnection,
+  openPlayground,
+} from "./helpers";
 import { startUpstream, UPSTREAM_URL, type Upstream } from "./upstream";
 
 const requestTab = (page: import("@playwright/test").Page, name: string | RegExp) =>
@@ -435,5 +440,119 @@ test.describe("where the request goes", () => {
 
     await page.getByLabel("Request path").fill("/ping");
     await expect(page.getByTestId("request-target")).toHaveText(`${UPSTREAM_URL}/ping`);
+  });
+});
+
+test.describe("request history", () => {
+  test("a run is recorded and can be replayed", async ({ page, pageErrors: _errors }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await page.getByLabel("Request path").fill("/echo");
+    await page.getByLabel("Query parameter key 1").fill("page");
+    await page.getByLabel("Query parameter value 1").fill("7");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("200");
+
+    // a different request in the same tab, so replaying has to restore state
+    await page.getByLabel("Request path").fill("/teapot");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("418");
+
+    await page.getByRole("button", { name: /History/ }).click();
+    const runs = page.getByRole("button", { name: /\/echo/ });
+    await expect(runs.first()).toBeVisible();
+    await runs.first().click();
+
+    await expect(page.getByLabel("Request path")).toHaveValue("/echo");
+    await expect(page.getByLabel("Query parameter value 1")).toHaveValue("7");
+
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByLabel("Response body", { exact: true })).toContainText('"page": "7"');
+  });
+
+  test("a failed run is kept too", async ({ page, request, pageErrors: _errors }) => {
+    await request.post(`${API_URL}/connections`, {
+      data: { source: "api", name: "Nowhere", connection_uri: "http://127.0.0.1:1" },
+    });
+
+    await openPlayground(page);
+    await page.getByRole("button", { name: "Nowhere", exact: true }).click();
+    await page.getByRole("button", { name: "New request" }).click();
+    await page.getByLabel("Request path").fill("/ping");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Request failed")).toBeVisible();
+
+    await page.getByRole("button", { name: /History/ }).click();
+    await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  });
+});
+
+test.describe("variables", () => {
+  test("can be edited from the sidebar and used in a request", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page
+      .getByRole("button", { name: `Actions for ${connectionName}` })
+      .click();
+    await page.getByRole("menuitem", { name: "Variables" }).click();
+
+    await page.getByLabel("Variable name 1").fill("route");
+    await page.getByLabel("Variable value 1").fill("echo");
+    await page.getByLabel("Variable name 2").fill("api_token");
+    await page.getByLabel("Variable value 2").fill("supersecrettoken");
+    await page.getByRole("button", { name: "Save variables" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await expandConnection(page, connectionName);
+    await page.getByRole("button", { name: "New request" }).click();
+    await page.getByLabel("Request path").fill("/{{route}}");
+    await requestTab(page, /Headers/).click();
+    await page.getByLabel("Header key 1").fill("X-Token");
+    await page.getByLabel("Header value 1").fill("{{api_token}}");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    const body = page.getByLabel("Response body", { exact: true });
+    await expect(body).toContainText('"path": "/echo"');
+    await expect(body).toContainText("supersecrettoken");
+  });
+
+  test("a secret is shown masked and survives editing its neighbour", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: `Actions for ${connectionName}` }).click();
+    await page.getByRole("menuitem", { name: "Variables" }).click();
+
+    await page.getByLabel("Variable name 1").fill("api_token");
+    await page.getByLabel("Variable value 1").fill("supersecrettoken");
+    await page.getByRole("button", { name: "Save variables" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await page.getByRole("button", { name: `Actions for ${connectionName}` }).click();
+    await page.getByRole("menuitem", { name: "Variables" }).click();
+    await expect(page.getByLabel("Variable value 1")).not.toHaveValue("supersecrettoken");
+
+    // edit the row next to it and save the mask back untouched
+    await page.getByLabel("Variable name 2").fill("route");
+    await page.getByLabel("Variable value 2").fill("echo");
+    await page.getByRole("button", { name: "Save variables" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await expandConnection(page, connectionName);
+    await page.getByRole("button", { name: "New request" }).click();
+    await page.getByLabel("Request path").fill("/echo");
+    await requestTab(page, /Headers/).click();
+    await page.getByLabel("Header key 1").fill("X-Token");
+    await page.getByLabel("Header value 1").fill("{{api_token}}");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    // the real token, not its mask, reached the upstream
+    await expect(page.getByLabel("Response body", { exact: true })).toContainText(
+      "supersecrettoken"
+    );
   });
 });
