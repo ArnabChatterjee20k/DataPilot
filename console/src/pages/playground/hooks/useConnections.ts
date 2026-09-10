@@ -26,6 +26,7 @@ export function toDatabaseConnection(model: ConnectionsModel): DatabaseConnectio
     id: model.uid,
     name: model.name,
     type: model.source as SourceType,
+    baseUrl: model.source === "api" ? model.connection_uri : undefined,
     environment: model.environment ?? "local",
     role: model.role ?? "primary",
     readOnly: model.read_only ?? true,

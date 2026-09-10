@@ -1,5 +1,12 @@
-import { useMemo } from "react";
-import { Loader2, Save, SendHorizontal } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  ClipboardPaste,
+  Globe,
+  Loader2,
+  Save,
+  SendHorizontal,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { looksLikeCurl, parseCurl } from "@/lib/curl";
 import { cn } from "@/lib/utils";
 import type { DatabaseConnection, RequestDraft, Tab } from "../store/store";
 import { useTabsStore, type BodyType, type HttpMethod } from "../store/store";
@@ -50,6 +58,7 @@ function countActive(rows: { key: string; enabled?: boolean }[]): number {
 export function RequestBuilder({
   tab,
   connection,
+  connections,
   isSending,
   isSaving,
   onSend,
@@ -57,13 +66,16 @@ export function RequestBuilder({
 }: {
   tab: Tab;
   connection?: DatabaseConnection;
+  connections: DatabaseConnection[];
   isSending: boolean;
   isSaving: boolean;
   onSend: () => void;
   onSave: () => void;
 }) {
   const updateRequest = useTabsStore((state) => state.updateRequest);
+  const updateTab = useTabsStore((state) => state.updateTab);
   const request = tab.request;
+  const [pasted, setPasted] = useState<string | null>(null);
 
   const jsonError = useMemo(() => {
     if (!request || request.body_type !== "json" || !request.body.trim()) return null;
@@ -80,6 +92,19 @@ export function RequestBuilder({
   const patch = (values: Partial<RequestDraft>) => updateRequest(tab.id, values);
   const busy = isSending || isSaving;
 
+  const acceptCurl = (text: string): boolean => {
+    if (!looksLikeCurl(text)) return false;
+    const parsed = parseCurl(text, connection?.baseUrl);
+    if (!parsed) return false;
+
+    const { summary, ...values } = parsed;
+    patch({ ...values, name: request.name });
+    setPasted(summary);
+    return true;
+  };
+
+  const target = describeTarget(request.path, connection?.baseUrl);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -90,6 +115,29 @@ export function RequestBuilder({
           placeholder="Untitled request"
           className="h-8 min-w-32 max-w-56 flex-1 rounded-md border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
         />
+
+        <Select
+          value={tab.connectionId ?? NO_CONNECTION}
+          onValueChange={(value) =>
+            updateTab(tab.id, {
+              connectionId: value === NO_CONNECTION ? undefined : value,
+            })
+          }
+        >
+          <SelectTrigger className="h-8 w-40 text-xs" aria-label="Connection">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_CONNECTION}>No connection</SelectItem>
+            {connections
+              .filter((item) => item.type === "api")
+              .map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
 
         {connection && (
           <EnvironmentBadge
@@ -104,8 +152,14 @@ export function RequestBuilder({
             variant="outline"
             className="h-8 gap-1.5 px-2 text-xs"
             onClick={onSave}
-            disabled={busy}
-            title={tab.requestId ? "Save changes" : "Save this request"}
+            disabled={busy || !tab.connectionId}
+            title={
+              !tab.connectionId
+                ? "Pick a connection to save this request under"
+                : tab.requestId
+                  ? "Save changes"
+                  : "Save this request"
+            }
           >
             <Save className="h-3.5 w-3.5" />
             <span className="hidden md:inline">{tab.requestId ? "Save" : "Save as"}</span>
@@ -114,7 +168,7 @@ export function RequestBuilder({
             size="sm"
             className="h-8 gap-1.5 px-3 text-xs"
             onClick={onSend}
-            disabled={busy || !tab.connectionId}
+            disabled={busy || !target.canSend}
             title="Send (Ctrl/Cmd + Enter)"
           >
             {isSending ? (
@@ -150,14 +204,56 @@ export function RequestBuilder({
         <input
           value={request.path}
           onChange={(event) => patch({ path: event.target.value })}
+          onPaste={(event) => {
+            const text = event.clipboardData.getData("text");
+            if (acceptCurl(text)) event.preventDefault();
+          }}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") onSend();
           }}
           aria-label="Request path"
-          placeholder="/users?page=1   or an absolute URL,  {{variables}} allowed"
+          placeholder={
+            tab.connectionId
+              ? "/users?page=1 - or a full URL, or paste a curl command"
+              : "https://api.example.com/users - or paste a curl command"
+          }
           className="h-8 flex-1 rounded-md border bg-background px-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
+
+      {target.text && (
+        <div className="flex flex-wrap items-center gap-x-2 border-b px-4 py-1.5 text-[11px]">
+          <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <span
+            data-testid="request-target"
+            className={cn(
+              "min-w-0 break-all",
+              target.mono && "font-mono",
+              target.canSend ? "text-muted-foreground" : "text-amber-500"
+            )}
+          >
+            {target.text}
+          </span>
+        </div>
+      )}
+
+      {pasted && (
+        <div
+          role="status"
+          className="flex items-start gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-1.5 text-[11px]"
+        >
+          <ClipboardPaste className="mt-0.5 h-3 w-3 shrink-0 text-sky-400" />
+          <span className="min-w-0 flex-1 text-sky-300">{pasted}</span>
+          <button
+            type="button"
+            onClick={() => setPasted(null)}
+            aria-label="Dismiss"
+            className="text-sky-300/70 hover:text-sky-200"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <Tabs defaultValue="params" className="flex min-h-0 flex-1 flex-col">
         <TabsList className="mx-4 mt-2 w-fit" aria-label="Request sections">
@@ -341,6 +437,52 @@ export function RequestBuilder({
       </Tabs>
     </div>
   );
+}
+
+/** A Select cannot hold "" as a value, so absence needs a name. */
+const NO_CONNECTION = "__none__";
+
+/**
+ * Say where the request will actually go.
+ *
+ * An absolute URL in the path already overrides the connection's base, which
+ * nothing in the UI used to admit. Showing the resolved target makes that
+ * visible, and makes a request with no base at all explain itself.
+ */
+function describeTarget(
+  path: string,
+  baseUrl?: string
+): { text: string; mono: boolean; canSend: boolean } {
+  const trimmed = (path ?? "").trim();
+
+  // the URL is already in the field above, so this line only earns its place
+  // when it says something the field does not
+  if (/^[a-z][\w+.-]*:\/\//i.test(trimmed)) {
+    const canSend = /^https?:\/\//i.test(trimmed);
+    return {
+      text: !canSend
+        ? "Only http:// and https:// URLs can be sent"
+        : baseUrl
+          ? "Absolute URL - the connection's base is not used"
+          : "",
+      mono: false,
+      canSend,
+    };
+  }
+  if (!baseUrl) {
+    return {
+      text: trimmed
+        ? `${trimmed} is relative, and there is no base URL to resolve it against`
+        : "No connection - enter a full https:// URL, or pick a connection",
+      mono: false,
+      canSend: false,
+    };
+  }
+  return {
+    text: `${baseUrl.replace(/\/+$/, "")}/${trimmed.replace(/^\/+/, "")}`,
+    mono: true,
+    canSend: true,
+  };
 }
 
 function AuthField({

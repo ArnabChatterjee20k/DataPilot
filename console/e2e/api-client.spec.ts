@@ -320,3 +320,120 @@ test.describe("connection kinds stay distinct", () => {
     await expect(page.getByText("No tables")).toHaveCount(0);
   });
 });
+
+/** A real paste event, so the component's own handler is what runs. */
+async function paste(page: import("@playwright/test").Page, label: string, text: string) {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.evaluate((value) => navigator.clipboard.writeText(value), text);
+  await page.getByLabel(label).focus();
+  await page.keyboard.press("ControlOrMeta+V");
+}
+
+test.describe("pasting a curl command", () => {
+  test("fills the whole request out of the paste", async ({ page, pageErrors: _errors }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await paste(
+      page,
+      "Request path",
+      `curl '${UPSTREAM_URL}/echo?page=2' -X POST ` +
+        `-H 'X-Trace: abc123' -H 'Authorization: Bearer tok_1' ` +
+        `-H 'Content-Type: application/json' --data-raw '{"name":"Ada"}'`
+    );
+
+    await expect(page.getByText(/Parsed curl/)).toBeVisible();
+    await expect(page.getByLabel("Request path")).toHaveValue("/echo");
+    await expect(page.getByLabel("Method")).toContainText("POST");
+    await expect(page.getByLabel("Query parameter key 1")).toHaveValue("page");
+
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+
+    const body = page.getByLabel("Response body", { exact: true });
+    await expect(body).toContainText('"method": "POST"');
+    await expect(body).toContainText("abc123");
+    await expect(body).toContainText("Bearer tok_1");
+    await expect(body).toContainText("Ada");
+  });
+
+  test("a plain URL is pasted as a URL", async ({ page, pageErrors: _errors }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await paste(page, "Request path", "/ping");
+
+    await expect(page.getByLabel("Request path")).toHaveValue("/ping");
+    await expect(page.getByText(/Parsed curl/)).toHaveCount(0);
+  });
+});
+
+test.describe("where the request goes", () => {
+  test("the resolved URL is shown as the path is typed", async ({ page, pageErrors: _errors }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await page.getByLabel("Request path").fill("/ping");
+    await expect(page.getByTestId("request-target")).toHaveText(`${UPSTREAM_URL}/ping`);
+  });
+
+  test("an absolute URL says the base is not used, and is the URL that is called", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "New request" }).click();
+
+    await page.getByLabel("Request path").fill(`${UPSTREAM_URL}/teapot`);
+    await expect(page.getByTestId("request-target")).toContainText(
+      "the connection's base is not used"
+    );
+
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("418");
+  });
+
+  test("a request with no connection sends to an absolute URL", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "Request any URL" }).click();
+
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeDisabled();
+    await expect(page.getByTestId("request-target")).toContainText("No connection");
+
+    await page.getByLabel("Request path").fill(`${UPSTREAM_URL}/ping`);
+    await expect(send).toBeEnabled();
+    await send.click();
+
+    await expect(page.getByRole("status")).toContainText("200");
+    await expect(page.getByLabel("Response body", { exact: true })).toContainText('"pong": true');
+  });
+
+  test("a request with no connection cannot be saved, and says so", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "Request any URL" }).click();
+
+    const save = page.getByRole("button", { name: /Save/ });
+    await expect(save).toBeDisabled();
+    await expect(save).toHaveAttribute("title", /Pick a connection/);
+  });
+
+  test("picking a connection in the builder gives the request its base", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "Request any URL" }).click();
+
+    await page.getByRole("combobox", { name: "Connection" }).click();
+    await page.getByRole("option", { name: connectionName }).click();
+
+    await page.getByLabel("Request path").fill("/ping");
+    await expect(page.getByTestId("request-target")).toHaveText(`${UPSTREAM_URL}/ping`);
+  });
+});

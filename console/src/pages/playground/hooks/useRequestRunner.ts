@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { sendRequest, type RequestSpecModel } from "@/lib/sdk";
+import { sendAdHocRequest, sendRequest, type RequestSpecModel } from "@/lib/sdk";
 import { errorMessage } from "@/lib/errors";
 import type { RequestDraft, Tab } from "../store/store";
 import { useTabsStore } from "../store/store";
@@ -45,15 +45,20 @@ export function useRequestRunner(tab: Tab) {
   const [isSending, setIsSending] = useState(false);
 
   const send = useCallback(async () => {
-    if (!tab.connectionId || !tab.request) return;
+    if (!tab.request) return;
 
+    const spec = toSpec(tab.request);
     setIsSending(true);
     try {
-      const response = await sendRequest({
-        path: { connection_id: tab.connectionId },
-        body: toSpec(tab.request),
-        throwOnError: true,
-      });
+      // a tab with no connection sends against the absolute URL it carries,
+      // which is what makes trying one URL not require creating a connection
+      const response = tab.connectionId
+        ? await sendRequest({
+            path: { connection_id: tab.connectionId },
+            body: spec,
+            throwOnError: true,
+          })
+        : await sendAdHocRequest({ body: spec, throwOnError: true });
       setRequestResult(tab.id, { result: response.data, ranAt: Date.now() });
     } catch (error) {
       setRequestResult(tab.id, {
@@ -66,6 +71,8 @@ export function useRequestRunner(tab: Tab) {
   }, [tab.connectionId, tab.request, tab.id, setRequestResult]);
 
   const save = useCallback(async () => {
+    // a saved request lives under a connection; the button is disabled
+    // without one, so there is nothing to explain here
     if (!tab.connectionId || !tab.request) return;
     const saved = await saveRequest.mutateAsync({
       requestId: tab.requestId,

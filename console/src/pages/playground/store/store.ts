@@ -15,6 +15,8 @@ export interface DatabaseConnection {
   id: string;
   name: string;
   type: SourceType;
+  /** An API connection's base URL; a database's URI is not shown. */
+  baseUrl?: string;
   environment: "local" | "staging" | "production";
   role: "primary" | "replica";
   readOnly: boolean;
@@ -190,7 +192,7 @@ interface TabStore {
   setActiveTabId: (id: string) => void;
   addQueryTab: (connectionId?: string) => string;
   addRequestTab: (
-    connectionId: string,
+    connectionId: string | undefined,
     request?: Partial<RequestDraft>,
     requestId?: string
   ) => string;
