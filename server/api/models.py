@@ -210,6 +210,89 @@ class TableStatsModel(BaseModel):
     execution_time_ms: float = 0.0
 
 
+# API client
+HttpMethod = Literal[
+    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"
+]
+BodyType = Literal["none", "json", "form", "text"]
+AuthType = Literal["none", "bearer", "basic", "header"]
+
+
+class KeyValueModel(BaseModel):
+    key: str
+    value: str = ""
+    enabled: bool = True
+
+
+class AuthModel(BaseModel):
+    type: AuthType = "none"
+    token: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    name: Optional[str] = None
+    value: Optional[str] = None
+
+
+class RequestSpecModel(BaseModel):
+    """What to send. A saved request stores exactly this."""
+
+    name: str = "Untitled request"
+    method: HttpMethod = "GET"
+    #: relative to the connection's base URL, or an absolute http(s) URL
+    path: str = ""
+    params: list[KeyValueModel] = Field(default_factory=list)
+    headers: list[KeyValueModel] = Field(default_factory=list)
+    body_type: BodyType = "none"
+    body: Any = ""
+    auth: Optional[AuthModel] = None
+    timeout: float = 30.0
+    follow_redirects: bool = True
+    verify_tls: bool = True
+
+
+class SavedRequestModel(RequestSpecModel):
+    uid: str
+    connection_id: str
+    position: int = 0
+
+
+class SavedRequestListModel(BaseModel):
+    requests: list[SavedRequestModel]
+    total: int
+
+
+class SentRequestModel(BaseModel):
+    method: str
+    url: str
+    headers: list[dict[str, Any]] = Field(default_factory=list)
+    body: Optional[str] = None
+
+
+class ResponseModel(BaseModel):
+    status: int
+    reason: str = ""
+    headers: list[dict[str, Any]] = Field(default_factory=list)
+    body: str = ""
+    #: False when the body is binary and therefore base64 encoded
+    is_text: bool = True
+    size: int = 0
+    truncated: bool = False
+    elapsed_ms: float = 0.0
+    content_type: Optional[str] = None
+
+
+class RequestResultModel(BaseModel):
+    connection_id: str
+    request: SentRequestModel
+    response: ResponseModel
+
+
+class VariablesModel(BaseModel):
+    variables: dict[str, str] = Field(default_factory=dict)
+    #: names whose values are masked wherever they are displayed
+    secret: list[str] = Field(default_factory=list)
+
+
 # Tables
 class TableModel(BaseModel):
     name: str

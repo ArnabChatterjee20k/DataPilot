@@ -78,10 +78,13 @@ async def open_session(connection) -> AsyncGenerator[StorageSession, None]:
     """Open a session against a user connection, mapping failures to HTTP errors."""
     adapter = get_adapter(connection.source)
     if adapter is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"'{connection.source}' connections are not supported yet",
+        detail = (
+            "This is an API connection - use the request endpoints instead of "
+            "the query ones"
+            if connection.source == SourceConfig.API.value
+            else f"'{connection.source}' connections are not supported yet"
         )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
     storage = adapter(connection_uri=resolve_connection_uri(connection))
     try:
