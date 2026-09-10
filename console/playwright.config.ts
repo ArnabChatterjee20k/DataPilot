@@ -47,7 +47,11 @@ export default defineConfig({
       port: CONSOLE_PORT,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
-      env: { VITE_API_URL: `http://127.0.0.1:${API_PORT}` },
+      env: {
+        VITE_API_URL: `http://127.0.0.1:${API_PORT}`,
+        // the floating devtools toggle sits over the app's own controls
+        VITE_HIDE_DEVTOOLS: "1",
+      },
     },
   ],
 });

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 import {
   createSqliteConnection,
@@ -17,7 +17,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.describe("virtualised rows", () => {
-  test("mounts a window of a large page, not all of it", async ({ page }) => {
+  test("mounts a window of a large page, not all of it", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
@@ -29,7 +29,7 @@ test.describe("virtualised rows", () => {
     expect(mounted).toBeLessThan(100);
   });
 
-  test("scrolling reaches rows that were never mounted", async ({ page }) => {
+  test("scrolling reaches rows that were never mounted", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
@@ -43,7 +43,7 @@ test.describe("virtualised rows", () => {
     await expect(page.getByText("Order note 99", { exact: true })).toBeVisible();
   });
 
-  test("a small page is not windowed", async ({ page }) => {
+  test("a small page is not windowed", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -52,7 +52,7 @@ test.describe("virtualised rows", () => {
     await expect(page.locator("table tbody tr[data-index]")).toHaveCount(0);
   });
 
-  test("keyboard navigation still reaches a windowed row", async ({ page }) => {
+  test("keyboard navigation still reaches a windowed row", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
@@ -69,7 +69,7 @@ test.describe("virtualised rows", () => {
 });
 
 test.describe("change awareness", () => {
-  test("marks a row that changed since the last load", async ({ page, request }) => {
+  test("marks a row that changed since the last load", async ({ page, request, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -96,7 +96,7 @@ test.describe("change awareness", () => {
     await expect(changed).toContainText("Bob Miller");
   });
 
-  test("marks a row that is new since the last load", async ({ page, request }) => {
+  test("marks a row that is new since the last load", async ({ page, request, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -120,7 +120,7 @@ test.describe("change awareness", () => {
     await expect(page.locator("tr[data-changed]")).toContainText("Zoe New");
   });
 
-  test("an unchanged reload marks nothing", async ({ page }) => {
+  test("an unchanged reload marks nothing", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -133,7 +133,7 @@ test.describe("change awareness", () => {
 });
 
 test.describe("saved views", () => {
-  test("saving is only offered once there is something to save", async ({ page }) => {
+  test("saving is only offered once there is something to save", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -150,7 +150,7 @@ test.describe("saved views", () => {
     await expect(page.getByRole("textbox", { name: "View name" })).toBeVisible();
   });
 
-  test("saves, re-applies and deletes a view", async ({ page }) => {
+  test("saves, re-applies and deletes a view", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);
@@ -180,7 +180,7 @@ test.describe("saved views", () => {
     await expect(page.getByText("None yet.")).toBeVisible();
   });
 
-  test("a view survives a reload", async ({ page }) => {
+  test("a view survives a reload", async ({ page, pageErrors: _errors }) => {
     await openPlayground(page);
     await openTable(page, connection.name, "users");
     await waitForRows(page);

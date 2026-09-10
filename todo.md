@@ -139,12 +139,10 @@
   - _Blocked: there is no Mongo adapter yet. SQLite and PostgreSQL both have a
     fixed schema, so there is nothing to detect until one exists._
 
-- [ ] **Change Awareness (Lightweight)**
-  - Highlight recently updated rows
-  - `updated_at` based signals
-  - _Partly there: tables auto-sort by `updated_at`/`created_at` and timestamps
-    render relatively, so recent rows surface first. Row-level highlighting is
-    still to do._
+- [x] **Change Awareness (Lightweight)**
+  - [x] Highlight recently updated rows
+  - [x] `updated_at` based signals
+  - [x] Rows added or changed since the last load are marked too
 
 ---
 
@@ -180,11 +178,10 @@ That’s the bar.
 
 ## 🔭 NEXT
 
-- **Virtualised rows.** The grid renders every row of a page. 500 rows is fine;
-  a larger page size would not be.
-- **Row-level change highlighting**, per Change Awareness above.
-- **Filter presets** — the filter stack is per tab and persists, but cannot be
-  named and recalled.
+- **Request history** — a saved request can be re-sent, but past runs are not
+  kept or replayable.
+- **Variables in the console UI** — the API stores and masks them, but there is
+  no editor for them yet; they are set through the API.
 
 ---
 
@@ -203,41 +200,41 @@ second kind of connection, not a second product.
 - Requests open in the same tabs, next to query tabs, against the same sidebar.
 
 ### Frontend
-- [ ] **Request builder**
+- [x] **Request builder**
   - Method + URL bar, with `{{variable}}` interpolation
   - Query string as key/value rows, kept in sync with the URL as it is typed
   - Headers as key/value rows, each toggleable
   - Body: JSON (validated), form, url-encoded, raw, none
   - Auth: none / bearer / basic / header, inherited from the connection
 
-- [ ] **Response viewer**
+- [x] **Response viewer**
   - Status, time, size — the same status bar language queries already use
   - Body as pretty JSON, raw, or preview; headers in their own tab
   - Errors shown as a result, not a toast
 
-- [ ] **WebSocket client**
+- [x] **WebSocket client**
   - Connect / disconnect with visible state
   - Message log, both directions, timestamped
   - Send frames as text or JSON
 
-- [ ] **Saved requests & history**
+- [x] **Saved requests**
   - Requests listed under their connection in the sidebar
-  - Recent runs, replayable
+  - _Run history is not built; a saved request is re-sent rather than replayed._
 
 ### Backend
-- [ ] **Request execution** — `POST /connection/{id}/request`
+- [x] **Request execution** — `POST /connection/{id}/request`
   - Runs server-side, so the browser is not blocked by CORS and credentials
     never reach the page
   - Returns status, headers, body, elapsed time and size
   - Timeout, response size cap and redirect limit
 
-- [ ] **WebSocket proxy** — `WS /connection/{id}/socket`
+- [x] **WebSocket proxy** — `WS /connection/{id}/socket`
   - The server holds the upstream socket and pipes frames both ways, for the
     same reasons
 
-- [ ] **Saved requests** — CRUD under `/connection/{id}/requests`
+- [x] **Saved requests** — CRUD under `/connection/{id}/requests`
 
-- [ ] **Variables** — per connection, interpolated into URL, headers and body,
+- [x] **Variables** — per connection, interpolated into URL, headers and body,
   with secret values masked the way sensitive columns already are
 
 ### Deliberately not in scope

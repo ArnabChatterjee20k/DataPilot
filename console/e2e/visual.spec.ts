@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { API_URL } from "./helpers";
+import { startUpstream, UPSTREAM_URL, type Upstream } from "./upstream";
 import {
   createSqliteConnection,
   deleteAllConnections,
@@ -120,5 +122,47 @@ test.describe("visual sweep", () => {
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
     await shot("15-virtualised-large-page");
+  });
+
+  test("captures the API client", async ({ page, request }, testInfo) => {
+    const shot = async (name: string) => {
+      await page.screenshot({ path: testInfo.outputPath(`${name}.png`) });
+    };
+
+    const upstream = await startUpstream();
+    try {
+      const name = `Upstream ${Date.now()}`;
+      await request.post(`${API_URL}/connections`, {
+        data: { source: "api", name, connection_uri: UPSTREAM_URL },
+      });
+
+      await openPlayground(page);
+      await page.getByRole("button", { name, exact: true }).click();
+      await page.getByRole("button", { name: "New request" }).click();
+
+      await page.getByLabel("Request name").fill("Echo check");
+      await page.getByLabel("Request path").fill("/echo");
+      await page
+        .getByRole("tablist", { name: "Request sections" })
+        .getByRole("tab", { name: /Headers/ })
+        .click();
+      await page.getByLabel("Header key 1").fill("X-Trace");
+      await page.getByLabel("Header value 1").fill("abc123");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByRole("status")).toContainText("200");
+      await shot("16-api-request");
+
+      await page.getByRole("button", { name: "WebSocket" }).click();
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await expect(page.getByLabel("Socket state")).toContainText("open");
+      await page.getByLabel("Message to send").fill("hello");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(
+        page.getByRole("list", { name: "Socket messages" })
+      ).toContainText("echo:hello");
+      await shot("17-websocket-console");
+    } finally {
+      await upstream.stop();
+    }
   });
 });
