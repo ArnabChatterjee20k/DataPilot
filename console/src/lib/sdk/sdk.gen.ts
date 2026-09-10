@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -164,13 +164,26 @@ export const getEntityStats = <ThrowOnError extends boolean = false>(options: Op
 export const exportEntity = <ThrowOnError extends boolean = false>(options: Options<ExportEntityData, ThrowOnError>): RequestResult<ExportEntityResponses, ExportEntityErrors, ThrowOnError> => (options.client ?? client).get<ExportEntityResponses, ExportEntityErrors, ThrowOnError>({ url: '/connection/{connection_id}/entities/{entity_name}/export', ...options });
 
 /**
+ * Send Ad Hoc Request
+ *
+ * Send a one-off request that belongs to no connection.
+ *
+ * A URL you want to try once should not require inventing a connection for
+ * it, so this takes an absolute URL and no saved base.
+ */
+export const sendAdHocRequest = <ThrowOnError extends boolean = false>(options: Options<SendAdHocRequestData, ThrowOnError>): RequestResult<SendAdHocRequestResponses, SendAdHocRequestErrors, ThrowOnError> => (options.client ?? client).post<SendAdHocRequestResponses, SendAdHocRequestErrors, ThrowOnError>({
+    url: '/request',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Send Request
  *
- * Send a request from the server and return the whole response.
- *
- * Running server-side is what makes this usable at all: the browser cannot
- * call an arbitrary origin because of CORS, and any credential it sent would
- * be readable by the page.
+ * Send a request against a saved API connection.
  */
 export const sendRequest = <ThrowOnError extends boolean = false>(options: Options<SendRequestData, ThrowOnError>): RequestResult<SendRequestResponses, SendRequestErrors, ThrowOnError> => (options.client ?? client).post<SendRequestResponses, SendRequestErrors, ThrowOnError>({
     url: '/connection/{connection_id}/request',

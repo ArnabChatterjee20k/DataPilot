@@ -1522,6 +1522,31 @@ export type ExportEntityResponses = {
     200: unknown;
 };
 
+export type SendAdHocRequestData = {
+    body: RequestSpecModel;
+    path?: never;
+    query?: never;
+    url: '/request';
+};
+
+export type SendAdHocRequestErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SendAdHocRequestError = SendAdHocRequestErrors[keyof SendAdHocRequestErrors];
+
+export type SendAdHocRequestResponses = {
+    /**
+     * Successful Response
+     */
+    200: RequestResultModel;
+};
+
+export type SendAdHocRequestResponse = SendAdHocRequestResponses[keyof SendAdHocRequestResponses];
+
 export type SendRequestData = {
     body: RequestSpecModel;
     path: {

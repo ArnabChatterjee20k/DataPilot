@@ -87,25 +87,21 @@ def to_saved_model(record) -> SavedRequestModel:
     )
 
 
-@router.post(
-    "/connection/{connection_id}/request", response_model=RequestResultModel
-)
-async def send_request(
-    connection_id: str,
+async def run_request(
     spec: RequestSpecModel,
-    db: DBSession,
-):
-    """Send a request from the server and return the whole response.
+    *,
+    base_url: str,
+    variables: dict,
+    connection_id: str = "",
+) -> RequestResultModel:
+    """Build and send one request, turning every failure into an explanation.
 
     Running server-side is what makes this usable at all: the browser cannot
     call an arbitrary origin because of CORS, and any credential it sent would
     be readable by the page.
     """
-    connection = require_api_connection(await load_connection(db, connection_id))
-    variables = connection_variables(connection)
-
     try:
-        url = http_client.resolve_url(connection.connection_uri, spec.path, variables)
+        url = http_client.resolve_url(base_url, spec.path, variables)
         params = http_client.active_pairs(
             [pair.model_dump() for pair in spec.params], variables
         )
@@ -145,13 +141,41 @@ async def send_request(
         # a request that cannot be delivered is a result to show, not a 500
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"{type(error).__name__}: {error}",
+            detail=http_client.describe_transport_failure(url, error),
         ) from error
 
     return RequestResultModel(
         connection_id=connection_id,
         request=SentRequestModel(**vars(sent)),
         response=ResponseModel(**vars(received)),
+    )
+
+
+@router.post("/request", response_model=RequestResultModel)
+async def send_ad_hoc_request(spec: RequestSpecModel):
+    """Send a one-off request that belongs to no connection.
+
+    A URL you want to try once should not require inventing a connection for
+    it, so this takes an absolute URL and no saved base.
+    """
+    return await run_request(spec, base_url="", variables={})
+
+
+@router.post(
+    "/connection/{connection_id}/request", response_model=RequestResultModel
+)
+async def send_request(
+    connection_id: str,
+    spec: RequestSpecModel,
+    db: DBSession,
+):
+    """Send a request against a saved API connection."""
+    connection = require_api_connection(await load_connection(db, connection_id))
+    return await run_request(
+        spec,
+        base_url=connection.connection_uri,
+        variables=connection_variables(connection),
+        connection_id=connection_id,
     )
 
 
@@ -306,10 +330,19 @@ def describe_socket_failure(url: str, error: Exception) -> str:
     from .connections import unreachable_hint
 
     text = str(error) or type(error).__name__
-    if isinstance(error, (ConnectionRefusedError, OSError)) or "refused" in text.lower():
-        detail = f"Could not reach {url}: the connection was refused"
-    elif "name or service not known" in text.lower() or "getaddrinfo" in text.lower():
-        detail = f"Could not resolve the host in {url}"
+    lowered = text.lower()
+    if isinstance(error, (ConnectionRefusedError, OSError)) or "refused" in lowered:
+        detail = (
+            f"Could not reach {url}: the connection was refused. Nothing is "
+            "listening on that host and port."
+        )
+    elif "name or service not known" in lowered or "getaddrinfo" in lowered:
+        detail = f"Could not resolve the host in {url}. Check the hostname."
+    elif "handshake" in lowered or "invalid status" in lowered:
+        detail = (
+            f"{url} answered, but not with a websocket handshake: {text}. "
+            "Check the path - many servers only speak websocket on one route."
+        )
     else:
         detail = f"Could not connect to {url}: {text}"
 

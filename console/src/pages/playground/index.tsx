@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Command as CommandIcon, Plus, X } from "lucide-react";
+import { Command as CommandIcon, Globe, Plus, X } from "lucide-react";
 
 import {
   ResizableHandle,
@@ -35,8 +35,15 @@ function isTypingInto(target: EventTarget | null): boolean {
 }
 
 export default function Playground() {
-  const { tabs, activeTabId, setActiveTabId, addQueryTab, closeTab, openTableTab } =
-    useTabsStore();
+  const {
+    tabs,
+    activeTabId,
+    setActiveTabId,
+    addQueryTab,
+    addRequestTab,
+    closeTab,
+    openTableTab,
+  } = useTabsStore();
   const { data: connections = [] } = useConnections();
   const tablesByConnection = useAllTables(connections);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
@@ -53,8 +60,24 @@ export default function Playground() {
         icon: Plus,
         run: () => addQueryTab(activeTab?.connectionId),
       },
+      {
+        id: "action:new-request",
+        label: "New request",
+        group: "Actions",
+        icon: Globe,
+        // no connection: a URL you want to try once should not require
+        // inventing a connection for it first
+        run: () => addRequestTab(undefined),
+      },
     ],
-    [connections, tablesByConnection, openTableTab, addQueryTab, activeTab?.connectionId]
+    [
+      connections,
+      tablesByConnection,
+      openTableTab,
+      addQueryTab,
+      addRequestTab,
+      activeTab?.connectionId,
+    ]
   );
 
   useEffect(() => {
@@ -117,16 +140,27 @@ export default function Playground() {
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Open a table from the sidebar, or start a new query.
+                  Open a table from the sidebar, start a query, or send a request
+                  to any URL.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => addQueryTab(connections[0]?.id)}
-                  className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New query
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => addQueryTab(connections[0]?.id)}
+                    className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New query
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addRequestTab(undefined)}
+                    className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                    Request any URL
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -245,6 +279,7 @@ function RequestWorkspace({
   tab: Tab;
   connection?: DatabaseConnection;
 }) {
+  const { data: connections = [] } = useConnections();
   const { result, isSending, isSaving, send, save } = useRequestRunner(tab);
 
   return (
@@ -253,6 +288,7 @@ function RequestWorkspace({
         <RequestBuilder
           tab={tab}
           connection={connection}
+          connections={connections}
           isSending={isSending}
           isSaving={isSaving}
           onSend={send}

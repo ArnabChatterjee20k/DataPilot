@@ -1016,13 +1016,55 @@
         }
       }
     },
+    "/request": {
+      "post": {
+        "tags": [
+          "api-client"
+        ],
+        "summary": "Send Ad Hoc Request",
+        "description": "Send a one-off request that belongs to no connection.\n\nA URL you want to try once should not require inventing a connection for\nit, so this takes an absolute URL and no saved base.",
+        "operationId": "send_ad_hoc_request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSpecModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestResultModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/connection/{connection_id}/request": {
       "post": {
         "tags": [
           "api-client"
         ],
         "summary": "Send Request",
-        "description": "Send a request from the server and return the whole response.\n\nRunning server-side is what makes this usable at all: the browser cannot\ncall an arbitrary origin because of CORS, and any credential it sent would\nbe readable by the page.",
+        "description": "Send a request against a saved API connection.",
         "operationId": "send_request",
         "parameters": [
           {

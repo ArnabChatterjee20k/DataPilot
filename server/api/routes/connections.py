@@ -8,6 +8,7 @@ import websockets
 from fastapi import APIRouter, HTTPException, status
 
 from . import UPLOAD_DIR
+from .. import http_client
 from ..config import SourceConfig, supports_schemas
 from ..models import (
     ConnectionProbeModel,
@@ -102,22 +103,9 @@ def unreachable_hint(source: str, connection_uri: str, detail: str) -> str:
     Inside a container `localhost` is the container itself, which is by far the
     most common reason a database that is plainly running looks refused.
     """
-    lowered = detail.lower()
-    if not any(
-        token in lowered for token in ("refused", "reach", "connect", "timeout")
-    ):
-        return detail
     if source == SourceConfig.SQLITE.value:
         return detail
-    if not any(
-        host in str(connection_uri) for host in ("localhost", "127.0.0.1", "::1")
-    ):
-        return detail
-    return (
-        f"{detail} If DataPilot is running in a container, 'localhost' is the "
-        "container itself - use host.docker.internal, or put both on the same "
-        "Docker network and use the container name."
-    )
+    return http_client.container_hint(connection_uri, detail)
 
 
 async def probe_api(connection_uri: str) -> ConnectionProbeModel:
@@ -152,14 +140,20 @@ async def probe_api(connection_uri: str) -> ConnectionProbeModel:
             latency_ms=round((time.perf_counter() - started) * 1000, 2),
             server_version=response.headers.get("server"),
         )
-    except Exception as error:
+    except asyncio.TimeoutError:
         return ConnectionProbeModel(
             reachable=False,
             detail=unreachable_hint(
                 SourceConfig.API.value,
                 base,
-                f"{type(error).__name__}: {error}",
+                f"Timed out after {PROBE_TIMEOUT:g}s connecting to {base}.",
             ),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+    except Exception as error:
+        return ConnectionProbeModel(
+            reachable=False,
+            detail=http_client.describe_transport_failure(base, error),
             latency_ms=round((time.perf_counter() - started) * 1000, 2),
         )
 
