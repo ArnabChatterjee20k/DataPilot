@@ -109,14 +109,22 @@ def active_pairs(pairs: Iterable[dict] | None, variables: dict) -> list[tuple[st
 
 
 def resolve_url(base_url: str, path: str, variables: dict) -> str:
-    """Join a saved request's path onto the connection's base URL."""
+    """Join a request's path onto the connection's base URL.
+
+    An absolute URL wins over the base, which is how a request reaches an
+    origin the connection does not cover.
+    """
     path = str(interpolate(path or "", variables)).strip()
     base = str(interpolate(base_url or "", variables)).strip()
 
     if path.startswith(("http://", "https://")):
         return path
     if not base:
-        raise ValueError("The connection has no base URL, so the path cannot resolve")
+        raise ValueError(
+            f"'{path or 'The URL'}' is not an absolute URL, and there is no base "
+            "URL to resolve it against. Use a full http:// or https:// URL, or "
+            "send this request on an API connection."
+        )
 
     if not base.endswith("/"):
         base += "/"
@@ -202,6 +210,71 @@ class ReceivedResponse:
     truncated: bool
     elapsed_ms: float
     content_type: Optional[str]
+
+
+#: Hosts that mean "this machine", which inside a container is the container.
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
+def container_hint(url: str, detail: str) -> str:
+    """Point at the usual cause when a local address is refused.
+
+    Inside a container `localhost` is the container itself, which is by far the
+    most common reason something plainly running looks unreachable.
+    """
+    lowered = detail.lower()
+    if not any(token in lowered for token in ("refused", "reach", "connect", "timeout")):
+        return detail
+    if not any(host in str(url) for host in LOCAL_HOSTS):
+        return detail
+    return (
+        f"{detail} If DataPilot is running in a container, 'localhost' is the "
+        "container itself - use host.docker.internal, or put both on the same "
+        "Docker network and use the container name."
+    )
+
+
+def describe_transport_failure(url: str, error: Exception) -> str:
+    """Say what went wrong reaching a URL, in words worth showing a person.
+
+    httpx exceptions read like stack frames; the person looking at the screen
+    needs to know whether the host was wrong, the port was closed, TLS failed
+    or it simply took too long.
+    """
+    text = str(error).strip() or type(error).__name__
+
+    if isinstance(error, httpx.ConnectTimeout):
+        detail = f"Timed out connecting to {url}. The host did not answer in time."
+    elif isinstance(error, httpx.ReadTimeout):
+        detail = f"{url} accepted the connection but sent no response in time."
+    elif isinstance(error, httpx.WriteTimeout):
+        detail = f"Timed out sending the request body to {url}."
+    elif isinstance(error, httpx.PoolTimeout):
+        detail = "Timed out waiting for a free connection."
+    elif isinstance(error, httpx.TooManyRedirects):
+        detail = f"{url} redirected more than {MAX_REDIRECTS} times."
+    elif isinstance(error, httpx.ConnectError):
+        lowered = text.lower()
+        if "name or service not known" in lowered or "nodename nor servname" in lowered:
+            detail = f"Could not resolve the host in {url}. Check the hostname."
+        elif "refused" in lowered or "all connection attempts failed" in lowered:
+            detail = f"Could not reach {url}: the connection was refused. Nothing is listening on that host and port."
+        elif "certificate" in lowered or "ssl" in lowered:
+            detail = f"TLS failed talking to {url}: {text}"
+        else:
+            detail = f"Could not reach {url}: {text}"
+    elif isinstance(error, httpx.ProtocolError):
+        detail = f"{url} did not speak HTTP properly: {text}"
+    elif isinstance(error, httpx.UnsupportedProtocol):
+        detail = f"'{url}' does not name a protocol that can be sent. Use http:// or https://."
+    elif isinstance(error, httpx.InvalidURL):
+        detail = f"'{url}' is not a valid URL: {text}"
+    elif isinstance(error, UnicodeError):
+        detail = f"'{url}' contains a host name that cannot be encoded."
+    else:
+        detail = f"Could not send the request to {url}: {text}"
+
+    return container_hint(url, detail)
 
 
 def is_textual(content_type: Optional[str]) -> bool:
