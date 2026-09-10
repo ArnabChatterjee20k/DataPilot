@@ -1,6 +1,7 @@
 import { expect, test } from "./fixtures";
 
 import {
+  API_URL,
   createSqliteConnection,
   deleteAllConnections,
   openPlayground,
@@ -291,7 +292,7 @@ test.describe("connection modal", () => {
     await expect(page.getByRole("button", { name: "PostgreSQL" })).toBeVisible();
     await expect(page.getByRole("button", { name: "MySQL" })).toBeVisible();
     await expect(page.getByRole("button", { name: "SQLite file" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "HTTP API" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "HTTP / WebSocket" })).toBeVisible();
   });
 
   test("asks for a URI for a server backend and a file for SQLite", async ({ page, pageErrors: _errors }) => {
@@ -310,7 +311,7 @@ test.describe("connection modal", () => {
       /^postgresql:\/\//
     );
 
-    await page.getByRole("button", { name: "HTTP API" }).click();
+    await page.getByRole("button", { name: "HTTP / WebSocket" }).click();
     await expect(page.getByLabel("Base URL")).toHaveAttribute(
       "placeholder",
       /^https:\/\//
@@ -319,6 +320,76 @@ test.describe("connection modal", () => {
     await page.getByRole("button", { name: "SQLite file" }).click();
     await expect(page.getByLabel("Connection URI")).toHaveCount(0);
     await expect(page.getByText("SQLite file", { exact: true }).first()).toBeVisible();
+  });
+
+  test("tests a connection before creating it", async ({
+    page,
+    request,
+    pageErrors: _errors,
+  }) => {
+    const before = (await (await request.get(`${API_URL}/connections`)).json()).total;
+
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "PostgreSQL" }).click();
+
+    // nothing is listening here
+    await page
+      .getByLabel("Connection URI")
+      .fill("postgresql://user:pass@127.0.0.1:1/nothing");
+    await page.getByRole("button", { name: "Test connection" }).click();
+
+    await expect(page.getByText("Could not connect")).toBeVisible();
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    const after = (await (await request.get(`${API_URL}/connections`)).json()).total;
+    expect(after).toBe(before);
+  });
+
+  test("a refused local address hints at the container case", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "PostgreSQL" }).click();
+
+    await page
+      .getByLabel("Connection URI")
+      .fill("postgresql://user:pass@localhost:1/nothing");
+    await page.getByRole("button", { name: "Test connection" }).click();
+
+    await expect(page.getByText(/host\.docker\.internal/)).toBeVisible();
+  });
+
+  test("an API connection is dialled for real", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "HTTP / WebSocket" }).click();
+
+    // nothing is listening, so testing must say so rather than assume success
+    await page.getByLabel("Base URL").fill("http://127.0.0.1:1");
+    await page.getByRole("button", { name: "Test connection" }).click();
+
+    await expect(page.getByText("Could not connect")).toBeVisible();
+  });
+
+  test("a websocket-only base URL is accepted", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "HTTP / WebSocket" }).click();
+
+    await page.getByLabel("Name", { exact: true }).fill("Stream");
+    await page.getByLabel("Base URL").fill("wss://stream.example.com");
+    await page.getByRole("button", { name: "Create connection" }).click();
+
+    await expect(page.getByRole("button", { name: "Stream", exact: true })).toBeVisible();
   });
 
   test("defaults a new connection to read-only", async ({ page, pageErrors: _errors }) => {

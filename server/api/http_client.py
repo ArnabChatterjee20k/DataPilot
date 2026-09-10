@@ -222,6 +222,11 @@ async def send(
     verify_tls: bool,
 ) -> tuple[SentRequest, ReceivedResponse]:
     parsed = urlparse(url)
+    if parsed.scheme in ("ws", "wss"):
+        raise ValueError(
+            f"'{url}' is a websocket URL - open it from the WebSocket tab rather "
+            "than sending a request to it"
+        )
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Only http and https URLs can be sent, got '{url}'")
 

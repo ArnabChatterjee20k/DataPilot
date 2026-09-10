@@ -45,6 +45,22 @@ class ConnectionsModelList(BaseModel):
     total: int
 
 
+class TestConnectionModel(BaseModel):
+    """Enough to dial a connection that has not been saved yet."""
+
+    model_config = ConfigDict(use_enum_values=True)
+
+    source: SourceConfig
+    connection_uri: str
+
+
+class ConnectionProbeModel(BaseModel):
+    reachable: bool
+    detail: Optional[str] = None
+    latency_ms: Optional[float] = None
+    server_version: Optional[str] = None
+
+
 class ConnectionStatusModel(BaseModel):
     """Result of dialling a connection without running a user query."""
 

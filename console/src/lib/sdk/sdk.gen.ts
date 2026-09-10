@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,21 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Test Connection
+ *
+ * Dial a connection before saving it, so a typo is caught here rather than
+ * at the first query.
+ */
+export const testConnection = <ThrowOnError extends boolean = false>(options: Options<TestConnectionData, ThrowOnError>): RequestResult<TestConnectionResponses, TestConnectionErrors, ThrowOnError> => (options.client ?? client).post<TestConnectionResponses, TestConnectionErrors, ThrowOnError>({
+    url: '/connections/test',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * List Connections

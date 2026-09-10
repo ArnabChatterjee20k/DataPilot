@@ -143,6 +143,28 @@ export type ColumnStatsModel = {
 };
 
 /**
+ * ConnectionProbeModel
+ */
+export type ConnectionProbeModel = {
+    /**
+     * Reachable
+     */
+    reachable: boolean;
+    /**
+     * Detail
+     */
+    detail?: string | null;
+    /**
+     * Latency Ms
+     */
+    latency_ms?: number | null;
+    /**
+     * Server Version
+     */
+    server_version?: string | null;
+};
+
+/**
  * ConnectionRole
  */
 export type ConnectionRole = 'primary' | 'replica';
@@ -851,6 +873,19 @@ export type TableStatsModel = {
 };
 
 /**
+ * TestConnectionModel
+ *
+ * Enough to dial a connection that has not been saved yet.
+ */
+export type TestConnectionModel = {
+    source: SourceConfig;
+    /**
+     * Connection Uri
+     */
+    connection_uri: string;
+};
+
+/**
  * UpdateConnectionsModel
  */
 export type UpdateConnectionsModel = {
@@ -918,6 +953,31 @@ export type VariablesModel = {
      */
     secret?: Array<string>;
 };
+
+export type TestConnectionData = {
+    body: TestConnectionModel;
+    path?: never;
+    query?: never;
+    url: '/connections/test';
+};
+
+export type TestConnectionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type TestConnectionError = TestConnectionErrors[keyof TestConnectionErrors];
+
+export type TestConnectionResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConnectionProbeModel;
+};
+
+export type TestConnectionResponse = TestConnectionResponses[keyof TestConnectionResponses];
 
 export type ListConnectionsData = {
     body?: never;

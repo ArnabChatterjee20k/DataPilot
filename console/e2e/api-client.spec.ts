@@ -264,6 +264,45 @@ test.describe("websocket console", () => {
     await expect(page.getByRole("list", { name: "Socket messages" })).toHaveCount(0);
   });
 
+  test("a socket that cannot connect says so, prominently", async ({
+    page,
+    request,
+    pageErrors: _errors,
+  }) => {
+    const created = await request.post(`${API_URL}/connections`, {
+      data: {
+        source: "api",
+        name: "Dead socket",
+        connection_uri: "http://127.0.0.1:1",
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+
+    await openPlayground(page);
+    await page.getByRole("button", { name: "Dead socket", exact: true }).click();
+    await page.getByRole("button", { name: "WebSocket" }).click();
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+
+    await expect(page.getByText("Could not connect")).toBeVisible();
+    await expect(page.getByLabel("Socket state")).toContainText("closed");
+    // and it is recoverable - Connect is offered again
+    await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+  });
+
+  test("a failed connect clears once it succeeds", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openApiConnection(page);
+    await page.getByRole("button", { name: "WebSocket" }).click();
+
+    await page.getByLabel("Socket path").fill("/stream");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(page.getByLabel("Socket state")).toContainText("open");
+
+    await expect(page.getByText("Could not connect")).toHaveCount(0);
+  });
+
   test("cannot send while disconnected", async ({ page, pageErrors: _errors }) => {
     await openApiConnection(page);
     await page.getByRole("button", { name: "WebSocket" }).click();

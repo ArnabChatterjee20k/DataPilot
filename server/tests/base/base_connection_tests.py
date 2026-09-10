@@ -17,6 +17,15 @@ class BaseConnectionTestMixin:
     def connection_uri(self) -> str: ...
 
     @property
+    def unreachable_uri(self) -> str:
+        """A URI of the right shape that nothing is listening on."""
+        return {
+            "postgres": "postgresql://user:pass@127.0.0.1:1/nothing",
+            "mysql": "mysql://user:pass@127.0.0.1:1/nothing",
+            "sqlite": "definitely-not-uploaded.db",
+        }[self.source]
+
+    @property
     def has_schemas(self) -> bool:
         """Backends with a namespace above the table."""
         return self.source in ("postgres", "mysql")
@@ -117,6 +126,37 @@ class BaseConnectionTestMixin:
     def test_get_nonexistent_connection(self, client: httpx.Client):
         fake_uid = "00000000-0000-0000-0000-000000000000"
         assert client.get(f"/connections/{fake_uid}").status_code == 404
+
+    def test_a_connection_can_be_tested_before_saving(self, client: httpx.Client):
+        before = client.get("/connections").json()["total"]
+
+        response = client.post(
+            "/connections/test",
+            json={"source": self.source, "connection_uri": self.connection_uri},
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["reachable"] is True
+        assert data["server_version"]
+        assert data["latency_ms"] >= 0
+
+        # testing does not create anything
+        assert client.get("/connections").json()["total"] == before
+
+    def test_testing_an_unreachable_connection_says_so(self, client: httpx.Client):
+        response = client.post(
+            "/connections/test",
+            json={
+                "source": self.source,
+                "connection_uri": self.unreachable_uri,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["reachable"] is False
+        assert data["detail"]
 
     def test_connection_status_reports_reachable(self, client: httpx.Client):
         connection_uid = self._create(client)["uid"]
