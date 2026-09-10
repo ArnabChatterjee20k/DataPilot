@@ -1,102 +1,91 @@
 """Fixtures for SQLite adapter tests"""
 
-import pytest
-import httpx
-import tempfile
-import shutil
-from pathlib import Path
-import sqlite3
 import io
-from api.routes import UPLOAD_DIR
+import sqlite3
+import tempfile
+from pathlib import Path
+
+import httpx
+import pytest
+
+SEED_STATEMENTS = (
+    """
+    CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT
+    )
+    """,
+    """
+    CREATE TABLE products (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        price REAL
+    )
+    """,
+    """
+    CREATE TABLE accounts (
+        id INTEGER PRIMARY KEY,
+        username TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        api_token TEXT
+    )
+    """,
+    "CREATE INDEX accounts_username_idx ON accounts (username)",
+)
+
+SEED_ROWS = (
+    ("INSERT INTO users (name, email) VALUES (?, ?)", ("Alice", "alice@example.com")),
+    ("INSERT INTO users (name, email) VALUES (?, ?)", ("Bob", "bob@example.com")),
+    ("INSERT INTO products (name, price) VALUES (?, ?)", ("Laptop", 999.99)),
+    ("INSERT INTO products (name, price) VALUES (?, ?)", ("Mouse", 29.99)),
+    (
+        "INSERT INTO accounts (username, password_hash, api_token) VALUES (?, ?, ?)",
+        ("alice", "hash-1", "token-1"),
+    ),
+    (
+        "INSERT INTO accounts (username, password_hash, api_token) VALUES (?, ?, ?)",
+        ("bob", "hash-2", "token-2"),
+    ),
+)
 
 
 @pytest.fixture(scope="function")
 def sqlite_db_file():
-    """Create a temporary SQLite database file for testing"""
-    # Create a temporary SQLite database
+    """Create a seeded temporary SQLite database file"""
     temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     temp_db.close()
     db_path = Path(temp_db.name)
 
-    # Initialize with a simple schema
-    conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-
-    # Create test tables
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            email TEXT
-        )
-    """
-    )
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            price REAL
-        )
-    """
-    )
-
-    # Insert some test data
-    cursor.execute(
-        "INSERT INTO users (name, email) VALUES (?, ?)", ("Alice", "alice@example.com")
-    )
-    cursor.execute(
-        "INSERT INTO users (name, email) VALUES (?, ?)", ("Bob", "bob@example.com")
-    )
-    cursor.execute(
-        "INSERT INTO products (name, price) VALUES (?, ?)", ("Laptop", 999.99)
-    )
-    cursor.execute("INSERT INTO products (name, price) VALUES (?, ?)", ("Mouse", 29.99))
-
-    conn.commit()
-    conn.close()
+    connection = sqlite3.connect(str(db_path))
+    cursor = connection.cursor()
+    for statement in SEED_STATEMENTS:
+        cursor.execute(statement)
+    for statement, params in SEED_ROWS:
+        cursor.execute(statement, params)
+    connection.commit()
+    connection.close()
 
     yield db_path
 
-    # Cleanup
-    if db_path.exists():
-        db_path.unlink()
+    db_path.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="function")
 def sqlite_connection_uri(sqlite_db_file, client: httpx.Client):
-    """Upload SQLite DB to bucket and return connection URI (filename)"""
-    # Read the database file
-    with open(sqlite_db_file, "rb") as f:
-        db_content = f.read()
+    """Upload the SQLite DB to the bucket and return its connection URI"""
+    content = sqlite_db_file.read_bytes()
 
-    # Upload to bucket
-    db_filename = sqlite_db_file.name
     response = client.post(
         "/bucket",
         files={
-            "file": (db_filename, io.BytesIO(db_content), "application/octet-stream")
+            "file": (
+                sqlite_db_file.name,
+                io.BytesIO(content),
+                "application/octet-stream",
+            )
         },
     )
+    assert response.status_code == 200, response.text
 
-    assert response.status_code == 200
-    upload_data = response.json()
-    file_uid = upload_data["uid"]
-
-    # The connection URI should be the filename: {uid}{ext}
-    # Based on bucket.py, the file is saved as {file_id}{ext}
-    connection_uri = f"{file_uid}.db"
-
-    yield connection_uri
-
-    # Cleanup: The bucket cleanup is handled by test_bucket_dir fixture
-
-
-@pytest.fixture(scope="function", autouse=True)
-def sqlite_test_setup(sqlite_db_file, sqlite_connection_uri):
-    """Setup fixture that runs before each test"""
-    # Setup is done in sqlite_db_file and sqlite_connection_uri fixtures
-    yield
-    # Teardown is handled by those fixtures
+    yield response.json()["connection_uri"]
