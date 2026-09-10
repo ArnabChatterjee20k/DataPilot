@@ -34,7 +34,16 @@ def to_response(connection) -> ConnectionsModel:
     )
 
 
-def validate_sqlite_uri(source: str, connection_uri: str) -> None:
+def validate_uri(source: str, connection_uri: str) -> None:
+    """Reject a connection URI that cannot possibly work for its source."""
+    if source == SourceConfig.API.value:
+        if not str(connection_uri or "").startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An API connection needs a base URL starting with http:// or https://",
+            )
+        return
+
     if source != SourceConfig.SQLITE.value:
         return
     if not connection_uri:
@@ -64,7 +73,7 @@ async def load_connection(db: DBSession, connection_uid: str) -> Connections:
 
 @router.post("/connections", response_model=ConnectionsModel)
 async def create_connection(connection: CreateConnectionsModel, db: DBSession):
-    validate_sqlite_uri(connection.source, connection.connection_uri)
+    validate_uri(connection.source, connection.connection_uri)
 
     created = await db.create(Connections(**connection.model_dump()))
     await db.commit()
@@ -94,7 +103,7 @@ async def update_connection(
 
     source = updates.get("source", connection.source)
     connection_uri = updates.get("connection_uri", connection.connection_uri)
-    validate_sqlite_uri(source, connection_uri)
+    validate_uri(source, connection_uri)
 
     if updates:
         for field, value in updates.items():
@@ -121,6 +130,12 @@ async def delete_connection(connection_uid: str, db: DBSession):
 async def get_connection_status(connection_uid: str, db: DBSession):
     """Dial the connection and report whether it answers, without running a query."""
     connection = await load_connection(db, connection_uid)
+    if connection.source == SourceConfig.API.value:
+        return ConnectionStatusModel(
+            uid=connection_uid,
+            reachable=True,
+            detail="API connections are dialled per request",
+        )
 
     started = time.perf_counter()
     try:

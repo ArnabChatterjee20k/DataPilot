@@ -1,0 +1,368 @@
+import asyncio
+from typing import Annotated, Optional
+from urllib.parse import urlparse, urlunparse
+
+import websockets
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+
+from .. import http_client
+from ..config import SourceConfig
+from ..models import (
+    RequestResultModel,
+    RequestSpecModel,
+    ResponseModel,
+    SavedRequestListModel,
+    SavedRequestModel,
+    SentRequestModel,
+    VariablesModel,
+)
+from ..database.db import DBSession
+from ..database.models import ApiRequests
+from .connections import load_connection
+
+router = APIRouter(tags=["api-client"])
+
+#: How long the proxy waits for the upstream socket to accept the connection.
+SOCKET_CONNECT_TIMEOUT = 15
+
+
+def require_api_connection(connection):
+    if connection.source != SourceConfig.API.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"'{connection.name}' is a {connection.source} connection. "
+                "Requests can only be sent on API connections."
+            ),
+        )
+    return connection
+
+
+def connection_variables(connection) -> dict:
+    return getattr(connection, "variables", None) or {}
+
+
+def to_saved_model(record) -> SavedRequestModel:
+    values = record.get_values()
+    return SavedRequestModel(
+        uid=values["uid"],
+        connection_id=values["connection_id"],
+        name=values["name"],
+        method=values.get("method") or "GET",
+        path=values.get("path") or "",
+        params=values.get("params") or [],
+        headers=values.get("headers") or [],
+        body_type=values.get("body_type") or "none",
+        body=values.get("body") or "",
+        auth=values.get("auth"),
+        position=values.get("position") or 0,
+    )
+
+
+@router.post(
+    "/connection/{connection_id}/request", response_model=RequestResultModel
+)
+async def send_request(
+    connection_id: str,
+    spec: RequestSpecModel,
+    db: DBSession,
+):
+    """Send a request from the server and return the whole response.
+
+    Running server-side is what makes this usable at all: the browser cannot
+    call an arbitrary origin because of CORS, and any credential it sent would
+    be readable by the page.
+    """
+    connection = require_api_connection(await load_connection(db, connection_id))
+    variables = connection_variables(connection)
+
+    try:
+        url = http_client.resolve_url(connection.connection_uri, spec.path, variables)
+        params = http_client.active_pairs(
+            [pair.model_dump() for pair in spec.params], variables
+        )
+        headers = http_client.active_pairs(
+            [pair.model_dump() for pair in spec.headers], variables
+        )
+        headers = http_client.apply_auth(
+            headers, spec.auth.model_dump() if spec.auth else None, variables
+        )
+        content, form, content_type = http_client.build_body(
+            spec.body_type, spec.body, variables
+        )
+        if content_type and not any(key.lower() == "content-type" for key, _ in headers):
+            headers.append(("Content-Type", content_type))
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+        ) from error
+
+    try:
+        sent, received = await http_client.send(
+            method=spec.method,
+            url=url,
+            params=params,
+            headers=headers,
+            content=content,
+            data=form,
+            timeout=spec.timeout,
+            follow_redirects=spec.follow_redirects,
+            verify_tls=spec.verify_tls,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+        ) from error
+    except Exception as error:
+        # a request that cannot be delivered is a result to show, not a 500
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{type(error).__name__}: {error}",
+        ) from error
+
+    return RequestResultModel(
+        connection_id=connection_id,
+        request=SentRequestModel(**vars(sent)),
+        response=ResponseModel(**vars(received)),
+    )
+
+
+@router.get(
+    "/connection/{connection_id}/requests", response_model=SavedRequestListModel
+)
+async def list_requests(connection_id: str, db: DBSession):
+    await load_connection(db, connection_id)
+    records = await db.list(
+        ApiRequests, filters=ApiRequests.connection_id == connection_id, limit=-1
+    )
+    saved = sorted(
+        (to_saved_model(record) for record in records),
+        key=lambda request: (request.position, request.name.lower()),
+    )
+    return SavedRequestListModel(requests=saved, total=len(saved))
+
+
+@router.post(
+    "/connection/{connection_id}/requests", response_model=SavedRequestModel
+)
+async def create_request(connection_id: str, spec: RequestSpecModel, db: DBSession):
+    require_api_connection(await load_connection(db, connection_id))
+
+    existing = await db.list(
+        ApiRequests, filters=ApiRequests.connection_id == connection_id, limit=-1
+    )
+    record = await db.create(
+        ApiRequests(
+            connection_id=connection_id,
+            name=spec.name,
+            method=spec.method,
+            path=spec.path,
+            params=[pair.model_dump() for pair in spec.params],
+            headers=[pair.model_dump() for pair in spec.headers],
+            body_type=spec.body_type,
+            body=spec.body if isinstance(spec.body, str) else "",
+            auth=spec.auth.model_dump() if spec.auth else None,
+            position=len(existing),
+        )
+    )
+    await db.commit()
+    return to_saved_model(record)
+
+
+@router.get(
+    "/connection/{connection_id}/requests/{request_uid}",
+    response_model=SavedRequestModel,
+)
+async def get_request(connection_id: str, request_uid: str, db: DBSession):
+    await load_connection(db, connection_id)
+    record = await db.get(ApiRequests, filters=ApiRequests.uid == request_uid)
+    if not record or record.connection_id != connection_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Request {request_uid} not found",
+        )
+    return to_saved_model(record)
+
+
+@router.put(
+    "/connection/{connection_id}/requests/{request_uid}",
+    response_model=SavedRequestModel,
+)
+async def update_request(
+    connection_id: str, request_uid: str, spec: RequestSpecModel, db: DBSession
+):
+    await load_connection(db, connection_id)
+    record = await db.get(ApiRequests, filters=ApiRequests.uid == request_uid)
+    if not record or record.connection_id != connection_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Request {request_uid} not found",
+        )
+
+    updates = {
+        "name": spec.name,
+        "method": spec.method,
+        "path": spec.path,
+        "params": [pair.model_dump() for pair in spec.params],
+        "headers": [pair.model_dump() for pair in spec.headers],
+        "body_type": spec.body_type,
+        "body": spec.body if isinstance(spec.body, str) else "",
+        "auth": spec.auth.model_dump() if spec.auth else None,
+    }
+    for field, value in updates.items():
+        setattr(record, field, value)
+
+    await db.update(ApiRequests, ApiRequests.uid == request_uid, updates)
+    await db.commit()
+    return to_saved_model(record)
+
+
+@router.delete(
+    "/connection/{connection_id}/requests/{request_uid}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_request(connection_id: str, request_uid: str, db: DBSession):
+    await load_connection(db, connection_id)
+    record = await db.get(ApiRequests, filters=ApiRequests.uid == request_uid)
+    if not record or record.connection_id != connection_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Request {request_uid} not found",
+        )
+    await db.delete(ApiRequests, ApiRequests.uid == request_uid)
+    await db.commit()
+    return None
+
+
+@router.get(
+    "/connection/{connection_id}/variables", response_model=VariablesModel
+)
+async def get_variables(connection_id: str, db: DBSession):
+    """Variables for a connection, with secret-looking values masked."""
+    connection = await load_connection(db, connection_id)
+    variables = connection_variables(connection)
+
+    secret = [name for name in variables if http_client.is_secret_variable(name)]
+    shown = {
+        name: http_client.mask(value) if name in secret else value
+        for name, value in variables.items()
+    }
+    return VariablesModel(variables=shown, secret=secret)
+
+
+@router.put(
+    "/connection/{connection_id}/variables", response_model=VariablesModel
+)
+async def set_variables(connection_id: str, payload: VariablesModel, db: DBSession):
+    from ..database.models import Connections
+
+    connection = await load_connection(db, connection_id)
+    variables = dict(payload.variables)
+
+    await db.update(
+        Connections, Connections.uid == connection_id, {"variables": variables}
+    )
+    await db.commit()
+    connection.variables = variables
+
+    secret = [name for name in variables if http_client.is_secret_variable(name)]
+    shown = {
+        name: http_client.mask(value) if name in secret else value
+        for name, value in variables.items()
+    }
+    return VariablesModel(variables=shown, secret=secret)
+
+
+def socket_url(base_url: str, path: str, variables: dict) -> str:
+    """Resolve a websocket URL, upgrading http(s) to ws(s)."""
+    resolved = http_client.resolve_url(base_url, path, variables)
+    parsed = urlparse(resolved)
+    scheme = {"http": "ws", "https": "wss"}.get(parsed.scheme, parsed.scheme)
+    if scheme not in ("ws", "wss"):
+        raise ValueError(f"Not a websocket URL: {resolved}")
+    return urlunparse(parsed._replace(scheme=scheme))
+
+
+@router.websocket("/connection/{connection_id}/socket")
+async def proxy_socket(
+    websocket: WebSocket,
+    connection_id: str,
+    path: Annotated[Optional[str], Query()] = "",
+):
+    """Pipe a websocket between the browser and the upstream service.
+
+    Same reasoning as the HTTP path: the server holds the upstream socket, so
+    the page never needs reachability or credentials of its own.
+    """
+    await websocket.accept()
+
+    from ..database.db import storage
+    from ..database.models import Connections
+
+    try:
+        async with storage.session() as session:
+            connection = await session.get(
+                Connections, filters=Connections.uid == connection_id
+            )
+    except Exception as error:
+        await websocket.close(code=1011, reason=f"Connection lookup failed: {error}")
+        return
+
+    if not connection:
+        await websocket.close(code=1008, reason="Connection not found")
+        return
+    if connection.source != SourceConfig.API.value:
+        await websocket.close(code=1008, reason="Not an API connection")
+        return
+
+    try:
+        upstream_url = socket_url(
+            connection.connection_uri, path or "", connection_variables(connection)
+        )
+    except ValueError as error:
+        await websocket.close(code=1008, reason=str(error))
+        return
+
+    try:
+        upstream = await asyncio.wait_for(
+            websockets.connect(upstream_url), timeout=SOCKET_CONNECT_TIMEOUT
+        )
+    except Exception as error:
+        await websocket.close(code=1011, reason=f"{type(error).__name__}: {error}")
+        return
+
+    async def browser_to_upstream():
+        while True:
+            message = await websocket.receive_text()
+            await upstream.send(message)
+
+    async def upstream_to_browser():
+        async for message in upstream:
+            if isinstance(message, bytes):
+                message = message.decode("utf-8", errors="replace")
+            await websocket.send_text(message)
+
+    tasks = [
+        asyncio.create_task(browser_to_upstream()),
+        asyncio.create_task(upstream_to_browser()),
+    ]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        for task in done:
+            error = task.exception()
+            if error and not isinstance(error, WebSocketDisconnect):
+                raise error
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        for task in tasks:
+            task.cancel()
+        await upstream.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
