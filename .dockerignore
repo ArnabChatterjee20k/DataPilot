@@ -8,7 +8,7 @@ npm-debug.log
 pnpm-debug.log
 
 # Python
-__pycache__
+**/__pycache__
 *.pyc
 *.pyo
 *.pyd
@@ -18,7 +18,9 @@ __pycache__
 *.egg-info
 dist
 build
-.pytest_cache
+**/.pytest_cache
+**/.venv
+**/node_modules
 .coverage
 htmlcov
 
@@ -52,6 +54,10 @@ pnpm-lock.yaml
 
 # Tests
 tests/
+e2e/
+playwright.config.ts
+playwright-report/
+test-results/
 *.test.ts
 *.test.tsx
 *.test.js

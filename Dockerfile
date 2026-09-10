@@ -1,71 +1,49 @@
-# Multi-stage Dockerfile for DataPilot
-# Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+# Stage 1: build the console
+FROM node:22-alpine AS frontend-builder
 
-# Install pnpm
-RUN npm install -g pnpm
+RUN corepack enable
 
 WORKDIR /app/console
 
-# Copy package files
 COPY console/package.json console/pnpm-lock.yaml ./
-
-# Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy frontend source
 COPY console/ ./
-
-# Build frontend
 RUN pnpm build
 
-# Stage 2: Python backend
+# Stage 2: the API, serving the built console
 FROM python:3.12-slim AS backend
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
 
-# Compile bytecode
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#compiling-bytecode
-ENV UV_COMPILE_BYTECODE=1
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/venv
 
-# uv Cache
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#caching
-ENV UV_LINK_MODE=copy
-
-WORKDIR /app
-
-# Copy backend files
-COPY server/ ./server/
-
-# Install Python dependencies
 WORKDIR /app/server
-RUN uv pip install --system -r pyproject.toml
 
-# Place executables in the environment at the front of the path
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#using-the-environment
-ENV PATH="/app/.venv/bin:$PATH"
+# dependencies first, so a source change does not reinstall them
+COPY server/pyproject.toml server/uv.lock ./
+# `uv sync` honours [tool.uv.sources], which is where laserorm comes from;
+# `uv pip install -r pyproject.toml` would ignore it and fail to resolve
+RUN uv sync --frozen --no-dev --no-install-project
 
-# Copy built frontend from previous stage
+COPY server/ ./
 COPY --from=frontend-builder /app/console/dist ./static
 
-# Expose port
+ENV PATH="/app/venv/bin:$PATH" \
+    MODE=PROD \
+    DB_PATH=/app/server/data/config.db \
+    BUCKET_DIR=/app/server/data/buckets
+
 EXPOSE 8000
 
-# Create startup script
-RUN echo '#!/bin/bash\n\
-cd /app/server\n\
-# Start FastAPI with uvicorn, serving static files from ./static\n\
-exec uvicorn main:api --host 0.0.0.0 --port 8000\n\
-' > /app/start.sh && chmod +x /app/start.sh
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
 
-WORKDIR /app/server
-
-CMD ["/app/start.sh"]
+CMD ["uvicorn", "main:api", "--host", "0.0.0.0", "--port", "8000"]
