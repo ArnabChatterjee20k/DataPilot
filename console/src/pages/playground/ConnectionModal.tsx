@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AlertCircle, CheckCircle2, Database, FileUp, Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -7,435 +11,370 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dropzone, DropzoneContent, DropzoneEmptyState } from '@/components/ui/shadcn-io/dropzone';
-import { createConnection, updateConnection, uploadFile, getConnection } from "@/lib/sdk";
-import { useDatabaseStore } from "./store/store";
-import { Loader2, CheckCircle2, AlertCircle, Database } from "lucide-react";
-import type { SourceConfig } from "@/lib/sdk/types.gen";
-import { useEffect } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dropzone,
+  DropzoneContent,
+  DropzoneEmptyState,
+} from "@/components/ui/shadcn-io/dropzone";
+import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/errors";
+import { getConnection, uploadFile, type SourceConfig } from "@/lib/sdk";
+import { useCreateConnection, useUpdateConnection } from "./hooks";
+
+const SQLITE_SUFFIXES = [".db", ".sqlite", ".sqlite3", ".db3"];
+
+const ENVIRONMENTS = [
+  { value: "local", label: "Local" },
+  { value: "staging", label: "Staging" },
+  { value: "production", label: "Production" },
+] as const;
+
+const ROLES = [
+  { value: "primary", label: "Primary" },
+  { value: "replica", label: "Replica" },
+] as const;
+
+type Environment = (typeof ENVIRONMENTS)[number]["value"];
+type Role = (typeof ROLES)[number]["value"];
 
 interface ConnectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: () => void;
-  connectionId?: string | null; // If provided, modal is in edit mode
+  onSuccess?: (connectionId?: string) => void;
+  connectionId?: string | null;
 }
 
-export function ConnectionModal({ open, onOpenChange, onSuccess, connectionId }: ConnectionModalProps) {
-  const [connectionType, setConnectionType] = useState<SourceConfig | null>(null);
+export function ConnectionModal({
+  open,
+  onOpenChange,
+  onSuccess,
+  connectionId,
+}: ConnectionModalProps) {
+  const isEditMode = !!connectionId;
+  const createConnection = useCreateConnection();
+  const updateConnection = useUpdateConnection();
+
+  const [source, setSource] = useState<SourceConfig | null>(null);
   const [name, setName] = useState("");
   const [connectionUri, setConnectionUri] = useState("");
+  const [environment, setEnvironment] = useState<Environment>("local");
+  const [role, setRole] = useState<Role>("primary");
+  const [readOnly, setReadOnly] = useState(true);
   const [file, setFile] = useState<File | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const { addConnection, setConnections, updateConnection: updateConnectionInStore } = useDatabaseStore();
-  const isEditMode = !!connectionId;
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleReset = () => {
-    setConnectionType(null);
+  const reset = () => {
+    setSource(null);
     setName("");
     setConnectionUri("");
+    setEnvironment("local");
+    setRole("primary");
+    setReadOnly(true);
     setFile(null);
-    setUploadStatus('idle');
-    setErrorMessage("");
-    setIsEditing(false);
+    setError(null);
   };
 
-  // Load connection data when editing
   useEffect(() => {
-    if (open && isEditMode && connectionId) {
-      const loadConnectionData = async () => {
-        try {
-          setIsEditing(true);
-          const response = await getConnection({
-            path: { connection_uid: connectionId },
-          });
-          
-          if (response.data) {
-            setConnectionType(response.data.source);
-            setName(response.data.name);
-            setConnectionUri(response.data.connection_uri);
-          }
-        } catch (error) {
-          console.error("Error loading connection:", error);
-          setErrorMessage("Failed to load connection data");
-        } finally {
-          setIsEditing(false);
-        }
-      };
-      
-      loadConnectionData();
-    } else if (!open) {
-      handleReset();
+    if (!open) {
+      reset();
+      return;
     }
+    if (!isEditMode) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+    getConnection({ path: { connection_uid: connectionId! }, throwOnError: true })
+      .then((response) => {
+        if (cancelled || !response.data) return;
+        setSource(response.data.source);
+        setName(response.data.name);
+        setConnectionUri(response.data.connection_uri);
+        setEnvironment((response.data.environment ?? "local") as Environment);
+        setRole((response.data.role ?? "primary") as Role);
+        setReadOnly(response.data.read_only ?? true);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(errorMessage(loadError, "Could not load the connection"));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, isEditMode, connectionId]);
 
-  const handleClose = (open: boolean) => {
-    if (!open) {
-      handleReset();
+  const handleDrop = (accepted: File[]) => {
+    const candidate = accepted[0];
+    if (!candidate) return;
+    const isSqlite = SQLITE_SUFFIXES.some((suffix) =>
+      candidate.name.toLowerCase().endsWith(suffix)
+    );
+    if (!isSqlite) {
+      setError(`Upload a SQLite file (${SQLITE_SUFFIXES.join(", ")})`);
+      return;
     }
-    onOpenChange(open);
+    setError(null);
+    setFile(candidate);
+    if (!name.trim()) setName(candidate.name.replace(/\.[^.]+$/, ""));
   };
 
-  const handleFileDrop = (acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      const selectedFile = acceptedFiles[0];
-      if (selectedFile.name.endsWith('.db') || selectedFile.name.endsWith('.sqlite') || selectedFile.name.endsWith('.sqlite3')) {
-        setFile(selectedFile);
-        setUploadStatus('idle');
-        setErrorMessage("");
-      } else {
-        setErrorMessage('Please upload a SQLite file (.db, .sqlite, or .sqlite3)');
-        setUploadStatus('error');
-      }
-    }
-  };
-
-  const handleSaveConnection = async () => {
-    if (!connectionType) return;
-
-    setIsCreating(true);
-    setErrorMessage("");
-    setUploadStatus('idle');
+  const handleSave = async () => {
+    if (!source) return;
+    setError(null);
+    setIsSaving(true);
 
     try {
-      let finalConnectionUri = connectionUri;
+      let uri = connectionUri;
 
-      // If SQLite and a new file is uploaded, upload file first
-      let bucketUid: string | undefined;
-      if (connectionType === 'sqlite' && file && !isEditMode) {
-        setUploadStatus('uploading');
-        const uploadResponse = await uploadFile({
-          body: {
-            file: file,
+      if (source === "sqlite" && file) {
+        const upload = await uploadFile({ body: { file }, throwOnError: true });
+        if (!upload.data?.connection_uri) {
+          throw new Error("The upload did not return a connection URI");
+        }
+        uri = upload.data.connection_uri;
+      }
+
+      if (!uri) {
+        throw new Error(
+          source === "sqlite"
+            ? "Upload a SQLite file first"
+            : "A connection URI is required"
+        );
+      }
+
+      const label =
+        name.trim() || file?.name || `New ${source} connection`;
+
+      if (isEditMode) {
+        await updateConnection.mutateAsync({
+          connectionId: connectionId!,
+          data: {
+            name: label,
+            connection_uri: uri,
+            source,
+            environment,
+            role,
+            read_only: readOnly,
           },
         });
-
-        if (!uploadResponse.data) {
-          throw new Error('Failed to upload file');
-        }
-
-        // Get the bucket UID from the upload response
-        bucketUid = uploadResponse.data.uid;
-        
-        if (!bucketUid) {
-          throw new Error('Bucket UID not returned from upload response');
-        }
-        
-        // Use the bucket UID as the connection URI
-        finalConnectionUri = bucketUid;
-        setUploadStatus('success');
-      } else if (connectionType === 'sqlite' && !file && !isEditMode) {
-        setErrorMessage('Please upload a SQLite file');
-        setUploadStatus('error');
-        setIsCreating(false);
-        return;
-      }
-
-      // Ensure we have a connection URI
-      if (!finalConnectionUri && !isEditMode) {
-        throw new Error('Connection URI is required');
-      }
-
-      // Determine the connection name
-      const connectionName = name.trim() || (connectionType === 'sqlite' && file ? file.name : `New ${connectionType} Connection`);
-
-      if (isEditMode && connectionId) {
-        // Update existing connection
-        const updateData: { name?: string; connection_uri?: string; source?: SourceConfig } = {};
-        if (name.trim()) updateData.name = connectionName;
-        if (finalConnectionUri || connectionUri) updateData.connection_uri = finalConnectionUri || connectionUri;
-        if (connectionType) updateData.source = connectionType;
-
-        const response = await updateConnection({
-          path: { connection_uid: connectionId },
-          body: updateData,
-        });
-
-        if (response.data && typeof response.data === 'object' && 'name' in response.data) {
-          // Update connection in store
-          updateConnectionInStore(connectionId, {
-            name: (response.data as any).name,
-            type: (response.data as any).source,
-          });
-          
-          // Reload all connections to ensure the view is up to date
-          const { listConnections } = await import("@/lib/sdk");
-          const connectionsResponse = await listConnections();
-          setConnections(
-            connectionsResponse.data?.connections.map((conn) => ({
-              id: conn.uid,
-              name: conn.name,
-              type: conn.source,
-            })) || []
-          );
-
-          handleReset();
-          onOpenChange(false);
-          onSuccess?.();
-        }
+        onSuccess?.(connectionId!);
       } else {
-        // Create new connection
-        const response = await createConnection({
-          body: {
-            name: connectionName,
-            connection_uri: finalConnectionUri,
-            source: connectionType,
-          },
+        const created = await createConnection.mutateAsync({
+          name: label,
+          connection_uri: uri,
+          source,
+          environment,
+          role,
+          read_only: readOnly,
         });
-
-        if (response.data) {
-          // Add the new connection to the store
-          addConnection({
-            id: response.data.uid,
-            name: response.data.name,
-            type: response.data.source,
-          });
-          
-          // Reload all connections to ensure the view is up to date
-          const { listConnections } = await import("@/lib/sdk");
-          const connectionsResponse = await listConnections();
-          setConnections(
-            connectionsResponse.data?.connections.map((conn) => ({
-              id: conn.uid,
-              name: conn.name,
-              type: conn.source,
-            })) || []
-          );
-
-          handleReset();
-          onOpenChange(false);
-          onSuccess?.();
-        }
+        onSuccess?.(created?.uid);
       }
-    } catch (error: any) {
-      setUploadStatus('error');
-      setErrorMessage(
-        error?.response?.data?.detail?.message ||
-        error?.response?.data?.detail?.[0]?.msg ||
-        error?.message ||
-        `Failed to ${isEditMode ? 'update' : 'create'} connection. Please try again.`
-      );
+
+      onOpenChange(false);
+    } catch (saveError) {
+      setError(errorMessage(saveError, "Could not save the connection"));
     } finally {
-      setIsCreating(false);
+      setIsSaving(false);
     }
   };
 
-  const canCreate = connectionType && 
-    (connectionType === 'sqlite' 
-      ? (isEditMode ? true : file !== null) // In edit mode, file is optional
-      : connectionUri.trim() !== '');
+  const canSave =
+    !!source &&
+    !isSaving &&
+    (source !== "sqlite" || !!file || !!connectionUri) &&
+    (source === "sqlite" || !!connectionUri.trim());
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEditMode ? "Edit Connection" : "Create New Connection"}</DialogTitle>
+          <DialogTitle>{isEditMode ? "Edit connection" : "New connection"}</DialogTitle>
           <DialogDescription>
-            {isEditMode 
-              ? "Update your connection details"
-              : "Choose a database type and configure your connection"}
+            {isEditMode
+              ? "Update how DataPilot reaches this database."
+              : "Point DataPilot at a database. Connections are read-only until you say otherwise."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {isEditing ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading connection...</span>
-            </div>
-          ) : !connectionType ? (
-            <div className="grid grid-cols-2 gap-4">
-              <Card
-                className="cursor-pointer hover:border-primary transition-colors"
-                onClick={() => setConnectionType('postgres')}
-              >
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    PostgreSQL
-                  </CardTitle>
-                  <CardDescription>
-                    Connect to a PostgreSQL database
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              <Card
-                className="cursor-pointer hover:border-primary transition-colors"
-                onClick={() => setConnectionType('sqlite')}
-              >
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    SQLite
-                  </CardTitle>
-                  <CardDescription>
-                    Upload a SQLite database file
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold">
-                    {connectionType === 'postgres' ? 'PostgreSQL' : 'SQLite'} Connection
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {connectionType === 'postgres' 
-                      ? 'Enter your PostgreSQL connection details'
-                      : 'Upload your SQLite database file'}
-                  </p>
-                </div>
-                {!isEditMode && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setConnectionType(null)}
-                    disabled={isCreating || isEditing}
-                  >
-                    Change Type
-                  </Button>
-                )}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading…
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {error && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span className="break-words">{error}</span>
               </div>
+            )}
 
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Connection Name <span className="text-muted-foreground text-xs font-normal">(optional)</span>
-                  </label>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder={connectionType === 'sqlite' ? file?.name || 'My SQLite Database' : 'My PostgreSQL Connection'}
-                      className="w-full px-3 py-2 border rounded-md"
-                      disabled={isCreating || isEditing}
-                    />
-                  {connectionType === 'sqlite' && file && !name && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Default: {file.name}
-                    </p>
-                  )}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Database</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {(["postgres", "sqlite"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setSource(option)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors",
+                      source === option
+                        ? "border-primary bg-primary/10"
+                        : "hover:bg-muted/60"
+                    )}
+                  >
+                    {option === "sqlite" ? (
+                      <FileUp className="h-4 w-4" />
+                    ) : (
+                      <Database className="h-4 w-4" />
+                    )}
+                    {option === "sqlite" ? "SQLite file" : "PostgreSQL"}
+                    {source === option && (
+                      <CheckCircle2 className="ml-auto h-3.5 w-3.5 text-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {source && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="connection-name" className="text-xs">
+                    Name
+                  </Label>
+                  <Input
+                    id="connection-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Production replica"
+                    className="h-8 text-xs"
+                  />
                 </div>
 
-                {connectionType === 'postgres' ? (
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Connection URI
-                    </label>
-                    <input
-                      type="text"
-                      value={connectionUri}
-                      onChange={(e) => setConnectionUri(e.target.value)}
-                      placeholder="postgresql://user:password@host:port/database"
-                      className="w-full px-3 py-2 border rounded-md font-mono text-sm"
-                      disabled={isCreating || isEditing}
-                    />
-                    {isEditMode && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Leave empty to keep current URI
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      SQLite Database File
-                    </label>
+                {source === "sqlite" ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">SQLite file</Label>
                     <Dropzone
-                      accept={{
-                        'application/x-sqlite3': ['.db', '.sqlite', '.sqlite3'],
-                        'application/vnd.sqlite3': ['.db', '.sqlite', '.sqlite3'],
-                      }}
+                      accept={{ "application/octet-stream": SQLITE_SUFFIXES }}
                       maxFiles={1}
-                      maxSize={100 * 1024 * 1024}
-                      onDrop={handleFileDrop}
+                      maxSize={500 * 1024 * 1024}
+                      onDrop={handleDrop}
                       src={file ? [file] : undefined}
-                      disabled={isCreating || isEditing || uploadStatus === 'uploading' || isEditMode}
+                      disabled={isSaving}
                     >
                       <DropzoneEmptyState />
                       <DropzoneContent />
                     </Dropzone>
-
-                    {file && (
-                      <div className="flex items-center justify-between p-3 bg-muted rounded-md mt-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{file.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                          </span>
-                        </div>
-                        {!isCreating && uploadStatus !== 'uploading' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setFile(null);
-                              setUploadStatus('idle');
-                            }}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
+                    {isEditMode && connectionUri && !file && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Currently using <span className="font-mono">{connectionUri}</span>
+                      </p>
                     )}
                   </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="connection-uri" className="text-xs">
+                      Connection URI
+                    </Label>
+                    <Input
+                      id="connection-uri"
+                      value={connectionUri}
+                      onChange={(event) => setConnectionUri(event.target.value)}
+                      placeholder="postgresql://user:password@host:5432/database"
+                      className="h-8 font-mono text-xs"
+                    />
+                  </div>
                 )}
-              </div>
 
-              {uploadStatus === 'success' && (
-                <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-400 rounded-md">
-                  <CheckCircle2 size={16} />
-                  <span className="text-sm">File uploaded successfully!</span>
-                </div>
-              )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Environment</Label>
+                    <Select
+                      value={environment}
+                      onValueChange={(value) => setEnvironment(value as Environment)}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ENVIRONMENTS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {uploadStatus === 'error' && errorMessage && (
-                <div className="flex items-center gap-2 p-3 bg-red-500/10 text-red-400 rounded-md">
-                  <AlertCircle size={16} />
-                  <span className="text-sm">{errorMessage}</span>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Role</Label>
+                    <Select value={role} onValueChange={(value) => setRole(value as Role)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ROLES.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                <label className="flex items-start gap-2 rounded-md border p-2.5">
+                  <Checkbox
+                    checked={readOnly}
+                    onCheckedChange={(checked) => setReadOnly(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-xs">
+                    <span className="font-medium">Read-only</span>
+                    <span className="block text-muted-foreground">
+                      Writes are rejected unless a query tab explicitly allows them.
+                    </span>
+                  </span>
+                </label>
+              </>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => handleClose(false)}
-            disabled={isCreating}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
-          {connectionType && (
-            <Button
-              onClick={handleSaveConnection}
-              disabled={(!canCreate && !isEditMode) || isCreating || isEditing}
-            >
-              {isCreating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {connectionType === 'sqlite' && uploadStatus === 'uploading' 
-                    ? 'Uploading...' 
-                    : isEditMode 
-                    ? 'Updating...' 
-                    : 'Creating...'}
-                </>
-              ) : (
-                isEditMode ? 'Update Connection' : 'Create Connection'
-              )}
-            </Button>
-          )}
+          <Button onClick={handleSave} disabled={!canSave}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                Saving…
+              </>
+            ) : isEditMode ? (
+              "Save changes"
+            ) : (
+              "Create connection"
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
