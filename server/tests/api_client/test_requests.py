@@ -138,12 +138,20 @@ class TestSendingRequests:
         response = send(client, api_connection["uid"], path="/slow", timeout=1)
 
         assert response.status_code == 502
-        assert "Timeout" in response.json()["detail"]
+        detail = response.json()["detail"]
+        assert "Timed out" in detail or "sent no response in time" in detail
+        assert "/slow" in detail
 
     def test_an_unreachable_host_is_reported(self, client, api_connection):
         response = send(client, api_connection["uid"], path="http://127.0.0.1:1/nope")
 
         assert response.status_code == 502
+        detail = response.json()["detail"]
+        # no driver text on screen: it says what happened and what to check
+        assert "refused" in detail.lower()
+        assert "Nothing is listening" in detail
+        # a refused local address explains the container case
+        assert "host.docker.internal" in detail
 
     def test_a_non_http_scheme_is_refused(self, client, api_connection):
         response = send(client, api_connection["uid"], path="file:///etc/passwd")
@@ -174,6 +182,41 @@ class TestSendingRequests:
         )
         assert response.status_code == 400
         assert "API connection" in response.json()["detail"]
+
+
+class TestAdHocRequests:
+    """A URL you want to try once should not require inventing a connection."""
+
+    def test_an_absolute_url_is_sent_without_a_connection(self, client, upstream):
+        response = client.post("/request", json={"path": f"{upstream.base_url}/ping"})
+
+        assert response.status_code == 200, response.text
+        assert json.loads(response.json()["response"]["body"]) == {"pong": True}
+
+    def test_headers_and_body_are_sent_the_same_way(self, client, upstream):
+        response = client.post(
+            "/request",
+            json={
+                "path": f"{upstream.base_url}/echo",
+                "method": "POST",
+                "headers": [{"key": "X-Trace", "value": "abc"}],
+                "body_type": "json",
+                "body": '{"name": "Ada"}',
+            },
+        )
+
+        echoed = json.loads(response.json()["response"]["body"])
+        assert echoed["method"] == "POST"
+        assert echoed["headers"]["x-trace"] == "abc"
+        assert json.loads(echoed["body"]) == {"name": "Ada"}
+
+    def test_a_relative_path_says_there_is_no_base_to_resolve_it(self, client):
+        response = client.post("/request", json={"path": "/ping"})
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "absolute" in detail
+        assert "API connection" in detail
 
 
 class TestAuth:
