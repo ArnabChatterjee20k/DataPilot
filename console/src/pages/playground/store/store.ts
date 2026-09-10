@@ -70,6 +70,24 @@ export const newRequestDraft = (): RequestDraft => ({
   auth: { type: "none" },
 });
 
+/** One past run of a request, enough to see what happened and send it again. */
+export interface RequestRun {
+  id: string;
+  connectionId?: string;
+  request: RequestDraft;
+  /** The URL the server actually called, which the path alone does not show. */
+  url?: string;
+  method: HttpMethod;
+  status?: number;
+  elapsedMs?: number;
+  size?: number;
+  error?: string;
+  ranAt: number;
+}
+
+/** Enough history to retrace a session, not so much that it fills storage. */
+export const MAX_HISTORY = 50;
+
 export interface SocketMessage {
   id: string;
   direction: "sent" | "received" | "system";
@@ -189,6 +207,7 @@ interface TabStore {
   activeTabId: string;
   results: Record<string, QueryResultState>;
   requestResults: Record<string, RequestResultState>;
+  requestHistory: RequestRun[];
   socketLogs: Record<string, SocketMessage[]>;
   views: SavedView[];
   setActiveTabId: (id: string) => void;
@@ -201,6 +220,8 @@ interface TabStore {
   addSocketTab: (connectionId: string) => string;
   updateRequest: (tabId: string, patch: Partial<RequestDraft>) => void;
   setRequestResult: (tabId: string, result: RequestResultState | undefined) => void;
+  recordRequestRun: (run: Omit<RequestRun, "id">) => void;
+  clearRequestHistory: () => void;
   appendSocketMessage: (tabId: string, message: SocketMessage) => void;
   clearSocketLog: (tabId: string) => void;
   openTableTab: (table: Table, connection: DatabaseConnection) => string;
@@ -227,6 +248,7 @@ export const useTabsStore = create<TabStore>()(
       activeTabId: NEW_TAB_ID,
       results: {},
       requestResults: {},
+      requestHistory: [],
       socketLogs: {},
       views: [],
 
@@ -287,6 +309,16 @@ export const useTabsStore = create<TabStore>()(
             return { ...tab, request, name: request.name || tab.name };
           }),
         })),
+
+      recordRequestRun: (run) =>
+        set((state) => ({
+          requestHistory: [
+            { ...run, id: `run:${run.ranAt}:${Math.random().toString(36).slice(2, 8)}` },
+            ...state.requestHistory,
+          ].slice(0, MAX_HISTORY),
+        })),
+
+      clearRequestHistory: () => set({ requestHistory: [] }),
 
       setRequestResult: (tabId, result) =>
         set((state) => {
@@ -510,6 +542,7 @@ export const useTabsStore = create<TabStore>()(
         tabs: state.tabs,
         activeTabId: state.activeTabId,
         views: state.views,
+        requestHistory: state.requestHistory,
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<TabStore> | undefined;
@@ -518,6 +551,7 @@ export const useTabsStore = create<TabStore>()(
         return {
           ...current,
           views: saved?.views ?? current.views,
+          requestHistory: saved?.requestHistory ?? current.requestHistory,
           tabs,
           activeTabId: tabs.some((tab) => tab.id === saved?.activeTabId)
             ? saved!.activeTabId!

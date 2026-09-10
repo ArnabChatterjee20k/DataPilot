@@ -286,20 +286,38 @@ async def delete_request(connection_id: str, request_uid: str, db: DBSession):
     return None
 
 
+def masked_view(variables: dict) -> VariablesModel:
+    secret = [name for name in variables if http_client.is_secret_variable(name)]
+    return VariablesModel(
+        variables={
+            name: http_client.mask(value) if name in secret else value
+            for name, value in variables.items()
+        },
+        secret=secret,
+    )
+
+
+def keep_unchanged_secrets(incoming: dict, stored: dict) -> dict:
+    """Let an editor save without having to retype every secret.
+
+    Reading gives masked values, so saving them back verbatim would replace
+    each secret with its own mask. A value that still equals the mask of what
+    is stored means it was never edited.
+    """
+    merged = dict(incoming)
+    for name, value in incoming.items():
+        if name in stored and value == http_client.mask(str(stored[name])):
+            merged[name] = stored[name]
+    return merged
+
+
 @router.get(
     "/connection/{connection_id}/variables", response_model=VariablesModel
 )
 async def get_variables(connection_id: str, db: DBSession):
     """Variables for a connection, with secret-looking values masked."""
     connection = await load_connection(db, connection_id)
-    variables = connection_variables(connection)
-
-    secret = [name for name in variables if http_client.is_secret_variable(name)]
-    shown = {
-        name: http_client.mask(value) if name in secret else value
-        for name, value in variables.items()
-    }
-    return VariablesModel(variables=shown, secret=secret)
+    return masked_view(connection_variables(connection))
 
 
 @router.put(
@@ -309,7 +327,9 @@ async def set_variables(connection_id: str, payload: VariablesModel, db: DBSessi
     from ..database.models import Connections
 
     connection = await load_connection(db, connection_id)
-    variables = dict(payload.variables)
+    variables = keep_unchanged_secrets(
+        dict(payload.variables), connection_variables(connection)
+    )
 
     await db.update(
         Connections, Connections.uid == connection_id, {"variables": variables}
@@ -317,12 +337,7 @@ async def set_variables(connection_id: str, payload: VariablesModel, db: DBSessi
     await db.commit()
     connection.variables = variables
 
-    secret = [name for name in variables if http_client.is_secret_variable(name)]
-    shown = {
-        name: http_client.mask(value) if name in secret else value
-        for name, value in variables.items()
-    }
-    return VariablesModel(variables=shown, secret=secret)
+    return masked_view(variables)
 
 
 def describe_socket_failure(url: str, error: Exception) -> str:
