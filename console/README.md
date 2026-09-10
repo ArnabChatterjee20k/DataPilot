@@ -1,73 +1,58 @@
-# React + TypeScript + Vite
+# DataPilot console
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite + Tailwind front end for the DataPilot server.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
+pnpm dev          # expects the server on http://localhost:8000
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Point it somewhere else with `VITE_API_URL`. In a production build the variable is
+unset and the SDK uses a relative URL, because the server serves the built console
+from its own origin.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## SDK
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+`src/lib/sdk` is generated from the server's OpenAPI schema — do not edit it by
+hand. Regenerate after changing the API:
+
+```bash
+# from ../server, dump the schema first
+uv run python -c "import json; from main import api; open('../console/openapi.json','w').write(json.dumps(api.openapi(), indent=2))"
+pnpm generate:sdk
+```
+
+`src/lib/sdk-runtime.ts` supplies the base URL and is preserved across
+regeneration.
+
+## Tests
+
+```bash
+pnpm e2e          # headless
+pnpm e2e:ui       # Playwright UI mode
+```
+
+Playwright boots the real server and Vite against a throwaway data directory, and
+seeds a SQLite database (`e2e/global-setup.ts`) containing the cases worth testing
+against: a NULL, an empty string, a value with an apostrophe, JSON, timestamps, a
+low-cardinality column and a credential-shaped column name.
+
+`e2e/visual.spec.ts` is not a gate — it captures the main states as screenshots
+under `test-results/` for a human (or an agent) to look at.
+
+## Layout
+
+```
+src/
+  lib/
+    columns.ts     normalising and refining column metadata
+    format.ts      rendering values: masking, relative time, enum pills
+    sql.ts         building SELECT/INSERT/UPDATE/DELETE safely
+    sdk/           generated API client
+  pages/playground/
+    components/    grid, filter bar, panels, dialogs
+    hooks/         react-query hooks per resource
+    store/         zustand tab store (persisted)
 ```

@@ -4,57 +4,57 @@
 ## 🥇 PRIORITY 1 — CORE EXPERIENCE (Non-Negotiable)
 
 ### Frontend
-- [ ] **Instant Scanability**
-  - Auto column width + manual resize
-  - Truncate long text with expand-on-click
-  - Sticky headers & first column
-  - Clear row hover state
-  - Visual distinction for `null`, empty, default values
+- [x] **Instant Scanability**
+  - [x] Auto column width + manual resize
+  - [x] Truncate long text with expand-on-click
+  - [x] Sticky headers & first column
+  - [x] Clear row hover state
+  - [x] Visual distinction for `null`, empty, default values
 
-- [ ] **Column Type Awareness (Visible)**
-  - Show inferred DB type under column name
-  - Types: uuid, text, number, boolean, timestamp, json
-  - Monospace for IDs & hashes
+- [x] **Column Type Awareness (Visible)**
+  - [x] Show inferred DB type under column name
+  - [x] Types: uuid, text, number, boolean, timestamp, json
+  - [x] Monospace for IDs & hashes
 
-- [ ] **Zero-Friction Filtering**
-  - Click cell → filter by value
-  - Breadcrumb-style filter stack
-  - Clear all filters in one click
-  - AND-only logic (explicit, visual)
+- [x] **Zero-Friction Filtering**
+  - [x] Click cell → filter by value
+  - [x] Breadcrumb-style filter stack
+  - [x] Clear all filters in one click
+  - [x] AND-only logic (explicit, visual)
 
-- [ ] **Empty & Loading States**
-  - Skeleton loaders (never blank screens)
-  - Clear “0 rows returned” message
-  - Query success indicator + execution time
+- [x] **Empty & Loading States**
+  - [x] Skeleton loaders (never blank screens)
+  - [x] Clear “0 rows returned” message
+  - [x] Query success indicator + execution time
 
-- [ ] **Safe-by-Default UX**
-  - Read-only mode by default
-  - Environment badge (PROD / STAGING / LOCAL)
-  - Mask sensitive fields (passwords, tokens)
+- [x] **Safe-by-Default UX**
+  - [x] Read-only mode by default
+  - [x] Environment badge (PROD / STAGING / LOCAL)
+  - [x] Mask sensitive fields (passwords, tokens)
 
 ---
 
 ### Backend
-- [ ] **Schema Introspection**
-  - Column type
-  - Nullable / default
-  - Primary key detection
-  - Index detection
+- [x] **Schema Introspection**
+  - [x] Column type
+  - [x] Nullable / default
+  - [x] Primary key detection
+  - [x] Index detection
 
-- [ ] **Unsafe Query Detection**
-  - Detect UPDATE / DELETE / DROP
-  - Detect missing WHERE clause
-  - Expose risk level to frontend
+- [x] **Unsafe Query Detection**
+  - [x] Detect UPDATE / DELETE / DROP
+  - [x] Detect missing WHERE clause
+  - [x] Expose risk level to frontend
 
-- [ ] **Deterministic Pagination**
-  - Prefer cursor-based pagination when PK exists
-  - Warn on large OFFSET usage
-  - Stable ordering guarantees
+- [x] **Deterministic Pagination**
+  - [x] Prefer cursor-based pagination when PK exists
+  - [x] Warn on large OFFSET usage
+  - [x] Stable ordering guarantees
 
-- [ ] **Connection Metadata**
-  - Connection name
-  - Role (primary / replica)
-  - Environment tag
+- [x] **Connection Metadata**
+  - [x] Connection name
+  - [x] Role (primary / replica)
+  - [x] Environment tag
 
 ---
 
@@ -62,51 +62,51 @@
 > These make users prefer DataPilot over Adminer / Compass / Supabase UI.
 
 ### Frontend
-- [ ] **Row Expand Panel**
-  - Full JSON view
-  - Copy full row
-  - Field-level inspection
+- [x] **Row Expand Panel**
+  - [x] Full JSON view
+  - [x] Copy full row
+  - [x] Field-level inspection
 
-- [ ] **Row Compare / Diff View**
-  - Select 2 rows → diff
-  - Highlight changed fields
-  - JSON diff support
+- [x] **Row Compare / Diff View**
+  - [x] Select 2 rows → diff
+  - [x] Highlight changed fields
+  - [x] JSON diff support
 
-- [ ] **Smart Defaults**
-  - Auto-sort by `updated_at`
-  - Relative timestamps (`3h ago`)
-  - Enum detection → colored pills
+- [x] **Smart Defaults**
+  - [x] Auto-sort by `updated_at`
+  - [x] Relative timestamps (`3h ago`)
+  - [x] Enum detection → colored pills
 
-- [ ] **Column Controls**
-  - Hide / show columns
-  - Reorder columns
-  - Column-specific filter menu
+- [x] **Column Controls**
+  - [x] Hide / show columns
+  - [x] Reorder columns
+  - [x] Column-specific filter menu
 
-- [ ] **Copyability Everywhere**
-  - Copy cell
-  - Copy row
-  - Copy JSON path
-  - Copy primary key
+- [x] **Copyability Everywhere**
+  - [x] Copy cell
+  - [x] Copy row
+  - [x] Copy row as JSON
+  - [x] Copy primary key
 
 ---
 
 ### Backend
-- [ ] **Index Awareness API**
-  - Mark indexed vs non-indexed columns
-  - Warn on slow filters
+- [x] **Index Awareness API**
+  - [x] Mark indexed vs non-indexed columns
+  - [x] Warn on slow filters
 
-- [ ] **Explain-Lite Query Insights**
-  - Seq scan vs index scan
-  - Estimated rows
-  - Time category (fast / medium / slow)
+- [x] **Explain-Lite Query Insights**
+  - [x] Seq scan vs index scan
+  - [x] Estimated rows
+  - [x] Time category (fast / medium / slow)
 
-- [ ] **Sensitive Field Classification**
-  - Backend marks fields as sensitive
-  - Frontend masks automatically
+- [x] **Sensitive Field Classification**
+  - [x] Backend marks fields as sensitive
+  - [x] Frontend masks automatically
 
-- [ ] **Backend-Aware Export**
-  - Respect UUIDs, ObjectIds, timestamps
-  - Export filtered + visible columns only
+- [x] **Backend-Aware Export**
+  - [x] Respect UUIDs, ObjectIds, timestamps
+  - [x] Export filtered + visible columns only
 
 ---
 
@@ -114,21 +114,21 @@
 > Add only if they don’t compromise simplicity.
 
 ### Frontend
-- [ ] **Keyboard-First Navigation**
-  - `/` → search
-  - `⌘K` → command palette
-  - Arrow navigation
-  - `Enter` → expand row
+- [x] **Keyboard-First Navigation**
+  - [x] `/` → search
+  - [x] `⌘K` → command palette
+  - [x] Arrow navigation
+  - [x] `Enter` → expand row
 
-- [ ] **One-Glance Stats Panel**
-  - Row count
-  - % nulls per column
-  - Top values per column
+- [x] **One-Glance Stats Panel**
+  - [x] Row count
+  - [x] % nulls per column
+  - [x] Top values per column
 
-- [ ] **View Personalization**
-  - Remember hidden columns
-  - Remember sort & filters
-  - Remember last table
+- [x] **View Personalization**
+  - [x] Remember hidden columns
+  - [x] Remember sort & filters
+  - [x] Remember last table
 
 ---
 
@@ -136,20 +136,17 @@
 - [ ] **Schema Drift Detection (Mongo-first)**
   - Fields present in some docs only
   - Type mismatches
+  - _Blocked: there is no Mongo adapter yet. SQLite and PostgreSQL both have a
+    fixed schema, so there is nothing to detect until one exists._
 
 - [ ] **Change Awareness (Lightweight)**
   - Highlight recently updated rows
   - `updated_at` based signals
+  - _Partly there: tables auto-sort by `updated_at`/`created_at` and timestamps
+    render relatively, so recent rows surface first. Row-level highlighting is
+    still to do._
 
 ---
-
-### API client
-A very similar to postman. It will be api client as well option with option to add url, query string ,headers,etc in a kv format as well.
-Think about more here
-Option for http and ws clients
-
-Having option to chain requests in a flow like sequence, parallel, branching,etc in a visual way while passing data among each other
-option for copying as curl and js fetch and js ws
 
 ## ❌ OUT OF SCOPE (Do NOT Build)
 > These dilute the product and create maintenance debt.
@@ -178,3 +175,75 @@ Users should say:
 > “I understand my data faster and trust this UI in production.”
 
 That’s the bar.
+
+---
+
+## 🔭 NEXT
+
+- **Virtualised rows.** The grid renders every row of a page. 500 rows is fine;
+  a larger page size would not be.
+- **MySQL.** `SourceConfig` names it and the SQL builder already quotes for it,
+  but there is no adapter in LaserORM, so `get_adapter` returns `None` and the
+  API answers 400.
+- **Row-level change highlighting**, per Change Awareness above.
+- **Filter presets** — the filter stack is per tab and persists, but cannot be
+  named and recalled.
+
+---
+
+## 🔌 API CLIENT
+
+A connection is already "a thing DataPilot talks to" — `SourceConfig` has had an
+`api` member since the start, and the routing vocabulary says *"connections →
+databases, apis"* and *"entities → tables, endpoints"*. An API client is the
+second kind of connection, not a second product.
+
+### The shape
+
+- **Connection** = an API: base URL, default headers, auth, and variables.
+- **Entity** = a saved request under that connection, the way a table is an
+  entity under a database.
+- Requests open in the same tabs, next to query tabs, against the same sidebar.
+
+### Frontend
+- [ ] **Request builder**
+  - Method + URL bar, with `{{variable}}` interpolation
+  - Query string as key/value rows, kept in sync with the URL as it is typed
+  - Headers as key/value rows, each toggleable
+  - Body: JSON (validated), form, url-encoded, raw, none
+  - Auth: none / bearer / basic / header, inherited from the connection
+
+- [ ] **Response viewer**
+  - Status, time, size — the same status bar language queries already use
+  - Body as pretty JSON, raw, or preview; headers in their own tab
+  - Errors shown as a result, not a toast
+
+- [ ] **WebSocket client**
+  - Connect / disconnect with visible state
+  - Message log, both directions, timestamped
+  - Send frames as text or JSON
+
+- [ ] **Saved requests & history**
+  - Requests listed under their connection in the sidebar
+  - Recent runs, replayable
+
+### Backend
+- [ ] **Request execution** — `POST /connection/{id}/request`
+  - Runs server-side, so the browser is not blocked by CORS and credentials
+    never reach the page
+  - Returns status, headers, body, elapsed time and size
+  - Timeout, response size cap and redirect limit
+
+- [ ] **WebSocket proxy** — `WS /connection/{id}/socket`
+  - The server holds the upstream socket and pipes frames both ways, for the
+    same reasons
+
+- [ ] **Saved requests** — CRUD under `/connection/{id}/requests`
+
+- [ ] **Variables** — per connection, interpolated into URL, headers and body,
+  with secret values masked the way sensitive columns already are
+
+### Deliberately not in scope
+Test scripts, pre-request scripting, mock servers, contract testing, and
+comparing responses across environments. Those are what makes Postman heavy;
+the North Star applies here too.
