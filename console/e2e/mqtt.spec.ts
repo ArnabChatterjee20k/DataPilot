@@ -164,3 +164,58 @@ test.describe("the MQTT tab", () => {
     ).toBeVisible({ timeout: 20_000 });
   });
 });
+
+test.describe("creating a broker connection", () => {
+  test("MQTT is one of the things you can connect to", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "MQTT broker" }).click();
+
+    await expect(page.getByLabel("Broker address")).toHaveAttribute(
+      "placeholder",
+      /mqtt:\/\//
+    );
+    // the credentials belong in variables, where they are masked
+    await expect(page.getByText(/mqtt_username/)).toBeVisible();
+  });
+
+  test("a URL that does not match the kind is pointed out", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "MQTT broker" }).click();
+
+    await page.getByLabel("Broker address").fill("https://api.example.com");
+    await expect(page.getByText(/A broker address starts with mqtt/)).toBeVisible();
+
+    await page.getByRole("button", { name: "HTTP / WebSocket" }).click();
+    await page.getByLabel("Base URL").fill("mqtt://broker.example.com");
+    await expect(page.getByText(/choose MQTT broker instead/)).toBeVisible();
+  });
+
+  test("a broker created through the dialog works end to end", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: "New connection" }).click();
+    await page.getByRole("button", { name: "MQTT broker" }).click();
+
+    await page.getByLabel("Name").fill("Dialog broker");
+    await page.getByLabel("Broker address").fill(BROKER_URL);
+    await page.getByRole("button", { name: "Test connection" }).click();
+    await expect(page.getByText(/Connected to mqtt/)).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: "Create connection" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await expandConnection(page, "Dialog broker");
+    await page.getByRole("button", { name: "MQTT", exact: true }).click();
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(page.getByLabel("Broker state")).toContainText("open");
+  });
+
+  test("editing a broker connection comes back as MQTT", async ({ page }) => {
+    await openPlayground(page);
+    await page.getByRole("button", { name: `Actions for ${connectionName}` }).click();
+    await page.getByRole("menuitem", { name: "Edit connection" }).click();
+
+    await expect(page.getByLabel("Broker address")).toHaveValue(BROKER_URL);
+  });
+});
