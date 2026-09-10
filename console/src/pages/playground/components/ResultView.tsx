@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { applyColumnOrder, moveColumn, refineColumns } from "@/lib/columns";
+import { diffRows, NO_CHANGES } from "@/lib/changes";
 import { formatCount } from "@/lib/format";
 import { buildDelete, primaryKeyOf, rowIdentity, type Filter } from "@/lib/sql";
 import type {
@@ -37,11 +38,12 @@ import type {
   Row,
   Tab,
 } from "../store/store";
-import { ROWS_LIMITS, useTabsStore } from "../store/store";
+import { ROWS_LIMITS, tableKeyOf, useTabsStore } from "../store/store";
 import { DataGrid } from "./DataGrid";
 import { PlanPanel } from "./PlanPanel";
 import { RowDiffPanel } from "./RowDiffPanel";
 import { StatsPanel } from "./StatsPanel";
+import { ViewsMenu } from "./ViewsMenu";
 import { useEntityStats, useQueryPlan } from "../hooks/useInsights";
 import { FilterBar } from "./FilterBar";
 import { QueryStatusBar } from "./QueryStatusBar";
@@ -84,7 +86,11 @@ export function ResultView({
     showAllColumns,
     reorderColumns,
     toggleSort,
+    saveView,
+    applyView,
+    deleteView,
   } = useTabsStore();
+  const savedViews = useTabsStore((state) => state.views);
 
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<Row | null>(null);
@@ -120,6 +126,23 @@ export function ResultView({
   useEffect(() => {
     setSelectedRows(new Set());
   }, [result?.ranAt]);
+
+  // the page that was on screen before this one, so a reload can say what moved
+  const previousRows = useRef<Row[] | undefined>(undefined);
+  const [changes, setChanges] = useState(NO_CHANGES);
+
+  useEffect(() => {
+    if (!result || result.error) return;
+    setChanges(diffRows(rows, previousRows.current, allColumns, primaryKey));
+    previousRows.current = rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result?.ranAt]);
+
+  // a different table is a different comparison; do not diff across them
+  useEffect(() => {
+    previousRows.current = undefined;
+    setChanges(NO_CHANGES);
+  }, [tab.id, tab.tableName]);
 
   useEffect(() => {
     setSearchDraft(tab.search);
@@ -158,6 +181,21 @@ export function ResultView({
     result?.query ?? tab.content,
     panel === "plan"
   );
+
+  const tableKey = tableKeyOf(tab.connectionId, tab.schemaName, tab.tableName);
+  const views = useMemo(
+    () =>
+      savedViews
+        .filter((view) => view.tableKey === tableKey)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [savedViews, tableKey]
+  );
+  const hasSomethingToSave =
+    tab.filters.length > 0 ||
+    !!tab.search.trim() ||
+    !!tab.sort ||
+    tab.hiddenColumns.length > 0 ||
+    tab.columnOrder.length > 0;
 
   const page = Math.floor(tab.rowsOffset / Math.max(tab.rowsLimit, 1)) + 1;
   const lastPage =
@@ -323,6 +361,17 @@ export function ResultView({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {isTableTab && (
+            <ViewsMenu
+              views={views}
+              canSave={hasSomethingToSave}
+              onSave={(name) => saveView(tab.id, name)}
+              onApply={(viewId) => applyView(tab.id, viewId)}
+              onDelete={deleteView}
+              disabled={busy}
+            />
           )}
 
           <ColumnsMenu
@@ -520,6 +569,7 @@ export function ResultView({
             selectedRows={selectedRows}
             onSelectionChange={setSelectedRows}
             onOpenRow={(row) => setDetailRow(row)}
+            changes={changes}
             emptyTitle={
               tab.filters.length || tab.search ? "No rows match these filters" : "0 rows returned"
             }

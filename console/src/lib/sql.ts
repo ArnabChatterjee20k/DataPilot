@@ -30,6 +30,9 @@ export function quoteLiteral(value: string): string {
 
 const NUMERIC = /^-?\d+(\.\d+)?$/;
 
+/** Column kinds a free-text search looks at. */
+const SEARCHABLE_KINDS = new Set(["text", "uuid", "json"]);
+
 /**
  * Render a filter value for its column type.
  *
@@ -147,8 +150,10 @@ export function buildSelect(options: BuildOptions): string {
 
   const searchTerm = (search ?? "").trim();
   if (searchTerm) {
+    // only text-shaped columns are searched: matching a term against numeric
+    // and timestamp columns adds noise to the SQL and cannot use an index
     const searchable = columns.filter(
-      (column) => column.kind !== "binary" && !column.sensitive
+      (column) => SEARCHABLE_KINDS.has(column.kind) && !column.sensitive
     );
     if (searchable.length) {
       const matches = searchable.map((column) =>

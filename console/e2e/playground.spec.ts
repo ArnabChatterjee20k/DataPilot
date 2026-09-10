@@ -144,11 +144,14 @@ test.describe("pagination", () => {
     await openTable(page, connection.name, "orders");
     await waitForRows(page);
 
+    // rows are windowed past 60, so the status bar is the source of truth for
+    // how many came back, not how many happen to be mounted
     await expect(page.getByText("1 / 2")).toBeVisible();
-    await expect(page.locator("table tbody tr")).toHaveCount(100);
+    await expect(page.getByRole("status")).toContainText("100 rows");
 
     await page.getByRole("button", { name: "Next page" }).click();
     await expect(page.getByText("2 / 2")).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("20 rows");
     await expect(page.locator("table tbody tr")).toHaveCount(20);
 
     await page.getByRole("button", { name: "Previous page" }).click();

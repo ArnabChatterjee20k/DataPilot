@@ -105,5 +105,20 @@ test.describe("visual sweep", () => {
     ).toBeVisible();
     await page.waitForTimeout(400);
     await shot("13-command-palette");
+    await page.keyboard.press("Escape");
+
+    await page.getByPlaceholder("Search this table…").fill("active");
+    await expect(page.getByText("status")).toBeVisible();
+    await page.getByRole("button", { name: "Saved views" }).click();
+    await page.getByRole("textbox", { name: "View name" }).fill("Active users");
+    await page.getByRole("button", { name: "Save view" }).click();
+    await page.getByRole("button", { name: "Saved views" }).click();
+    await page.waitForTimeout(300);
+    await shot("14-saved-views");
+    await page.keyboard.press("Escape");
+
+    await openTable(page, connection.name, "orders");
+    await waitForRows(page);
+    await shot("15-virtualised-large-page");
   });
 });
