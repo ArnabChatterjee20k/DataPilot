@@ -38,6 +38,7 @@ function safeRows(body: string) {
 
 export function useRequestRunner(tab: Tab) {
   const setRequestResult = useTabsStore((state) => state.setRequestResult);
+  const recordRequestRun = useTabsStore((state) => state.recordRequestRun);
   const updateTab = useTabsStore((state) => state.updateTab);
   const result = useTabsStore((state) => state.requestResults[tab.id]);
   const saveRequest = useSaveRequest(tab.connectionId);
@@ -47,7 +48,8 @@ export function useRequestRunner(tab: Tab) {
   const send = useCallback(async () => {
     if (!tab.request) return;
 
-    const spec = toSpec(tab.request);
+    const draft = tab.request;
+    const spec = toSpec(draft);
     setIsSending(true);
     try {
       // a tab with no connection sends against the absolute URL it carries,
@@ -59,16 +61,35 @@ export function useRequestRunner(tab: Tab) {
             throwOnError: true,
           })
         : await sendAdHocRequest({ body: spec, throwOnError: true });
-      setRequestResult(tab.id, { result: response.data, ranAt: Date.now() });
+
+      const ranAt = Date.now();
+      setRequestResult(tab.id, { result: response.data, ranAt });
+      recordRequestRun({
+        connectionId: tab.connectionId,
+        request: draft,
+        method: draft.method,
+        url: response.data?.request?.url,
+        status: response.data?.response?.status,
+        elapsedMs: response.data?.response?.elapsed_ms,
+        size: response.data?.response?.size,
+        ranAt,
+      });
     } catch (error) {
-      setRequestResult(tab.id, {
-        error: errorMessage(error, "Could not send the request"),
-        ranAt: Date.now(),
+      const ranAt = Date.now();
+      const message = errorMessage(error, "Could not send the request");
+      setRequestResult(tab.id, { error: message, ranAt });
+      // a run that failed is the one most worth finding again
+      recordRequestRun({
+        connectionId: tab.connectionId,
+        request: draft,
+        method: draft.method,
+        error: message,
+        ranAt,
       });
     } finally {
       setIsSending(false);
     }
-  }, [tab.connectionId, tab.request, tab.id, setRequestResult]);
+  }, [tab.connectionId, tab.request, tab.id, setRequestResult, recordRequestRun]);
 
   const save = useCallback(async () => {
     // a saved request lives under a connection; the button is disabled

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { DatabaseConnection, RequestDraft, Tab } from "../store/store";
 import { useTabsStore, type BodyType, type HttpMethod } from "../store/store";
 import { KeyValueEditor } from "./KeyValueEditor";
+import { RequestHistory } from "./RequestHistory";
 import { EnvironmentBadge } from "./primitives";
 
 const METHODS: HttpMethod[] = [
@@ -147,6 +148,13 @@ export function RequestBuilder({
         )}
 
         <div className="ml-auto flex items-center gap-1.5">
+          <RequestHistory
+            connectionId={tab.connectionId}
+            onReplay={(run) => {
+              patch({ ...run.request, name: run.request.name || request.name });
+              setPasted(null);
+            }}
+          />
           <Button
             size="sm"
             variant="outline"
