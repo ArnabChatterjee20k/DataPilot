@@ -56,6 +56,31 @@ export interface Tab {
   allowWrites: boolean;
 }
 
+/**
+ * A named snapshot of how a table is being looked at.
+ *
+ * Keyed by table rather than by tab, so a view saved in one tab is offered the
+ * next time the same table is opened anywhere.
+ */
+export interface SavedView {
+  id: string;
+  name: string;
+  tableKey: string;
+  filters: Filter[];
+  search: string;
+  sort: SortState;
+  hiddenColumns: string[];
+  columnOrder: string[];
+  rowsLimit: number;
+  createdAt: number;
+}
+
+export const tableKeyOf = (
+  connectionId: string | undefined,
+  schema: string | null | undefined,
+  table: string | undefined
+) => `${connectionId ?? ""}:${schema ?? ""}:${table ?? ""}`;
+
 export interface QueryResultState {
   columns: Column[];
   rows: Row[];
@@ -105,6 +130,7 @@ interface TabStore {
   tabs: Tab[];
   activeTabId: string;
   results: Record<string, QueryResultState>;
+  views: SavedView[];
   setActiveTabId: (id: string) => void;
   addQueryTab: (connectionId?: string) => string;
   openTableTab: (table: Table, connection: DatabaseConnection) => string;
@@ -118,6 +144,10 @@ interface TabStore {
   showAllColumns: (tabId: string) => void;
   reorderColumns: (tabId: string, order: string[]) => void;
   toggleSort: (tabId: string, column: string) => void;
+  saveView: (tabId: string, name: string) => void;
+  applyView: (tabId: string, viewId: string) => void;
+  deleteView: (viewId: string) => void;
+  viewsFor: (tableKey: string) => SavedView[];
 }
 
 export const useTabsStore = create<TabStore>()(
@@ -126,6 +156,7 @@ export const useTabsStore = create<TabStore>()(
       tabs: [newPlaceholderTab()],
       activeTabId: NEW_TAB_ID,
       results: {},
+      views: [],
 
       setActiveTabId: (id) => set({ activeTabId: id }),
 
@@ -251,6 +282,63 @@ export const useTabsStore = create<TabStore>()(
           ),
         })),
 
+      saveView: (tabId, name) =>
+        set((state) => {
+          const tab = state.tabs.find((item) => item.id === tabId);
+          if (!tab || !name.trim()) return {};
+
+          const tableKey = tableKeyOf(tab.connectionId, tab.schemaName, tab.tableName);
+          const view: SavedView = {
+            id: `view:${Date.now()}`,
+            name: name.trim(),
+            tableKey,
+            filters: tab.filters,
+            search: tab.search,
+            sort: tab.sort,
+            hiddenColumns: tab.hiddenColumns,
+            columnOrder: tab.columnOrder,
+            rowsLimit: tab.rowsLimit,
+            createdAt: Date.now(),
+          };
+
+          // saving under an existing name replaces it rather than duplicating
+          const views = state.views.filter(
+            (existing) =>
+              !(existing.tableKey === tableKey && existing.name === view.name)
+          );
+          return { views: [...views, view] };
+        }),
+
+      applyView: (tabId, viewId) =>
+        set((state) => {
+          const view = state.views.find((item) => item.id === viewId);
+          if (!view) return {};
+          return {
+            tabs: state.tabs.map((tab) =>
+              tab.id === tabId
+                ? {
+                    ...tab,
+                    filters: view.filters,
+                    search: view.search,
+                    sort: view.sort,
+                    hiddenColumns: view.hiddenColumns,
+                    columnOrder: view.columnOrder,
+                    rowsLimit: view.rowsLimit,
+                    rowsOffset: 0,
+                  }
+                : tab
+            ),
+          };
+        }),
+
+      deleteView: (viewId) =>
+        set((state) => ({ views: state.views.filter((view) => view.id !== viewId) })),
+
+      viewsFor: (tableKey) =>
+        get()
+          .views.filter((view) => view.tableKey === tableKey)
+          .sort((a, b) => a.name.localeCompare(b.name)),
+
       reorderColumns: (tabId, order) =>
         set((state) => ({
           tabs: state.tabs.map((tab) =>
@@ -277,13 +365,18 @@ export const useTabsStore = create<TabStore>()(
       storage: createJSONStorage(() => localStorage),
       version: 1,
       // results are re-fetched on open; persisting them would show stale data
-      partialize: (state) => ({ tabs: state.tabs, activeTabId: state.activeTabId }),
+      partialize: (state) => ({
+        tabs: state.tabs,
+        activeTabId: state.activeTabId,
+        views: state.views,
+      }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<TabStore> | undefined;
         const tabs = saved?.tabs?.length ? saved.tabs : current.tabs;
         if (!tabs.some((tab) => tab.id === NEW_TAB_ID)) tabs.push(newPlaceholderTab());
         return {
           ...current,
+          views: saved?.views ?? current.views,
           tabs,
           activeTabId: tabs.some((tab) => tab.id === saved?.activeTabId)
             ? saved!.activeTabId!
