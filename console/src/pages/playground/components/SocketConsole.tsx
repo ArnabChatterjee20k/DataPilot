@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Plug, PlugZap, SendHorizontal, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  Plug,
+  PlugZap,
+  SendHorizontal,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +31,48 @@ function socketUrl(connectionId: string, path: string): string {
   return url.toString();
 }
 
+/**
+ * The proxy's own frames, telling us about the upstream rather than carrying
+ * data from it. The browser's socket to DataPilot opens before the upstream is
+ * dialled, so without these "connected" would be a lie.
+ */
+const CONTROL_KEY = "__datapilot";
+
+interface ControlFrame {
+  status: "ready" | "error";
+  detail: string;
+}
+
+function readControlFrame(data: string): ControlFrame | null {
+  if (!data.includes(CONTROL_KEY)) return null;
+  try {
+    const parsed = JSON.parse(data);
+    const status = parsed?.[CONTROL_KEY];
+    if (status !== "ready" && status !== "error") return null;
+    return { status, detail: String(parsed.detail ?? "") };
+  } catch {
+    return null;
+  }
+}
+
+/** The browser gives a bare code when it never reached the server. */
+function describeCloseCode(code: number): string {
+  switch (code) {
+    case 1000:
+      return "closed normally";
+    case 1001:
+      return "the other end went away";
+    case 1006:
+      return "the connection could not be established";
+    case 1008:
+      return "rejected by the server";
+    case 1011:
+      return "the server hit an error";
+    default:
+      return "closed";
+  }
+}
+
 const timestamp = (at: number) =>
   new Date(at).toLocaleTimeString(undefined, { hour12: false });
 
@@ -42,7 +91,10 @@ export function SocketConsole({
   const messages = stored ?? NO_MESSAGES;
 
   const [state, setState] = useState<State>("closed");
+  const [failure, setFailure] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // a socket that never opened closed because it could not connect
+  const opened = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -71,26 +123,47 @@ export function SocketConsole({
     if (!tab.connectionId || socketRef.current) return;
 
     setState("connecting");
+    setFailure(null);
+    opened.current = false;
     log("system", `Connecting to ${tab.socketPath || "/"}…`);
 
     const socket = new WebSocket(socketUrl(tab.connectionId, tab.socketPath ?? ""));
     socketRef.current = socket;
 
-    socket.onopen = () => {
-      setState("open");
-      log("system", "Connected");
+    // reaching DataPilot is not the same as reaching the upstream, so the
+    // state stays "connecting" until the proxy says the upstream is up
+    socket.onopen = () => log("system", "Reached DataPilot, dialling upstream…");
+
+    socket.onmessage = (event) => {
+      const data = String(event.data);
+      const control = readControlFrame(data);
+
+      if (control?.status === "ready") {
+        opened.current = true;
+        setState("open");
+        setFailure(null);
+        log("system", `Connected to ${control.detail || "the upstream"}`);
+        return;
+      }
+      if (control?.status === "error") {
+        setFailure(control.detail);
+        log("system", control.detail);
+        return;
+      }
+
+      log("received", data);
     };
-    socket.onmessage = (event) => log("received", String(event.data));
-    socket.onerror = () => log("system", "Socket error");
+
     socket.onclose = (event) => {
       setState("closed");
       socketRef.current = null;
-      log(
-        "system",
-        `Closed${event.code ? ` (${event.code})` : ""}${
-          event.reason ? `: ${event.reason}` : ""
-        }`
-      );
+
+      const reason = event.reason || describeCloseCode(event.code);
+      log("system", `Closed${event.code ? ` (${event.code})` : ""}: ${reason}`);
+
+      // a close before the upstream was ever reached is a failure to report;
+      // the detail usually arrived as a control frame just before it
+      if (!opened.current) setFailure((current) => current ?? reason);
     };
   };
 
@@ -98,9 +171,11 @@ export function SocketConsole({
     socketRef.current?.close();
     socketRef.current = null;
     setState("closed");
+    setFailure(null);
   };
 
   const send = () => {
+    if (state !== "open") return;
     if (!draft.trim() || socketRef.current?.readyState !== WebSocket.OPEN) return;
     socketRef.current.send(draft);
     log("sent", draft);
@@ -175,6 +250,19 @@ export function SocketConsole({
           )}
         </div>
       </div>
+
+      {failure && (
+        <div
+          role="status"
+          className="flex items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs"
+        >
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+          <div className="min-w-0">
+            <p className="font-medium text-destructive">Could not connect</p>
+            <p className="mt-0.5 break-words text-destructive/80">{failure}</p>
+          </div>
+        </div>
+      )}
 
       <div ref={logRef} className="min-h-0 flex-1 overflow-auto px-4 py-2">
         {messages.length === 0 ? (

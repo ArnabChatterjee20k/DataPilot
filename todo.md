@@ -176,12 +176,99 @@ That’s the bar.
 
 ---
 
+## 🚧 IN FLIGHT
+
+Raised while using the console. Ordered by how much they hurt.
+
+### Connection confidence — *know at the first click whether it works*
+- [x] `POST /connections/test` — dial before saving, so a typo is caught here
+      rather than at the first query
+- [x] **Test connection** button in the modal, with latency and server version
+- [x] API connections are dialled for real (HTTP GET, or a websocket handshake)
+      instead of answering "dialled per request"
+- [x] A refused *local* address hints at the container case — inside a
+      container `localhost` is the container itself
+- [x] WebSocket failures surface as a banner, not a line in the log
+- [x] The proxy reports **upstream** readiness, so "connected" stops meaning
+      "reached DataPilot"
+- [ ] Same treatment for the query path: a connection that has gone away should
+      say so before the query does
+
+### Requests
+- [ ] **Paste a curl command** into the request box and have it parsed into
+      method, URL, headers, body and auth
+- [ ] **Arbitrary URLs** — an absolute URL in the path field already bypasses
+      the base URL, but nothing says so. Make it discoverable, and allow a
+      request with no connection base at all
+- [ ] Request **history** — past runs, replayable
+- [ ] A **variables** editor in the console (the API stores and masks them
+      already)
+
+### Errors
+- [ ] Audit every failure path end to end and make sure the message says what
+      happened and what to do — no raw driver text reaching the screen
+
+### UX audit
+- [ ] Drive every feature in the browser looking specifically for things that
+      break the experience, not just things that throw
+- [ ] Audit the *flows* rather than the screens — the path from opening the app
+      to having an answer, for each of: browse a table, run a query, send a
+      request, watch a socket. Count the clicks and the dead ends
+
+### MQTT
+A third protocol alongside HTTP and WebSocket, under the same API connection
+kind. Reference: [mqtt-appwrite-testing](https://github.com/ArnabChatterjee20k/mqtt-appwrite-testing/blob/master/appwrite_mqtt/mqtt.py).
+
+- [ ] **Broker connection** — `mqtt://` / `mqtts://` base URL, username and
+      password or a token, TLS on by default for 8883
+- [ ] **Subscribe** to one or more topic filters, with wildcards, and watch
+      messages arrive with their topic, QoS and retain flag
+- [ ] **Publish** to a topic, with QoS and retain
+- [ ] Unsubscribe, and disconnect cleanly
+
+Two things the reference gets right and we should copy:
+
+- **Wait for SUBACK before reporting "subscribed".** A publish issued straight
+  after a subscribe otherwise races ahead of the broker registering it and the
+  message is simply dropped — MQTT has no retained replay for that case. This
+  is the same failure as reporting a websocket "connected" before the upstream
+  is up.
+- **A unique client id per connection.** Brokers evict an existing session when
+  a new one connects with the same id, so a shared id makes two tabs kick each
+  other off.
+
+---
+
+## 🕸️ FLOW BUILDER — *node graph across the DB and API planes*
+
+> ⚠️ Note: **"Workflow automation"** is listed under OUT OF SCOPE below. This
+> overlaps with it. Worth settling which of the two readings is wanted before
+> building, because they are different products:
+>
+> 1. **Composition** — wire a query into a request, run the chain once, watch
+>    the data move. A debugging and exploration tool. Fits the North Star.
+> 2. **Automation** — save it, schedule it, retry it, alert on it. That is the
+>    thing the roadmap rules out.
+
+- [ ] Node canvas — drag a **DB node** (connection + query) and an **API node**
+      (connection + request) onto a surface and connect them
+- [ ] Data flows along the edges; a downstream node reads upstream output with
+      `{{node.field}}`, reusing the variable syntax the API client already has
+- [ ] **Branching** — one node feeding several, run in parallel
+- [ ] **Every node shows its own state on the canvas** — idle / running /
+      succeeded / failed, with row or status counts, timing, and the actual
+      result available from the node. Debugging a flow means seeing where the
+      data stopped being what you expected, so a node that hides its output is
+      useless
+- [ ] A failed node names what failed and does not blame the nodes downstream
+      of it
+- [ ] Stored either as its own connection kind, or inside an existing one
+
+---
+
 ## 🔭 NEXT
 
-- **Request history** — a saved request can be re-sent, but past runs are not
-  kept or replayable.
-- **Variables in the console UI** — the API stores and masks them, but there is
-  no editor for them yet; they are set through the API.
+Nothing outstanding beyond the IN FLIGHT queue above.
 
 ---
 

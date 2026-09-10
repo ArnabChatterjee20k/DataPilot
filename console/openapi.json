@@ -5,6 +5,48 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/connections/test": {
+      "post": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Test Connection",
+        "description": "Dial a connection before saving it, so a typo is caught here rather than\nat the first query.",
+        "operationId": "test_connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestConnectionModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionProbeModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/connections": {
       "get": {
         "tags": [
@@ -1637,6 +1679,52 @@
         ],
         "title": "ColumnStatsModel"
       },
+      "ConnectionProbeModel": {
+        "properties": {
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "server_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reachable"
+        ],
+        "title": "ConnectionProbeModel"
+      },
       "ConnectionRole": {
         "type": "string",
         "enum": [
@@ -2786,6 +2874,24 @@
           "entity_name"
         ],
         "title": "TableStatsModel"
+      },
+      "TestConnectionModel": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceConfig"
+          },
+          "connection_uri": {
+            "type": "string",
+            "title": "Connection Uri"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "connection_uri"
+        ],
+        "title": "TestConnectionModel",
+        "description": "Enough to dial a connection that has not been saved yet."
       },
       "UpdateConnectionsModel": {
         "properties": {

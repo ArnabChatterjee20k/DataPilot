@@ -1,14 +1,21 @@
+import asyncio
 import time
+from types import SimpleNamespace
+
+import httpx
+import websockets
 
 from fastapi import APIRouter, HTTPException, status
 
 from . import UPLOAD_DIR
 from ..config import SourceConfig, supports_schemas
 from ..models import (
+    ConnectionProbeModel,
     ConnectionStatusModel,
     ConnectionsModel,
     ConnectionsModelList,
     CreateConnectionsModel,
+    TestConnectionModel,
     UpdateConnectionsModel,
 )
 from ..database.db import DBSession
@@ -37,10 +44,17 @@ def to_response(connection) -> ConnectionsModel:
 def validate_uri(source: str, connection_uri: str) -> None:
     """Reject a connection URI that cannot possibly work for its source."""
     if source == SourceConfig.API.value:
-        if not str(connection_uri or "").startswith(("http://", "https://")):
+        # ws:// and wss:// are accepted too, for a service that only speaks
+        # websocket - the proxy resolves either scheme
+        if not str(connection_uri or "").startswith(
+            ("http://", "https://", "ws://", "wss://")
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="An API connection needs a base URL starting with http:// or https://",
+                detail=(
+                    "An API connection needs a base URL starting with "
+                    "http://, https://, ws:// or wss://"
+                ),
             )
         return
 
@@ -69,6 +83,126 @@ async def load_connection(db: DBSession, connection_uid: str) -> Connections:
             detail=f"Connection {connection_uid} not found",
         )
     return connection
+
+
+VERSION_QUERY = {
+    SourceConfig.SQLITE.value: "SELECT sqlite_version() AS version",
+    SourceConfig.POSTGRES.value: "SELECT version() AS version",
+    SourceConfig.MYSQL.value: "SELECT VERSION() AS version",
+}
+
+
+#: A connection test should answer quickly, or say it could not.
+PROBE_TIMEOUT = 10.0
+
+
+def unreachable_hint(source: str, connection_uri: str, detail: str) -> str:
+    """Point at the usual cause when a local address is refused.
+
+    Inside a container `localhost` is the container itself, which is by far the
+    most common reason a database that is plainly running looks refused.
+    """
+    lowered = detail.lower()
+    if not any(
+        token in lowered for token in ("refused", "reach", "connect", "timeout")
+    ):
+        return detail
+    if source == SourceConfig.SQLITE.value:
+        return detail
+    if not any(
+        host in str(connection_uri) for host in ("localhost", "127.0.0.1", "::1")
+    ):
+        return detail
+    return (
+        f"{detail} If DataPilot is running in a container, 'localhost' is the "
+        "container itself - use host.docker.internal, or put both on the same "
+        "Docker network and use the container name."
+    )
+
+
+async def probe_api(connection_uri: str) -> ConnectionProbeModel:
+    """Dial an API connection for real.
+
+    A websocket base is handshaked and closed; an HTTP base is asked for its
+    root. Any HTTP answer counts as reachable - a 404 from the base path still
+    proves the host is there and talking.
+    """
+    base = str(connection_uri or "").strip()
+    started = time.perf_counter()
+
+    try:
+        if base.startswith(("ws://", "wss://")):
+            connection = await asyncio.wait_for(
+                websockets.connect(base), timeout=PROBE_TIMEOUT
+            )
+            await connection.close()
+            return ConnectionProbeModel(
+                reachable=True,
+                detail="WebSocket handshake succeeded",
+                latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            )
+
+        async with httpx.AsyncClient(
+            timeout=PROBE_TIMEOUT, follow_redirects=True
+        ) as client:
+            response = await client.get(base)
+        return ConnectionProbeModel(
+            reachable=True,
+            detail=f"HTTP {response.status_code} {response.reason_phrase}".strip(),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            server_version=response.headers.get("server"),
+        )
+    except Exception as error:
+        return ConnectionProbeModel(
+            reachable=False,
+            detail=unreachable_hint(
+                SourceConfig.API.value,
+                base,
+                f"{type(error).__name__}: {error}",
+            ),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+
+
+async def probe(source: str, connection_uri: str, name: str = "") -> ConnectionProbeModel:
+    """Open a session and ask the server its version, nothing more."""
+    if source == SourceConfig.API.value:
+        return await probe_api(connection_uri)
+
+    probe_target = SimpleNamespace(
+        source=source, connection_uri=connection_uri, name=name or "connection"
+    )
+
+    started = time.perf_counter()
+    try:
+        async with open_session(probe_target) as session:
+            result = await session.execute(VERSION_QUERY.get(source, "SELECT 1"))
+        rows = result.rows or [{}]
+        return ConnectionProbeModel(
+            reachable=True,
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            server_version=str(rows[0].get("version")) if rows else None,
+        )
+    except HTTPException as error:
+        return ConnectionProbeModel(
+            reachable=False,
+            detail=unreachable_hint(source, connection_uri, str(error.detail)),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+
+
+@router.post("/connections/test", response_model=ConnectionProbeModel)
+async def test_connection(payload: TestConnectionModel):
+    """Dial a connection before saving it, so a typo is caught here rather than
+    at the first query."""
+    try:
+        validate_uri(payload.source, payload.connection_uri)
+    except HTTPException as error:
+        # testing always answers with a verdict; a bad URI is an unreachable
+        # connection, not a failed request
+        return ConnectionProbeModel(reachable=False, detail=str(error.detail))
+
+    return await probe(payload.source, payload.connection_uri)
 
 
 @router.post("/connections", response_model=ConnectionsModel)
@@ -130,32 +264,7 @@ async def delete_connection(connection_uid: str, db: DBSession):
 async def get_connection_status(connection_uid: str, db: DBSession):
     """Dial the connection and report whether it answers, without running a query."""
     connection = await load_connection(db, connection_uid)
-    if connection.source == SourceConfig.API.value:
-        return ConnectionStatusModel(
-            uid=connection_uid,
-            reachable=True,
-            detail="API connections are dialled per request",
-        )
-
-    started = time.perf_counter()
-    try:
-        async with open_session(connection) as session:
-            result = await session.execute(
-                "SELECT sqlite_version() AS version"
-                if connection.source == SourceConfig.SQLITE.value
-                else "SELECT version() AS version"
-            )
-        rows = result.rows or [{}]
-        return ConnectionStatusModel(
-            uid=connection_uid,
-            reachable=True,
-            latency_ms=round((time.perf_counter() - started) * 1000, 2),
-            server_version=str(rows[0].get("version")) if rows else None,
-        )
-    except HTTPException as error:
-        return ConnectionStatusModel(
-            uid=connection_uid,
-            reachable=False,
-            detail=str(error.detail),
-            latency_ms=round((time.perf_counter() - started) * 1000, 2),
-        )
+    result = await probe(
+        connection.source, connection.connection_uri, connection.name
+    )
+    return ConnectionStatusModel(uid=connection_uid, **result.model_dump())

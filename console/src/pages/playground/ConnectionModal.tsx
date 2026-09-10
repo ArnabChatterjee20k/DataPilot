@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, Database, FileUp, Globe, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Database,
+  FileUp,
+  Globe,
+  Loader2,
+  PlugZap,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,7 +35,13 @@ import {
 } from "@/components/ui/shadcn-io/dropzone";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
-import { getConnection, uploadFile, type SourceConfig } from "@/lib/sdk";
+import {
+  getConnection,
+  testConnection,
+  uploadFile,
+  type ConnectionProbeModel,
+  type SourceConfig,
+} from "@/lib/sdk";
 import { useCreateConnection, useUpdateConnection } from "./hooks";
 
 const SQLITE_SUFFIXES = [".db", ".sqlite", ".sqlite3", ".db3"];
@@ -36,7 +50,7 @@ const SOURCES = [
   { value: "postgres", label: "PostgreSQL", icon: Database },
   { value: "mysql", label: "MySQL", icon: Database },
   { value: "sqlite", label: "SQLite file", icon: FileUp },
-  { value: "api", label: "HTTP API", icon: Globe },
+  { value: "api", label: "HTTP / WebSocket", icon: Globe },
 ] as const satisfies readonly {
   value: SourceConfig;
   label: string;
@@ -46,7 +60,7 @@ const SOURCES = [
 const URI_PLACEHOLDER: Partial<Record<SourceConfig, string>> = {
   postgres: "postgresql://user:password@host:5432/database",
   mysql: "mysql://user:password@host:3306/database",
-  api: "https://api.example.com",
+  api: "https://api.example.com   or wss://stream.example.com",
 };
 
 const URI_LABEL: Partial<Record<SourceConfig, string>> = { api: "Base URL" };
@@ -91,6 +105,8 @@ export function ConnectionModal({
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [probe, setProbe] = useState<ConnectionProbeModel | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
@@ -102,6 +118,7 @@ export function ConnectionModal({
     setReadOnly(true);
     setFile(null);
     setError(null);
+    setProbe(null);
   };
 
   useEffect(() => {
@@ -134,6 +151,39 @@ export function ConnectionModal({
       cancelled = true;
     };
   }, [open, isEditMode, connectionId]);
+
+  useEffect(() => {
+    setProbe(null);
+  }, [source, connectionUri, file]);
+
+  const handleTest = async () => {
+    if (!source) return;
+    setError(null);
+    setIsTesting(true);
+    try {
+      let uri = connectionUri;
+      if (source === "sqlite" && file) {
+        const upload = await uploadFile({ body: { file }, throwOnError: true });
+        uri = upload.data?.connection_uri ?? "";
+        // keep the upload, so creating afterwards does not send the file twice
+        setConnectionUri(uri);
+        setFile(null);
+      }
+
+      const response = await testConnection({
+        body: { source, connection_uri: uri },
+        throwOnError: true,
+      });
+      setProbe(response.data ?? null);
+    } catch (testError) {
+      setProbe({
+        reachable: false,
+        detail: errorMessage(testError, "Could not reach the database"),
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const handleDrop = (accepted: File[]) => {
     const candidate = accepted[0];
@@ -209,6 +259,10 @@ export function ConnectionModal({
       setIsSaving(false);
     }
   };
+
+  const canTest =
+    !!source &&
+    (source === "sqlite" ? !!file || !!connectionUri : !!connectionUri.trim());
 
   const canSave =
     !!source &&
@@ -374,7 +428,53 @@ export function ConnectionModal({
           </div>
         )}
 
-        <DialogFooter>
+        {probe && (
+          <div
+            role="status"
+            className={cn(
+              "flex items-start gap-2 rounded-md border p-2.5 text-xs",
+              probe.reachable
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-destructive/30 bg-destructive/10 text-destructive"
+            )}
+          >
+            {probe.reachable ? (
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className="font-medium">
+                {probe.reachable ? "Connected" : "Could not connect"}
+                {probe.latency_ms !== null && probe.latency_ms !== undefined
+                  ? ` · ${probe.latency_ms} ms`
+                  : ""}
+              </p>
+              {(probe.server_version || probe.detail) && (
+                <p className="mt-0.5 break-words opacity-90">
+                  {probe.server_version ?? probe.detail}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="outline"
+            onClick={handleTest}
+            disabled={!canTest || isTesting || isSaving}
+            className="gap-1.5"
+          >
+            {isTesting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <PlugZap className="h-3.5 w-3.5" />
+            )}
+            {isTesting ? "Testing…" : "Test connection"}
+          </Button>
+
+          <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
@@ -390,6 +490,7 @@ export function ConnectionModal({
               "Create connection"
             )}
           </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

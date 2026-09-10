@@ -392,6 +392,32 @@ class TestSavedRequests:
 
 
 class TestApiConnections:
+    @pytest.mark.parametrize(
+        "base", ["ws://stream.example.com", "wss://stream.example.com"]
+    )
+    def test_a_websocket_only_service_can_be_added(self, client, base):
+        response = client.post(
+            "/connections",
+            json={"source": "api", "name": "Stream", "connection_uri": base},
+        )
+
+        assert response.status_code == 200, response.text
+
+    def test_sending_to_a_websocket_base_says_where_to_go(self, client):
+        created = client.post(
+            "/connections",
+            json={
+                "source": "api",
+                "name": "Stream",
+                "connection_uri": "wss://stream.example.com",
+            },
+        ).json()
+
+        response = send(client, created["uid"], path="/live")
+
+        assert response.status_code == 400
+        assert "WebSocket tab" in response.json()["detail"]
+
     def test_a_base_url_is_required(self, client):
         response = client.post(
             "/connections",
@@ -400,12 +426,79 @@ class TestApiConnections:
 
         assert response.status_code == 400
         assert "http://" in response.json()["detail"]
+        assert "ws://" in response.json()["detail"]
 
-    def test_status_says_api_connections_are_dialled_per_request(
-        self, client, api_connection
-    ):
+    def test_status_dials_the_api(self, client, api_connection):
         response = client.get(f"/connections/{api_connection['uid']}/status")
 
         assert response.status_code == 200
+        data = response.json()
+        assert data["reachable"] is True
+        assert "HTTP" in data["detail"]
+        assert data["latency_ms"] >= 0
+
+    def test_testing_an_http_base_before_saving(self, client, upstream):
+        response = client.post(
+            "/connections/test",
+            json={"source": "api", "connection_uri": upstream.base_url},
+        )
+
+        assert response.status_code == 200, response.text
         assert response.json()["reachable"] is True
-        assert "per request" in response.json()["detail"]
+
+    def test_testing_an_unreachable_http_base(self, client):
+        response = client.post(
+            "/connections/test",
+            json={"source": "api", "connection_uri": "http://127.0.0.1:1"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["reachable"] is False
+        assert data["detail"]
+
+    def test_testing_a_websocket_base(self, client, echo_socket):
+        socket_base = echo_socket.base_url.replace("http://", "ws://")
+
+        response = client.post(
+            "/connections/test",
+            json={"source": "api", "connection_uri": socket_base},
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["reachable"] is True
+        assert "WebSocket" in data["detail"]
+
+    def test_testing_an_unreachable_websocket_base(self, client):
+        response = client.post(
+            "/connections/test",
+            json={"source": "api", "connection_uri": "ws://127.0.0.1:1"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["reachable"] is False
+
+    def test_a_refused_local_address_hints_at_containers(self, client):
+        response = client.post(
+            "/connections/test",
+            json={
+                "source": "postgres",
+                "connection_uri": "postgresql://u:p@localhost:1/nothing",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "host.docker.internal" in response.json()["detail"]
+
+    def test_a_remote_address_gets_no_container_hint(self, client):
+        response = client.post(
+            "/connections/test",
+            json={
+                "source": "postgres",
+                "connection_uri": "postgresql://u:p@198.51.100.1:1/nothing",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "host.docker.internal" not in (response.json()["detail"] or "")

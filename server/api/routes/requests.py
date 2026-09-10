@@ -1,4 +1,5 @@
 import asyncio
+import json
 from typing import Annotated, Optional
 from urllib.parse import urlparse, urlunparse
 
@@ -24,6 +25,33 @@ router = APIRouter(tags=["api-client"])
 
 #: How long the proxy waits for the upstream socket to accept the connection.
 SOCKET_CONNECT_TIMEOUT = 15
+
+#: Frames the proxy sends about itself rather than from upstream. The browser
+#: has to be told when the *upstream* is up, because its own socket to
+#: DataPilot opens first and would otherwise look like success.
+CONTROL_KEY = "__datapilot"
+
+#: A websocket close reason may not exceed 123 bytes.
+MAX_CLOSE_REASON = 123
+
+
+async def send_control(websocket: WebSocket, status: str, detail: str = ""):
+    await websocket.send_text(
+        json.dumps({CONTROL_KEY: status, "detail": detail})
+    )
+
+
+async def fail_socket(websocket: WebSocket, detail: str, code: int = 1011):
+    """Report a failure in full, then close.
+
+    The close reason is capped at 123 bytes by the protocol, so the readable
+    version goes out as a control frame first and the close carries a summary.
+    """
+    try:
+        await send_control(websocket, "error", detail)
+    except Exception:
+        pass
+    await websocket.close(code=code, reason=detail.encode("utf-8")[:MAX_CLOSE_REASON].decode("utf-8", "ignore"))
 
 
 def require_api_connection(connection):
@@ -273,6 +301,21 @@ async def set_variables(connection_id: str, payload: VariablesModel, db: DBSessi
     return VariablesModel(variables=shown, secret=secret)
 
 
+def describe_socket_failure(url: str, error: Exception) -> str:
+    """Turn a driver exception into something worth showing a person."""
+    from .connections import unreachable_hint
+
+    text = str(error) or type(error).__name__
+    if isinstance(error, (ConnectionRefusedError, OSError)) or "refused" in text.lower():
+        detail = f"Could not reach {url}: the connection was refused"
+    elif "name or service not known" in text.lower() or "getaddrinfo" in text.lower():
+        detail = f"Could not resolve the host in {url}"
+    else:
+        detail = f"Could not connect to {url}: {text}"
+
+    return unreachable_hint(SourceConfig.API.value, url, detail)
+
+
 def socket_url(base_url: str, path: str, variables: dict) -> str:
     """Resolve a websocket URL, upgrading http(s) to ws(s)."""
     resolved = http_client.resolve_url(base_url, path, variables)
@@ -305,14 +348,18 @@ async def proxy_socket(
                 Connections, filters=Connections.uid == connection_id
             )
     except Exception as error:
-        await websocket.close(code=1011, reason=f"Connection lookup failed: {error}")
+        await fail_socket(websocket, f"Could not load the connection: {error}")
         return
 
     if not connection:
-        await websocket.close(code=1008, reason="Connection not found")
+        await fail_socket(websocket, "Connection not found", code=1008)
         return
     if connection.source != SourceConfig.API.value:
-        await websocket.close(code=1008, reason="Not an API connection")
+        await fail_socket(
+            websocket,
+            f"'{connection.name}' is a {connection.source} connection, not an API one",
+            code=1008,
+        )
         return
 
     try:
@@ -320,16 +367,25 @@ async def proxy_socket(
             connection.connection_uri, path or "", connection_variables(connection)
         )
     except ValueError as error:
-        await websocket.close(code=1008, reason=str(error))
+        await fail_socket(websocket, str(error), code=1008)
         return
 
     try:
         upstream = await asyncio.wait_for(
             websockets.connect(upstream_url), timeout=SOCKET_CONNECT_TIMEOUT
         )
-    except Exception as error:
-        await websocket.close(code=1011, reason=f"{type(error).__name__}: {error}")
+    except asyncio.TimeoutError:
+        await fail_socket(
+            websocket,
+            f"Timed out after {SOCKET_CONNECT_TIMEOUT}s connecting to {upstream_url}",
+        )
         return
+    except Exception as error:
+        await fail_socket(websocket, describe_socket_failure(upstream_url, error))
+        return
+
+    # only now is the connection genuinely usable
+    await send_control(websocket, "ready", upstream_url)
 
     async def browser_to_upstream():
         while True:
