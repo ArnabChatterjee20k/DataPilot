@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from laserorm.storage.storage import StorageSession
 
 from .config import UPLOAD_DIR, SourceConfig, get_adapter
+from .http_client import container_hint, refusal_wording
 
 #: LaserORM normalises driver errors into messages with a stable prefix.
 ERROR_PREFIX_STATUS = (
@@ -53,23 +54,37 @@ def resolve_connection_uri(connection) -> str:
     return str(connection.connection_uri)
 
 
-def to_http_error(error: Exception) -> HTTPException:
+def to_http_error(error: Exception, connection_uri: str = "") -> HTTPException:
+    """Turn an adapter error into an HTTP one, in words worth showing a person."""
     if isinstance(error, HTTPException):
         return error
 
-    message = str(error)
+    message = str(error) or type(error).__name__
     for prefixes, code in ERROR_PREFIX_STATUS:
         if message.startswith(prefixes):
+            if code == status.HTTP_503_SERVICE_UNAVAILABLE:
+                message = container_hint(connection_uri, message)
             return HTTPException(status_code=code, detail=message)
 
     if isinstance(error, (ConnectionError, OSError, TimeoutError)):
+        # the OS wording for a closed port varies by platform and says nothing
+        # useful; what matters is that nothing is listening
+        detail = (
+            "Could not reach the database: the connection was refused. "
+            "Nothing is listening on that host and port."
+            if refusal_wording(message)
+            else f"Could not reach the database: {message}"
+        )
         return HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not reach the database: {message}",
+            detail=container_hint(connection_uri, detail),
         )
 
+    # nothing recognised it, so say plainly that it was unexpected rather than
+    # leaving a bare driver string on screen with no context
     return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"The database driver failed unexpectedly: {message}",
     )
 
 
@@ -93,4 +108,4 @@ async def open_session(connection) -> AsyncGenerator[StorageSession, None]:
     except HTTPException:
         raise
     except Exception as error:
-        raise to_http_error(error) from error
+        raise to_http_error(error, str(connection.connection_uri)) from error

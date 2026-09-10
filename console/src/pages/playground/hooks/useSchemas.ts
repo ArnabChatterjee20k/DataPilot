@@ -11,6 +11,9 @@ export function useSchemas(connectionIds: string[]) {
   return useQueries({
     queries: connectionIds.map((connectionId) => ({
       queryKey: schemaKeys.schema(connectionId),
+      // a database that is not there will not be there on the third attempt
+      // either, and retrying only delays the message
+      retry: false,
       queryFn: async (): Promise<Schema[]> => {
         const response = await getSchemas({
           path: { connection_id: connectionId },
@@ -28,6 +31,11 @@ export function useSchemas(connectionIds: string[]) {
       ),
       isLoading: results.some((result) => result.isLoading),
       error: results.find((result) => result.error)?.error ?? null,
+      errorByConnectionId: new Map(
+        connectionIds
+          .map((id, index) => [id, results[index]?.error ?? null] as const)
+          .filter(([, error]) => error)
+      ),
     }),
   });
 }

@@ -191,22 +191,24 @@ Raised while using the console. Ordered by how much they hurt.
 - [x] WebSocket failures surface as a banner, not a line in the log
 - [x] The proxy reports **upstream** readiness, so "connected" stops meaning
       "reached DataPilot"
-- [ ] Same treatment for the query path: a connection that has gone away should
-      say so before the query does
+- [x] Same treatment for the query path: a connection that has gone away says
+      so before the query does, and the sidebar dials every connection as it
+      lists them so the answer is on screen before anything is run
 
 ### Requests
-- [ ] **Paste a curl command** into the request box and have it parsed into
+- [x] **Paste a curl command** into the request box and have it parsed into
       method, URL, headers, body and auth
-- [ ] **Arbitrary URLs** — an absolute URL in the path field already bypasses
-      the base URL, but nothing says so. Make it discoverable, and allow a
-      request with no connection base at all
+- [x] **Arbitrary URLs** — the builder shows where the request will actually
+      go, and `POST /request` sends one with no connection at all
 - [ ] Request **history** — past runs, replayable
 - [ ] A **variables** editor in the console (the API stores and masks them
       already)
 
 ### Errors
-- [ ] Audit every failure path end to end and make sure the message says what
-      happened and what to do — no raw driver text reaching the screen
+- [x] Audit every failure path end to end and make sure the message says what
+      happened and what to do — no raw driver text reaching the screen.
+      Transport failures, driver failures and OS wordings all normalised; the
+      container hint lives in one place and is no longer applied twice
 
 ### UX audit
 - [ ] Drive every feature in the browser looking specifically for things that

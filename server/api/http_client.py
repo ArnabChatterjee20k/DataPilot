@@ -216,6 +216,13 @@ class ReceivedResponse:
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
 
+CONTAINER_HINT = (
+    "If DataPilot is running in a container, 'localhost' is the container "
+    "itself - use host.docker.internal, or put both on the same Docker "
+    "network and use the container name."
+)
+
+
 def container_hint(url: str, detail: str) -> str:
     """Point at the usual cause when a local address is refused.
 
@@ -223,15 +230,29 @@ def container_hint(url: str, detail: str) -> str:
     most common reason something plainly running looks unreachable.
     """
     lowered = detail.lower()
+    # adding it twice is worse than not adding it, and an error can pass
+    # through more than one layer that wants to explain it
+    if "host.docker.internal" in lowered:
+        return detail
     if not any(token in lowered for token in ("refused", "reach", "connect", "timeout")):
         return detail
     if not any(host in str(url) for host in LOCAL_HOSTS):
         return detail
-    return (
-        f"{detail} If DataPilot is running in a container, 'localhost' is the "
-        "container itself - use host.docker.internal, or put both on the same "
-        "Docker network and use the container name."
-    )
+    return f"{detail} {CONTAINER_HINT}"
+
+
+#: Driver and OS wordings for a port with nothing behind it.
+REFUSED_PHRASES = (
+    "refused",
+    "all connection attempts failed",
+    "winerror 1225",
+    "winerror 10061",
+)
+
+
+def refusal_wording(text: str) -> bool:
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in REFUSED_PHRASES)
 
 
 def describe_transport_failure(url: str, error: Exception) -> str:
@@ -257,7 +278,7 @@ def describe_transport_failure(url: str, error: Exception) -> str:
         lowered = text.lower()
         if "name or service not known" in lowered or "nodename nor servname" in lowered:
             detail = f"Could not resolve the host in {url}. Check the hostname."
-        elif "refused" in lowered or "all connection attempts failed" in lowered:
+        elif refusal_wording(lowered):
             detail = f"Could not reach {url}: the connection was refused. Nothing is listening on that host and port."
         elif "certificate" in lowered or "ssl" in lowered:
             detail = f"TLS failed talking to {url}: {text}"
