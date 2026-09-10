@@ -704,14 +704,16 @@ function Cell({
   const isTruncatable = cell.state === "value" && !enumLike && cell.text.length > 24;
 
   return (
-    <div className="group/cell relative flex items-start gap-1" title={cell.title}>
+    <div className="group/cell flex items-start gap-1" title={cell.title}>
+      {/* the actions take space rather than sitting over the value: covering
+          it hid short values like an enum pill entirely */}
       <div className="min-w-0 flex-1">{body}</div>
-      <div className="absolute right-0 top-0 hidden items-center gap-0.5 rounded bg-background/95 pl-1 shadow-sm group-hover/cell:flex">
+      <div className="hidden shrink-0 items-center group-hover/cell:flex">
         {isTruncatable && (
           <button
             type="button"
             onClick={onToggleExpand}
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
             title={expanded ? "Collapse" : "Expand"}
           >
             <Maximize2 className="h-3.5 w-3.5" />
@@ -721,13 +723,13 @@ function Cell({
           <button
             type="button"
             onClick={onFilter}
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
             title="Filter by this value"
           >
             <FilterIcon className="h-3.5 w-3.5" />
           </button>
         )}
-        {cell.state === "value" && <CopyButton value={cell.full} label="Copy value" />}
+        {cell.state === "value" && <CopyButton value={cell.full} label="Copy value" className="h-5 w-5" />}
       </div>
     </div>
   );

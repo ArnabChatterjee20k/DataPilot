@@ -22,6 +22,7 @@ import {
 import { useConnections } from "./hooks";
 import { useTabData } from "./hooks/useTabData";
 import { useRequestRunner } from "./hooks/useRequestRunner";
+import { useDialogStore } from "./store/dialogs";
 import { useTabsStore, type DatabaseConnection, type Tab } from "./store/store";
 import { useAllTables } from "./hooks/useAllTables";
 
@@ -48,7 +49,27 @@ export default function Playground() {
   const tablesByConnection = useAllTables(connections);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
+  const openConnectionDialog = useDialogStore((state) => state.openConnectionDialog);
+
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
+
+  /**
+   * The connection a new query tab should start on.
+   *
+   * Landing on "Select a connection" with one connection in the sidebar is a
+   * click that has only one possible answer.
+   */
+  const defaultConnectionId = useMemo(() => {
+    const queryable = connections.filter((item) => item.type !== "api");
+    const current = queryable.find((item) => item.id === activeTab?.connectionId);
+    if (current) return current.id;
+
+    const lastUsed = [...tabs]
+      .reverse()
+      .map((tab) => queryable.find((item) => item.id === tab.connectionId))
+      .find(Boolean);
+    return lastUsed?.id ?? queryable[0]?.id;
+  }, [connections, tabs, activeTab?.connectionId]);
 
   const commands = useMemo<Command[]>(
     () => [
@@ -58,7 +79,7 @@ export default function Playground() {
         label: "New query",
         group: "Actions",
         icon: Plus,
-        run: () => addQueryTab(activeTab?.connectionId),
+        run: () => addQueryTab(defaultConnectionId),
       },
       {
         id: "action:new-request",
@@ -76,7 +97,7 @@ export default function Playground() {
       openTableTab,
       addQueryTab,
       addRequestTab,
-      activeTab?.connectionId,
+      defaultConnectionId,
     ]
   );
 
@@ -92,7 +113,7 @@ export default function Playground() {
       }
       if (modified && key === "t") {
         event.preventDefault();
-        addQueryTab(activeTab?.connectionId);
+        addQueryTab(defaultConnectionId);
         return;
       }
       if (modified && key === "w" && activeTab && !activeTab.isNew) {
@@ -111,7 +132,7 @@ export default function Playground() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeTab, addQueryTab, closeTab]);
+  }, [activeTab, addQueryTab, closeTab, defaultConnectionId]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
@@ -128,7 +149,7 @@ export default function Playground() {
               tabs={tabs}
               activeTabId={activeTabId}
               onSelect={setActiveTabId}
-              onNew={() => addQueryTab(activeTab?.connectionId)}
+              onNew={() => addQueryTab(defaultConnectionId)}
               onClose={closeTab}
               onOpenPalette={() => setIsPaletteOpen(true)}
             />
@@ -139,19 +160,34 @@ export default function Playground() {
               <TabWorkspace key={activeTab.id} tab={activeTab} />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                {/* with nothing connected, "New query" is a button that can
+                    only fail, so the first step is the only one offered */}
                 <p className="text-sm text-muted-foreground">
-                  Open a table from the sidebar, start a query, or send a request
-                  to any URL.
+                  {connections.length === 0
+                    ? "Nothing is connected yet. Add a database or an API to begin."
+                    : "Open a table from the sidebar, start a query, or send a request to any URL."}
                 </p>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => addQueryTab(connections[0]?.id)}
-                    className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New query
-                  </button>
+                  {connections.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openConnectionDialog()}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add a connection
+                    </button>
+                  )}
+                  {connections.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => addQueryTab(defaultConnectionId)}
+                      className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      New query
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => addRequestTab(undefined)}

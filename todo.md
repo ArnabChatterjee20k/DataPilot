@@ -213,11 +213,27 @@ Raised while using the console. Ordered by how much they hurt.
       container hint lives in one place and is no longer applied twice
 
 ### UX audit
-- [ ] Drive every feature in the browser looking specifically for things that
+- [x] Drive every feature in the browser looking specifically for things that
       break the experience, not just things that throw
-- [ ] Audit the *flows* rather than the screens — the path from opening the app
+- [x] Audit the *flows* rather than the screens — the path from opening the app
       to having an answer, for each of: browse a table, run a query, send a
       request, watch a socket. Count the clicks and the dead ends
+
+  What it found, all fixed:
+  - With nothing connected, the first screen offered "New query", a button
+    that could only fail, and buried "Add a connection" in the sidebar
+  - A new query tab landed on "Select a connection" with one connection in
+    the sidebar — a click with one possible answer
+  - The query connection picker offered API connections, which cannot answer
+    a query
+  - The whole result toolbar — reload, export, paging, columns — was live
+    before anything had run
+  - **Stats** on a query tab led to a panel saying to open a table
+  - A disabled search box explained itself instead of getting out of the way
+  - Cell hover actions covered the value: a `suspended` pill read as
+    `suspen` with no ellipsis to say it had been cut
+  - The connection dialog was headed "Database" while offering
+    HTTP / WebSocket
 
 ### MQTT
 A third protocol alongside HTTP and WebSocket, under the same API connection

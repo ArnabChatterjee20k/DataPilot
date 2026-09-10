@@ -251,22 +251,29 @@ export function ResultView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {/* every control here acts on a result: reloading, exporting, paging and
+          choosing columns are all dead until something has run */}
+      {(result || isLoading) && (
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
-          <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchDraft}
-            onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder={isTableTab ? "Search this table…" : "Search unavailable for queries"}
-            disabled={!isTableTab || busy}
-            className={cn(
-              "h-8 w-full rounded-md border bg-background pl-8 pr-2 text-xs",
-              "placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
-              "disabled:cursor-not-allowed disabled:opacity-50"
-            )}
-          />
-        </div>
+        {/* searching means adding a WHERE to a query DataPilot wrote, which it
+            cannot do to one the user wrote */}
+        {isTableTab && (
+          <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={searchDraft}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Search this table…"
+              disabled={busy}
+              className={cn(
+                "h-8 w-full rounded-md border bg-background pl-8 pr-2 text-xs",
+                "placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+                "disabled:cursor-not-allowed disabled:opacity-50"
+              )}
+            />
+          </div>
+        )}
 
         <div className="ml-auto flex items-center gap-1.5">
           <div className="mr-1 flex items-center rounded-md border p-0.5">
@@ -276,24 +283,35 @@ export function ResultView({
                 ["stats", "Stats", BarChart3],
                 ["plan", "Plan", Gauge],
               ] as const
-            ).map(([value, label, Icon]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setPanel(value)}
-                aria-pressed={panel === value}
-                title={label}
-                className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors",
-                  panel === value
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span className="hidden lg:inline">{label}</span>
-              </button>
-            ))}
+            ).map(([value, label, Icon]) => {
+              // statistics are per table, so on a query tab the button led to
+              // an empty panel telling you to open a table
+              const unavailable = value === "stats" && !isTableTab;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPanel(value)}
+                  aria-pressed={panel === value}
+                  disabled={unavailable}
+                  title={
+                    unavailable
+                      ? "Statistics are per table - open a table to see them"
+                      : label
+                  }
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs transition-colors",
+                    panel === value
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                    unavailable && "cursor-not-allowed opacity-40 hover:text-muted-foreground"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="hidden lg:inline">{label}</span>
+                </button>
+              );
+            })}
           </div>
 
           <span className="mr-1 hidden text-xs text-muted-foreground sm:inline">
@@ -448,6 +466,7 @@ export function ResultView({
           </div>
         </div>
       </div>
+      )}
 
       <FilterBar
         filters={tab.filters}
