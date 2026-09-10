@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, Database, FileUp, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, FileUp, Globe, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,6 +36,7 @@ const SOURCES = [
   { value: "postgres", label: "PostgreSQL", icon: Database },
   { value: "mysql", label: "MySQL", icon: Database },
   { value: "sqlite", label: "SQLite file", icon: FileUp },
+  { value: "api", label: "HTTP API", icon: Globe },
 ] as const satisfies readonly {
   value: SourceConfig;
   label: string;
@@ -45,7 +46,10 @@ const SOURCES = [
 const URI_PLACEHOLDER: Partial<Record<SourceConfig, string>> = {
   postgres: "postgresql://user:password@host:5432/database",
   mysql: "mysql://user:password@host:3306/database",
+  api: "https://api.example.com",
 };
+
+const URI_LABEL: Partial<Record<SourceConfig, string>> = { api: "Base URL" };
 
 const ENVIRONMENTS = [
   { value: "local", label: "Local" },
@@ -240,7 +244,7 @@ export function ConnectionModal({
 
             <div className="space-y-1.5">
               <Label className="text-xs">Database</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {SOURCES.map((option) => (
                   <button
                     key={option.value}
@@ -301,7 +305,7 @@ export function ConnectionModal({
                 ) : (
                   <div className="space-y-1.5">
                     <Label htmlFor="connection-uri" className="text-xs">
-                      Connection URI
+                      {URI_LABEL[source] ?? "Connection URI"}
                     </Label>
                     <Input
                       id="connection-uri"
@@ -350,6 +354,7 @@ export function ConnectionModal({
                   </div>
                 </div>
 
+                {source !== "api" && (
                 <label className="flex items-start gap-2 rounded-md border p-2.5">
                   <Checkbox
                     checked={readOnly}
@@ -363,6 +368,7 @@ export function ConnectionModal({
                     </span>
                   </span>
                 </label>
+                )}
               </>
             )}
           </div>

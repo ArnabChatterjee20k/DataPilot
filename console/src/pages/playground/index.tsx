@@ -11,6 +11,9 @@ import { client } from "@/lib/sdk/client.gen";
 import { CodeArea } from "./code-area";
 import DatabaseSidebar from "./DatabaseSidebar";
 import { ResultView } from "./components/ResultView";
+import { RequestBuilder } from "./components/RequestBuilder";
+import { ResponseView } from "./components/ResponseView";
+import { SocketConsole } from "./components/SocketConsole";
 import {
   CommandPalette,
   buildTableCommands,
@@ -18,7 +21,8 @@ import {
 } from "./components/CommandPalette";
 import { useConnections } from "./hooks";
 import { useTabData } from "./hooks/useTabData";
-import { useTabsStore, type Tab } from "./store/store";
+import { useRequestRunner } from "./hooks/useRequestRunner";
+import { useTabsStore, type DatabaseConnection, type Tab } from "./store/store";
 import { useAllTables } from "./hooks/useAllTables";
 
 function isTypingInto(target: EventTarget | null): boolean {
@@ -224,6 +228,55 @@ function TabWorkspace({ tab }: { tab: Tab }) {
     () => connections.find((item) => item.id === tab.connectionId),
     [connections, tab.connectionId]
   );
+
+  if (tab.type === "socket") {
+    return <SocketConsole tab={tab} connection={connection} />;
+  }
+  if (tab.type === "request") {
+    return <RequestWorkspace tab={tab} connection={connection} />;
+  }
+  return <QueryWorkspace tab={tab} connection={connection} />;
+}
+
+function RequestWorkspace({
+  tab,
+  connection,
+}: {
+  tab: Tab;
+  connection?: DatabaseConnection;
+}) {
+  const { result, isSending, isSaving, send, save } = useRequestRunner(tab);
+
+  return (
+    <ResizablePanelGroup direction="vertical" className="min-h-0 flex-1">
+      <ResizablePanel defaultSize={46} minSize={20} maxSize={80}>
+        <RequestBuilder
+          tab={tab}
+          connection={connection}
+          isSending={isSending}
+          isSaving={isSaving}
+          onSend={send}
+          onSave={save}
+        />
+      </ResizablePanel>
+
+      <ResizableHandle withHandle />
+
+      <ResizablePanel defaultSize={54} minSize={20} className="min-h-0">
+        <ResponseView state={result} isSending={isSending} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  );
+}
+
+function QueryWorkspace({
+  tab,
+  connection,
+}: {
+  tab: Tab;
+  connection?: DatabaseConnection;
+}) {
+  const { data: connections = [] } = useConnections();
 
   const { result, tableColumns, totalRows, isRunning, run, refresh, tableSql } =
     useTabData(tab, connection);
