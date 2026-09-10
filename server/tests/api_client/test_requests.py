@@ -302,6 +302,42 @@ class TestVariables:
         echoed = json.loads(response.json()["response"]["body"])
         assert echoed["headers"]["x-trace"] == "{{nope}}"
 
+    def test_saving_a_masked_secret_back_keeps_the_real_one(
+        self, client, api_connection
+    ):
+        """Reading gives masks, so an editor saving them back must not destroy them."""
+        uid = api_connection["uid"]
+        self._set(client, uid, {"api_token": "abcdefghijklmnop", "region": "eu"})
+
+        shown = client.get(f"/connection/{uid}/variables").json()["variables"]
+        # exactly what an editor would send back after changing only the region
+        self._set(client, uid, {**shown, "region": "us"})
+
+        response = send(
+            client,
+            uid,
+            path="/echo",
+            headers=[{"key": "X-Token", "value": "{{api_token}}"}],
+            params=[{"key": "region", "value": "{{region}}"}],
+        )
+        echoed = json.loads(response.json()["response"]["body"])
+        assert echoed["headers"]["x-token"] == "abcdefghijklmnop"
+        assert echoed["query"]["region"] == "us"
+
+    def test_a_secret_that_was_edited_is_taken_as_written(self, client, api_connection):
+        uid = api_connection["uid"]
+        self._set(client, uid, {"api_token": "abcdefghijklmnop"})
+        self._set(client, uid, {"api_token": "a-new-token"})
+
+        response = send(
+            client,
+            uid,
+            path="/echo",
+            headers=[{"key": "X-Token", "value": "{{api_token}}"}],
+        )
+        echoed = json.loads(response.json()["response"]["body"])
+        assert echoed["headers"]["x-token"] == "a-new-token"
+
     def test_secret_variables_are_masked_when_read_back(self, client, api_connection):
         self._set(
             client,
