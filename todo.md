@@ -357,20 +357,37 @@ No schedule, no retry, no alerts — those were the parts the roadmap rules out.
 
 ## 🟥 REDIS — *a fourth connection kind*
 
-- [ ] **Connection** — `redis://` / `rediss://`, with database number, username
-      and password, and TLS
-- [ ] **Browse keys** by pattern, without `KEYS *` on a production instance —
-      `SCAN` with a cursor, so a big keyspace does not stall the server
-- [ ] **Every type, shown as itself**: string, hash, list, set, sorted set
-      (with scores), stream (entries and fields), and the TTL and memory of
-      each key
-- [ ] **A dashboard**: what the server reports about itself — memory, clients,
-      hit rate, evictions, uptime, keyspace size per database
-- [ ] **Pub/sub**: list the active channels and pattern subscriptions, then
-      subscribe and watch messages arrive live, with the channel they came in
-      on. Same readiness rule as MQTT and the websocket proxy: "subscribed"
-      must mean the server agreed
-- [ ] Publish to a channel, to test the other side of it
+Not behind the ORM: Redis has no tables to introspect and no query to plan.
+
+- [x] **Connection** — `redis://` / `rediss://`, with database number,
+      username and password, and TLS. Dialled with `PING` when tested
+- [x] **Browse keys** by pattern with a cursored `SCAN`, never `KEYS *` — that
+      walks the whole keyspace in one blocking command, which on a real server
+      is an outage rather than a slow page
+- [x] **Every type, shown as itself**: string (including binary), hash, list
+      (in order), set, sorted set with its scores in score order, and stream
+      entries with their fields — plus the TTL, size and encoding of each key.
+      `-1` reads as "no expiry", which is not the same as expired
+- [x] A key with more elements than is worth loading says so rather than
+      pretending that is all of them
+- [x] **A dashboard**: version, uptime, clients, memory and its peak and
+      limit, eviction policy and count, commands, hit rate, replication role,
+      and the key count per database
+- [x] **Pub/sub**: the channels being listened to right now, with subscriber
+      counts, then subscribe to channels or patterns and watch messages arrive
+      with the channel and the pattern that matched. "Subscribed" means Redis
+      confirmed it — pub/sub has no replay, so a message published before the
+      subscription registers is gone with nothing anywhere to say so
+- [x] Publish to a channel, with the subscriber count reported back, because
+      zero is the answer that explains why nothing happened
+
+---
+
+## 📏 KEEPING THE IMAGE SMALL
+
+- [x] `scripts/check_image_size.py` fails above a budget and names the
+      heaviest build steps, so the 718MB → ~310MB saving is not quietly given
+      back. Raising the budget has to be deliberate
 
 ---
 
