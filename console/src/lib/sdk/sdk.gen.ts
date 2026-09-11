@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -251,6 +251,52 @@ export const setVariables = <ThrowOnError extends boolean = false>(options: Opti
         ...options.headers
     }
 });
+
+/**
+ * Get Slow Queries
+ *
+ * The slowest statements the server itself has recorded.
+ *
+ * Not the queries DataPilot has run - those would only describe DataPilot.
+ */
+export const getSlowQueries = <ThrowOnError extends boolean = false>(options: Options<GetSlowQueriesData, ThrowOnError>): RequestResult<GetSlowQueriesResponses, GetSlowQueriesErrors, ThrowOnError> => (options.client ?? client).get<GetSlowQueriesResponses, GetSlowQueriesErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries', ...options });
+
+/**
+ * List Snapshots
+ */
+export const listSnapshots = <ThrowOnError extends boolean = false>(options: Options<ListSnapshotsData, ThrowOnError>): RequestResult<ListSnapshotsResponses, ListSnapshotsErrors, ThrowOnError> => (options.client ?? client).get<ListSnapshotsResponses, ListSnapshotsErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries/snapshots', ...options });
+
+/**
+ * Take Snapshot
+ *
+ * Store the current reading.
+ *
+ * The server's counters only ever go up and are lost on a reset or a
+ * restart, so a reading kept here is what makes "what changed since
+ * yesterday" answerable at all.
+ */
+export const takeSnapshot = <ThrowOnError extends boolean = false>(options: Options<TakeSnapshotData, ThrowOnError>): RequestResult<TakeSnapshotResponses, TakeSnapshotErrors, ThrowOnError> => (options.client ?? client).post<TakeSnapshotResponses, TakeSnapshotErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries/snapshots', ...options });
+
+/**
+ * Delete Snapshot
+ */
+export const deleteSnapshot = <ThrowOnError extends boolean = false>(options: Options<DeleteSnapshotData, ThrowOnError>): RequestResult<DeleteSnapshotResponses, DeleteSnapshotErrors, ThrowOnError> => (options.client ?? client).delete<DeleteSnapshotResponses, DeleteSnapshotErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries/snapshots/{snapshot_uid}', ...options });
+
+/**
+ * Get Snapshot
+ */
+export const getSnapshot = <ThrowOnError extends boolean = false>(options: Options<GetSnapshotData, ThrowOnError>): RequestResult<GetSnapshotResponses, GetSnapshotErrors, ThrowOnError> => (options.client ?? client).get<GetSnapshotResponses, GetSnapshotErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries/snapshots/{snapshot_uid}', ...options });
+
+/**
+ * Compare Snapshots
+ *
+ * What happened between two readings.
+ *
+ * The absolute numbers include every statement since the counters were last
+ * reset, which may be weeks of traffic that has nothing to do with the change
+ * you are looking at. The difference is the answer.
+ */
+export const compareSnapshots = <ThrowOnError extends boolean = false>(options: Options<CompareSnapshotsData, ThrowOnError>): RequestResult<CompareSnapshotsResponses, CompareSnapshotsErrors, ThrowOnError> => (options.client ?? client).get<CompareSnapshotsResponses, CompareSnapshotsErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries/compare', ...options });
 
 /**
  * Health
