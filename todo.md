@@ -262,19 +262,28 @@ asyncio wrapper, because the wrappers register the socket with the event loop
 and Windows' default (proactor) loop cannot do that at all.
 
 ### Slow queries — *from the database's own performance schema*
-- [ ] Read the slow statements the server already tracks, rather than timing
+- [x] Read the slow statements the server already tracks, rather than timing
       queries DataPilot happened to run: `pg_stat_statements` on PostgreSQL,
       `performance_schema.events_statements_summary_by_digest` on MySQL. Both
       keep a normalised digest, total and mean time, calls and rows
-- [ ] Say what to do when the source is not there — `pg_stat_statements` needs
-      `shared_preload_libraries` and a `CREATE EXTENSION`; MySQL's
-      performance schema can be compiled out — rather than failing with the
-      driver's word for "no such table"
-- [ ] SQLite has no such view. Say so plainly instead of showing an empty table
-- [ ] **Store them**, so a snapshot survives the counters being reset and two
-      snapshots can be compared. The `QueryLogs` table already exists
-- [ ] Show them where the query insights already live, ordered by total time,
-      with the digest, calls, mean and total, and rows per call
+- [x] Say what to do when the source is not there — and tell the two
+      PostgreSQL cases apart, because they have different fixes: the extension
+      not created (`CREATE EXTENSION`) and the extension created but never
+      loaded (`shared_preload_libraries`, plus a restart)
+- [x] SQLite has no such view. Say so plainly instead of showing an empty table
+- [x] **Store them**, so a snapshot survives the counters being reset and two
+      snapshots can be compared
+- [x] A **Slow queries** tab per database connection, ordered by total time,
+      mean, calls or rows, with the digest, timings, rows per call and — on
+      MySQL — rows examined, which is the number that finds a missing index
+- [x] Compare a stored reading against now, or against another reading. The
+      absolute numbers cover everything since the counters were last reset,
+      which is rarely the window you care about
+
+Noted while building it: a statement DataPilot runs on the user's behalf does
+not always turn up in `pg_stat_statements`, because of how the adapter
+executes it. That is the right outcome — the point is the application's
+traffic, not this tool's.
 
 ---
 
