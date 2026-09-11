@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import ssl
 import uuid
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field, replace
+from typing import Any, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 #: Brokers reject a client id longer than 23 characters in MQTT 3.1.
@@ -54,6 +55,109 @@ class BrokerAddress:
     def display(self) -> str:
         scheme = "mqtts" if self.use_tls else "mqtt"
         return f"{scheme}://{self.host}:{self.port}{self.path}"
+
+
+#: Protocol versions a connection can ask for. 5 is the default because user
+#: properties and enhanced authentication only exist there; 3.1.1 is the
+#: fallback for a broker that refuses a v5 CONNECT.
+PROTOCOL_5 = "5"
+PROTOCOL_311 = "3.1.1"
+PROTOCOLS = (PROTOCOL_5, PROTOCOL_311)
+
+#: A broker that does not speak MQTT 5 answers CONNACK with this.
+UNSUPPORTED_PROTOCOL = 132
+
+
+@dataclass
+class BrokerOptions:
+    """Everything about a session that is not the address.
+
+    These live in the connection's variables rather than the URL: a URL is
+    shown on every screen the connection appears on, and a credential in one
+    is a credential on display.
+    """
+
+    protocol: str = PROTOCOL_5
+    username: Optional[str] = None
+    password: Optional[str] = None
+    #: MQTT 5 enhanced authentication: a named method and its credential,
+    #: which is how a broker takes a JWT or a session secret instead of a
+    #: password.
+    auth_method: Optional[str] = None
+    auth_data: Optional[str] = None
+    #: Sent on CONNECT. Brokers use these to route or authorise a session.
+    user_properties: list[tuple[str, str]] = field(default_factory=list)
+    client_id: Optional[str] = None
+    verify_tls: bool = True
+    #: A private CA, for a broker behind a certificate no public root chains to.
+    ca_certs: Optional[str] = None
+    clean_start: bool = True
+
+    @property
+    def speaks_v5(self) -> bool:
+        return self.protocol == PROTOCOL_5
+
+    def with_protocol(self, protocol: str) -> "BrokerOptions":
+        return replace(self, protocol=protocol)
+
+
+def pairs_from(value) -> list[tuple[str, str]]:
+    """Read user properties out of whatever the connection stored.
+
+    An object is the natural way to write them; a list of rows is what the
+    request builder's key/value editor produces. Both are accepted, because
+    MQTT allows the same name more than once and an object cannot.
+    """
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+
+    if isinstance(value, dict):
+        return [(str(key), str(item)) for key, item in value.items()]
+    if isinstance(value, list):
+        rows = []
+        for row in value:
+            if isinstance(row, dict):
+                if row.get("enabled") is False:
+                    continue
+                key = str(row.get("key") or "").strip()
+                if key:
+                    rows.append((key, str(row.get("value") or "")))
+            elif isinstance(row, (list, tuple)) and len(row) == 2:
+                rows.append((str(row[0]), str(row[1])))
+        return rows
+    return []
+
+
+def options_from(variables: dict, address: BrokerAddress) -> BrokerOptions:
+    """Read the session's settings out of the connection's variables."""
+    variables = variables or {}
+
+    protocol = str(variables.get("mqtt_protocol") or PROTOCOL_5).strip()
+    if protocol not in PROTOCOLS:
+        protocol = PROTOCOL_5
+
+    username, password = credentials(address, variables)
+    return BrokerOptions(
+        protocol=protocol,
+        username=username,
+        password=password,
+        auth_method=str(variables.get("mqtt_auth_method") or "").strip() or None,
+        auth_data=str(variables.get("mqtt_auth_data") or "").strip() or None,
+        user_properties=pairs_from(variables.get("mqtt_user_properties")),
+        client_id=str(variables.get("mqtt_client_id") or "").strip() or None,
+        verify_tls=not is_true(variables.get("mqtt_tls_insecure")),
+        ca_certs=str(variables.get("mqtt_ca_certs") or "").strip() or None,
+        clean_start=not is_true(variables.get("mqtt_resume_session")),
+    )
+
+
+def is_true(value) -> bool:
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def is_mqtt_url(url: str) -> bool:
@@ -115,10 +219,20 @@ def client_id(prefix: str = "datapilot") -> str:
     return f"{prefix}-{suffix[:room]}"
 
 
-def tls_context(address: BrokerAddress, verify: bool = True) -> Optional[ssl.SSLContext]:
+def tls_context(
+    address: BrokerAddress,
+    verify: bool = True,
+    ca_certs: Optional[str] = None,
+) -> Optional[ssl.SSLContext]:
+    """The TLS settings for a broker.
+
+    A private CA is the usual case behind a gateway: the certificate is real
+    but chains to a root no public trust store carries, so the choice is to
+    name the root or to stop checking.
+    """
     if not address.use_tls:
         return None
-    context = ssl.create_default_context()
+    context = ssl.create_default_context(cafile=ca_certs or None)
     if not verify:
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -224,6 +338,13 @@ class Incoming:
     is_text: bool
     qos: int
     retain: bool
+    #: MQTT 5 carries metadata alongside the payload; a broker that routes on
+    #: user properties is unusable without seeing them.
+    user_properties: list[list[str]] = field(default_factory=list)
+    content_type: Optional[str] = None
+    response_topic: Optional[str] = None
+    correlation_data: Optional[str] = None
+    message_expiry: Optional[int] = None
 
 
 class MqttSession:
@@ -248,17 +369,18 @@ class MqttSession:
     def __init__(
         self,
         address: BrokerAddress,
+        options: Optional[BrokerOptions] = None,
         *,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
         identifier: Optional[str] = None,
-        verify_tls: bool = True,
     ):
         import paho.mqtt.client as paho
 
         self.address = address
-        self.identifier = identifier or client_id()
+        self.options = options or BrokerOptions()
+        self.identifier = identifier or self.options.client_id or client_id()
         self.dropped = 0
+        self.refused_protocol = False
+
         self._loop = asyncio.get_running_loop()
         self._messages: asyncio.Queue = asyncio.Queue(maxsize=self.MAX_QUEUED)
         self._pending: dict = {}
@@ -266,16 +388,33 @@ class MqttSession:
         self._closed = False
         self._disconnect_reason: Optional[str] = None
 
-        self._client = paho.Client(
-            paho.CallbackAPIVersion.VERSION2,
-            client_id=self.identifier,
-            protocol=paho.MQTTv311,
-            clean_session=True,
-        )
-        if username:
-            self._client.username_pw_set(username, password)
+        if self.options.speaks_v5:
+            self._client = paho.Client(
+                paho.CallbackAPIVersion.VERSION2,
+                client_id=self.identifier,
+                protocol=paho.MQTTv5,
+                # a QoS 1 delivery is acknowledged once the browser has it, not
+                # the moment it arrives here: the PUBACK is what tells the
+                # broker it may stop replaying the message
+                manual_ack=True,
+            )
+        else:
+            self._client = paho.Client(
+                paho.CallbackAPIVersion.VERSION2,
+                client_id=self.identifier,
+                protocol=paho.MQTTv311,
+                clean_session=self.options.clean_start,
+                manual_ack=True,
+            )
+
+        if self.options.username:
+            self._client.username_pw_set(self.options.username, self.options.password)
         if address.use_tls:
-            self._client.tls_set_context(tls_context(address, verify_tls))
+            self._client.tls_set_context(
+                tls_context(address, self.options.verify_tls, self.options.ca_certs)
+            )
+            if not self.options.verify_tls:
+                self._client.tls_insecure_set(True)
 
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
@@ -302,12 +441,16 @@ class MqttSession:
     def _on_connect(self, _client, _userdata, _flags, reason_code, _properties=None):
         if is_success(reason_code):
             self._settle(self._connected, True)
-        else:
-            self._settle(
-                self._connected,
-                None,
-                MqttError(connect_refusal(self.address, reason_code)),
-            )
+            return
+
+        # a broker that only speaks 3.1.1 says so here, and the caller retries
+        # rather than showing "refused" for a version mismatch
+        self.refused_protocol = reason_code_value(reason_code) == UNSUPPORTED_PROTOCOL
+        self._settle(
+            self._connected,
+            None,
+            MqttError(connect_refusal(self.address, reason_code)),
+        )
 
     def _on_disconnect(
         self, _client, _userdata, _flags=None, reason_code=None, _properties=None
@@ -324,7 +467,7 @@ class MqttSession:
             self._settle(future, None, MqttError(self._disconnect_reason))
         self._loop.call_soon_threadsafe(self._messages.put_nowait, None)
 
-    def _on_message(self, _client, _userdata, message):
+    def _on_message(self, client, _userdata, message):
         raw = message.payload or b""
         try:
             payload, is_text = raw.decode("utf-8"), True
@@ -337,6 +480,7 @@ class MqttSession:
             is_text=is_text,
             qos=int(message.qos),
             retain=bool(message.retain),
+            **read_message_properties(getattr(message, "properties", None)),
         )
 
         def deliver():
@@ -350,6 +494,15 @@ class MqttSession:
                 self.dropped += 1
 
         self._loop.call_soon_threadsafe(deliver)
+
+        # the acknowledgement follows the message into the queue, not its
+        # arrival: a broker may keep replaying until it is acked, and acking
+        # early would lose anything this session never managed to relay
+        if message.qos > 0:
+            try:
+                client.ack(message.mid, message.qos)
+            except Exception:
+                pass
 
     def _on_ack(self, kind: str):
         def handler(_client, _userdata, mid, *_rest):
@@ -377,13 +530,7 @@ class MqttSession:
             # bad hostname straight away, where connect_async would retry in
             # the background and the failure would arrive as a timeout
             await asyncio.wait_for(
-                asyncio.to_thread(
-                    self._client.connect,
-                    self.address.host,
-                    self.address.port,
-                    DEFAULT_KEEPALIVE,
-                ),
-                timeout=timeout,
+                asyncio.to_thread(self._dial), timeout=timeout
             )
             self._client.loop_start()
         except asyncio.TimeoutError as error:
@@ -409,38 +556,90 @@ class MqttSession:
             await self.close()
             raise MqttError(describe_failure(self.address, error)) from error
 
-    async def subscribe(self, topic: str, qos: int = 0):
+    async def subscribe(
+        self,
+        topic: str,
+        qos: int = 0,
+        user_properties: Optional[list] = None,
+    ):
         problem = valid_topic_filter(topic)
         if problem:
             raise MqttError(problem)
 
-        result, mid = self._client.subscribe(topic, qos=qos)
+        result, mid = self._client.subscribe(
+            topic, qos=qos, **self._properties("SUBSCRIBE", user_properties)
+        )
         if result != 0 or mid is None:
             raise MqttError(f"Could not send the subscribe for '{topic}'.")
         # the SUBACK is what makes the subscription real: a publish sent before
         # it arrives is dropped by the broker, with no error anywhere
         await self._await_ack("subscribe", mid, f"the subscribe to '{topic}'")
 
-    async def unsubscribe(self, topic: str):
-        result, mid = self._client.unsubscribe(topic)
+    async def unsubscribe(self, topic: str, user_properties: Optional[list] = None):
+        result, mid = self._client.unsubscribe(
+            topic, **self._properties("UNSUBSCRIBE", user_properties)
+        )
         if result != 0 or mid is None:
             raise MqttError(f"Could not send the unsubscribe for '{topic}'.")
         await self._await_ack("unsubscribe", mid, f"the unsubscribe from '{topic}'")
 
     async def publish(
-        self, topic: str, payload: str, qos: int = 0, retain: bool = False
+        self,
+        topic: str,
+        payload: str,
+        qos: int = 0,
+        retain: bool = False,
+        user_properties: Optional[list] = None,
+        content_type: Optional[str] = None,
+        response_topic: Optional[str] = None,
+        correlation_data: Optional[str] = None,
     ):
         problem = valid_topic_name(topic)
         if problem:
             raise MqttError(problem)
 
         info = self._client.publish(
-            topic, payload=str(payload or "").encode("utf-8"), qos=qos, retain=retain
+            topic,
+            payload=str(payload or "").encode("utf-8"),
+            qos=qos,
+            retain=retain,
+            **self._properties(
+                "PUBLISH",
+                user_properties,
+                content_type=content_type,
+                response_topic=response_topic,
+                correlation_data=correlation_data,
+            ),
         )
         if info.rc != 0:
             raise MqttError(f"Could not publish to '{topic}'.")
         if qos > 0:
             await self._await_ack("publish", info.mid, f"the publish to '{topic}'")
+
+    def _dial(self):
+        """The blocking connect, with the CONNECT packet this session needs."""
+        if not self.options.speaks_v5:
+            return self._client.connect(
+                self.address.host, self.address.port, DEFAULT_KEEPALIVE
+            )
+        return self._client.connect(
+            self.address.host,
+            self.address.port,
+            keepalive=DEFAULT_KEEPALIVE,
+            clean_start=self.options.clean_start,
+            properties=connect_properties(self.options),
+        )
+
+    def _properties(self, packet: str, user_properties=None, **fields) -> dict:
+        """The properties argument for a packet, or nothing on MQTT 3.
+
+        MQTT 3 has no properties at all, so passing them would be an error
+        rather than something the broker ignores.
+        """
+        if not self.options.speaks_v5:
+            return {}
+        built = build_properties(packet, pairs_from(user_properties), **fields)
+        return {"properties": built} if built else {}
 
     async def messages(self):
         """Yield messages until the session ends."""
@@ -462,6 +661,107 @@ class MqttSession:
             await asyncio.to_thread(self._client.loop_stop)
         except Exception:
             pass
+
+
+def reason_code_value(reason_code) -> int:
+    try:
+        return int(getattr(reason_code, "value", reason_code))
+    except (TypeError, ValueError):
+        return -1
+
+
+def connect_properties(options: BrokerOptions):
+    """The CONNECT packet's properties: enhanced auth and user properties.
+
+    Enhanced authentication is how a broker takes a JWT or a session secret
+    rather than a password - the method names the scheme and the data carries
+    the credential.
+    """
+    from paho.mqtt.packettypes import PacketTypes
+    from paho.mqtt.properties import Properties
+
+    properties = Properties(PacketTypes.CONNECT)
+    used = False
+
+    if options.auth_method:
+        properties.AuthenticationMethod = options.auth_method
+        properties.AuthenticationData = (options.auth_data or "").encode("utf-8")
+        used = True
+    if options.user_properties:
+        properties.UserProperty = list(options.user_properties)
+        used = True
+
+    return properties if used else None
+
+
+PACKET_PROPERTIES = ("PUBLISH", "SUBSCRIBE", "UNSUBSCRIBE", "CONNECT")
+
+
+def build_properties(
+    packet: str,
+    user_properties: list[tuple[str, str]],
+    content_type: Optional[str] = None,
+    response_topic: Optional[str] = None,
+    correlation_data: Optional[str] = None,
+):
+    """Assemble one packet's properties, or None when there are none to send."""
+    from paho.mqtt.packettypes import PacketTypes
+    from paho.mqtt.properties import Properties
+
+    if packet not in PACKET_PROPERTIES:
+        return None
+
+    properties = Properties(getattr(PacketTypes, packet))
+    used = False
+
+    if user_properties:
+        properties.UserProperty = list(user_properties)
+        used = True
+    if packet == "PUBLISH":
+        if content_type:
+            properties.ContentType = content_type
+            used = True
+        if response_topic:
+            properties.ResponseTopic = response_topic
+            used = True
+        if correlation_data:
+            properties.CorrelationData = str(correlation_data).encode("utf-8")
+            used = True
+
+    return properties if used else None
+
+
+def read_message_properties(properties) -> dict:
+    """Pull an incoming message's MQTT 5 metadata into plain values."""
+    empty: dict[str, Any] = {
+        "user_properties": [],
+        "content_type": None,
+        "response_topic": None,
+        "correlation_data": None,
+        "message_expiry": None,
+    }
+    if properties is None:
+        return empty
+
+    pairs = getattr(properties, "UserProperty", None) or []
+    empty["user_properties"] = [[str(key), str(value)] for key, value in pairs]
+    empty["content_type"] = getattr(properties, "ContentType", None)
+    empty["response_topic"] = getattr(properties, "ResponseTopic", None)
+
+    correlation = getattr(properties, "CorrelationData", None)
+    if isinstance(correlation, (bytes, bytearray)):
+        try:
+            empty["correlation_data"] = bytes(correlation).decode("utf-8")
+        except UnicodeDecodeError:
+            empty["correlation_data"] = base64.b64encode(bytes(correlation)).decode(
+                "ascii"
+            )
+    elif correlation is not None:
+        empty["correlation_data"] = str(correlation)
+
+    expiry = getattr(properties, "MessageExpiryInterval", None)
+    empty["message_expiry"] = int(expiry) if expiry is not None else None
+    return empty
 
 
 def is_success(reason_code) -> bool:
@@ -492,8 +792,17 @@ def connect_refusal(address: BrokerAddress, reason_code) -> str:
             f"{target} rejected the client id. It may be reserved, or the "
             "broker may require a specific one."
         )
+    if code in (140, 141):
+        return (
+            f"{target} rejected the authentication method. Check "
+            "mqtt_auth_method against what the broker expects."
+        )
     if code in (1, 132):
-        return f"{target} does not support the MQTT version DataPilot speaks."
+        return (
+            f"{target} does not speak MQTT 5. Set mqtt_protocol to 3.1.1 in "
+            "the connection's variables - though user properties and enhanced "
+            "authentication only exist in 5."
+        )
     if code in (3, 136):
         return f"{target} is not accepting connections right now."
     return f"{target} refused the connection ({reason_code})."
