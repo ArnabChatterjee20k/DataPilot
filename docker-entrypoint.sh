@@ -23,6 +23,13 @@ if [ "$(id -u)" = "0" ]; then
         chown -R datapilot:datapilot "$path" 2>/dev/null || true
     done
 
+    # setpriv changes the user but not the environment, so HOME stays /root,
+    # which the dropped user cannot read. libpq expands `~/.postgresql/` for
+    # every connection and reports the EACCES as "could not reach the
+    # database", which is a confusing way to say "wrong home directory".
+    HOME=/home/datapilot
+    export HOME
+
     exec setpriv --reuid=datapilot --regid=datapilot --init-groups "$@"
 fi
 
