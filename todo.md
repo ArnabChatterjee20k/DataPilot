@@ -261,6 +261,20 @@ Also found while building it: `paho` is used directly rather than through an
 asyncio wrapper, because the wrappers register the socket with the event loop
 and Windows' default (proactor) loop cannot do that at all.
 
+**MQTT 5**, since user properties and enhanced authentication exist nowhere else:
+
+- [x] **Protocol 5 by default**, with an automatic retry on 3.1.1 for a broker
+      that refuses it, and the version shown once connected
+- [x] **Enhanced authentication** — a named method and its data, which is how a
+      broker takes a JWT or a session secret rather than a password
+- [x] **User properties** on connect, subscribe, unsubscribe and publish
+- [x] **Content type, reply topic and correlation data** on a publish, and all
+      of an incoming message's metadata shown in the log
+- [x] TLS verification can be turned off, for a gateway behind a private CA
+- [x] A fixed client id, for a broker that requires one
+- [x] A QoS 1 delivery is acknowledged once the browser has it, not the moment
+      it arrives - the PUBACK is what tells the broker to stop replaying
+
 ### Slow queries — *from the database's own performance schema*
 - [x] Read the slow statements the server already tracks, rather than timing
       queries DataPilot happened to run: `pg_stat_statements` on PostgreSQL,

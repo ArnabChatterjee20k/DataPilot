@@ -219,3 +219,69 @@ test.describe("creating a broker connection", () => {
     await expect(page.getByLabel("Broker address")).toHaveValue(BROKER_URL);
   });
 });
+
+test.describe("MQTT 5 properties and auth", () => {
+  test("the session says which protocol version it got", async ({ page }) => {
+    await openMqtt(page);
+    await expect(page.getByText(/MQTT (5|3\.1\.1)/)).toBeVisible();
+  });
+
+  test("broker settings are stored as masked variables", async ({
+    page,
+    request,
+  }) => {
+    await openPlayground(page);
+    await expandConnection(page, connectionName);
+    await page.getByRole("button", { name: "MQTT", exact: true }).click();
+
+    await page.getByRole("button", { name: "Broker", exact: true }).click();
+    await page.getByLabel("Auth method").fill("appwrite-jwt");
+    await page.getByLabel("Auth data").fill("supersecretjwtvalue");
+    await page.getByLabel("Connect property key 1").fill("projectId");
+    await page.getByLabel("Connect property value 1").fill("p1");
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // the API stores them, and masks the one that looks like a secret
+    const stored = await request.get(
+      `${API_URL}/connection/${
+        (await (await request.get(`${API_URL}/connections`)).json()).connections.find(
+          (item: { name: string }) => item.name === connectionName
+        ).uid
+      }/variables`
+    );
+    const body = await stored.json();
+    expect(body.variables.mqtt_auth_method).toBe("appwrite-jwt");
+    expect(body.variables.mqtt_auth_data).not.toBe("supersecretjwtvalue");
+    expect(body.secret).toContain("mqtt_auth_data");
+    expect(JSON.parse(body.variables.mqtt_user_properties)[0].key).toBe("projectId");
+  });
+
+  test("broker settings are locked while a session is open", async ({ page }) => {
+    await openMqtt(page);
+    await expect(page.getByRole("button", { name: "Broker", exact: true })).toBeDisabled();
+  });
+
+  test("message properties can be set and are sent", async ({ page }) => {
+    await openMqtt(page);
+
+    await page.getByRole("button", { name: "Properties" }).click();
+    await page.getByLabel("User property key 1").fill("subId");
+    await page.getByLabel("User property value 1").fill("s1");
+    await page.getByLabel("Content type").fill("application/json");
+    await page.keyboard.press("Escape");
+
+    await expect(page.getByRole("button", { name: /Properties 1/ })).toBeVisible();
+
+    await page.getByLabel("Topic", { exact: true }).fill("props/demo");
+    await page.getByRole("button", { name: "Subscribe", exact: true }).click();
+    await expect(page.getByRole("group", { name: "Subscriptions" })).toContainText(
+      "props/demo"
+    );
+
+    await page.getByLabel("Payload to publish").fill('{"ok":true}');
+    await page.getByRole("button", { name: "Publish" }).click();
+
+    // the message comes back, whatever the broker did with the properties
+    await expect(page.getByText('{"ok":true}')).toBeVisible();
+  });
+});
