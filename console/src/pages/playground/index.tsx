@@ -17,6 +17,7 @@ import { ResponseView } from "./components/ResponseView";
 import { MqttConsole } from "./components/MqttConsole";
 import { SlowQueries } from "./components/SlowQueries";
 import { FlowCanvas } from "./flow/FlowCanvas";
+import { RedisWorkspace } from "./redis/RedisWorkspace";
 import type { FlowGraph } from "./flow/types";
 import { useFlow } from "./hooks/useFlows";
 import { SocketConsole } from "./components/SocketConsole";
@@ -305,6 +306,9 @@ function TabWorkspace({ tab }: { tab: Tab }) {
     [connections, tab.connectionId]
   );
 
+  if (tab.type === "redis") {
+    return <RedisWorkspace tab={tab} connection={connection} />;
+  }
   if (tab.type === "flow") {
     return <FlowWorkspace tab={tab} />;
   }

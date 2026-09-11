@@ -19,6 +19,8 @@ dependencies = [
     "websockets>=15.0",
     # MQTT is the third protocol an API connection can speak
     "paho-mqtt>=2.1.0",
+    # Redis is a fourth connection kind, not a SQL one
+    "redis>=5.2.0",
 ]
 
 [tool.uv]

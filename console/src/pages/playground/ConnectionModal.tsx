@@ -75,6 +75,15 @@ const SOURCES = [
     placeholder: "",
   },
   {
+    value: "redis",
+    source: "redis",
+    label: "Redis",
+    icon: Database,
+    placeholder: "redis://host:6379/0   or rediss://…:6380",
+    uriLabel: "Server address",
+    hint: "The path is the database number, so /0 is the first one. A password goes in as redis://:password@host:6379.",
+  },
+  {
     value: "api",
     source: "api",
     label: "HTTP / WebSocket",
@@ -112,6 +121,9 @@ const optionFor = (kind: Kind | null): SourceOption | undefined =>
 function uriMismatch(kind: Kind | null, connectionUri: string): string | null {
   const uri = connectionUri.trim();
   if (!uri) return null;
+  if (kind === "redis" && !/^rediss?:\/\//i.test(uri)) {
+    return "A Redis address starts with redis:// or rediss:// for TLS.";
+  }
   if (kind === "mqtt" && !/^mqtts?:\/\//i.test(uri)) {
     return "A broker address starts with mqtt:// or mqtts://. For an HTTP or websocket service, choose HTTP / WebSocket instead.";
   }

@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteKeyData, DeleteKeyErrors, DeleteKeyResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListChannelsData, ListChannelsErrors, ListChannelsResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, PublishData, PublishErrors, PublishResponses, ReadKeyData, ReadKeyErrors, ReadKeyResponses, ScanKeysData, ScanKeysErrors, ScanKeysResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, ServerInfoData, ServerInfoErrors, ServerInfoResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -336,6 +336,50 @@ export const updateFlow = <ThrowOnError extends boolean = false>(options: Option
         ...options.headers
     }
 });
+
+/**
+ * Delete Key
+ */
+export const deleteKey = <ThrowOnError extends boolean = false>(options: Options<DeleteKeyData, ThrowOnError>): RequestResult<DeleteKeyResponses, DeleteKeyErrors, ThrowOnError> => (options.client ?? client).delete<DeleteKeyResponses, DeleteKeyErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/keys', ...options });
+
+/**
+ * Scan Keys
+ *
+ * One page of keys.
+ *
+ * Cursored, because `KEYS *` walks the whole keyspace in a single blocking
+ * command - which on a real server is an outage rather than a slow page.
+ */
+export const scanKeys = <ThrowOnError extends boolean = false>(options: Options<ScanKeysData, ThrowOnError>): RequestResult<ScanKeysResponses, ScanKeysErrors, ThrowOnError> => (options.client ?? client).get<ScanKeysResponses, ScanKeysErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/keys', ...options });
+
+/**
+ * Read Key
+ *
+ * One key, shown as whatever it actually is.
+ */
+export const readKey = <ThrowOnError extends boolean = false>(options: Options<ReadKeyData, ThrowOnError>): RequestResult<ReadKeyResponses, ReadKeyErrors, ThrowOnError> => (options.client ?? client).get<ReadKeyResponses, ReadKeyErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/keys/value', ...options });
+
+/**
+ * Server Info
+ *
+ * What the server reports about itself.
+ */
+export const serverInfo = <ThrowOnError extends boolean = false>(options: Options<ServerInfoData, ThrowOnError>): RequestResult<ServerInfoResponses, ServerInfoErrors, ThrowOnError> => (options.client ?? client).get<ServerInfoResponses, ServerInfoErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/info', ...options });
+
+/**
+ * List Channels
+ *
+ * Channels with a subscriber right now.
+ *
+ * Redis has no registry of channel names: a channel exists only while
+ * something is listening to it, so this is a live picture rather than a list.
+ */
+export const listChannels = <ThrowOnError extends boolean = false>(options: Options<ListChannelsData, ThrowOnError>): RequestResult<ListChannelsResponses, ListChannelsErrors, ThrowOnError> => (options.client ?? client).get<ListChannelsResponses, ListChannelsErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/channels', ...options });
+
+/**
+ * Publish
+ */
+export const publish = <ThrowOnError extends boolean = false>(options: Options<PublishData, ThrowOnError>): RequestResult<PublishResponses, PublishErrors, ThrowOnError> => (options.client ?? client).post<PublishResponses, PublishErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/publish', ...options });
 
 /**
  * Health

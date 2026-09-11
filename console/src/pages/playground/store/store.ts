@@ -46,7 +46,8 @@ export type TabType =
   | "socket"
   | "mqtt"
   | "slow"
-  | "flow";
+  | "flow"
+  | "redis";
 
 export type KeyValueRow = KeyValueModel;
 export type HttpMethod = NonNullable<RequestSpecModel["method"]>;
@@ -241,6 +242,7 @@ interface TabStore {
   addMqttTab: (connectionId: string) => string;
   addSlowQueryTab: (connectionId: string) => string;
   addFlowTab: (flowUid: string, name: string) => string;
+  addRedisTab: (connectionId: string, name: string) => string;
   updateRequest: (tabId: string, patch: Partial<RequestDraft>) => void;
   setRequestResult: (tabId: string, result: RequestResultState | undefined) => void;
   recordRequestRun: (run: Omit<RequestRun, "id">) => void;
@@ -368,6 +370,19 @@ export const useTabsStore = create<TabStore>()(
         }
 
         const tab: Tab = { ...baseTab(tabId, name, "flow"), flowUid };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      addRedisTab: (connectionId, name) => {
+        const tabId = `redis:${connectionId}`;
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const tab: Tab = { ...baseTab(tabId, name, "redis"), connectionId };
         set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
         return tabId;
       },

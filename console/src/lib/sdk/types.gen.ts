@@ -500,6 +500,188 @@ export type QueryRiskModel = {
 };
 
 /**
+ * RedisChannelListModel
+ */
+export type RedisChannelListModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Channels
+     */
+    channels?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Pattern Subscriptions
+     */
+    pattern_subscriptions?: number;
+};
+
+/**
+ * RedisInfoModel
+ */
+export type RedisInfoModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Server
+     */
+    server: string;
+    /**
+     * Fields
+     */
+    fields?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Keyspace
+     */
+    keyspace?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Hit Rate
+     */
+    hit_rate?: number | null;
+    /**
+     * Pattern Subscriptions
+     */
+    pattern_subscriptions?: number;
+};
+
+/**
+ * RedisKeyListModel
+ */
+export type RedisKeyListModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Pattern
+     */
+    pattern?: string;
+    /**
+     * Keys
+     */
+    keys?: Array<RedisKeyModel>;
+    /**
+     * Cursor
+     */
+    cursor?: number;
+    /**
+     * Complete
+     */
+    complete?: boolean;
+};
+
+/**
+ * RedisKeyModel
+ */
+export type RedisKeyModel = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Ttl
+     */
+    ttl?: number | null;
+    /**
+     * Size
+     */
+    size?: number | null;
+};
+
+/**
+ * RedisKeyValueModel
+ *
+ * One key's contents. Which fields are filled depends on its type.
+ */
+export type RedisKeyValueModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Ttl
+     */
+    ttl?: number | null;
+    /**
+     * Size
+     */
+    size?: number | null;
+    /**
+     * Encoding
+     */
+    encoding?: string | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+    /**
+     * Is Text
+     */
+    is_text?: boolean;
+    /**
+     * Entries
+     */
+    entries?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Members
+     */
+    members?: Array<string>;
+    /**
+     * Truncated
+     */
+    truncated?: boolean;
+};
+
+/**
+ * RedisPublishResultModel
+ */
+export type RedisPublishResultModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Channel
+     */
+    channel: string;
+    /**
+     * Received By
+     */
+    received_by?: number;
+};
+
+/**
  * RequestResultModel
  */
 export type RequestResultModel = {
@@ -983,7 +1165,7 @@ export type SnapshotModel = {
 /**
  * SourceConfig
  */
-export type SourceConfig = 'postgres' | 'sqlite' | 'mysql' | 'api';
+export type SourceConfig = 'postgres' | 'sqlite' | 'mysql' | 'api' | 'redis';
 
 /**
  * TableModel
@@ -2353,6 +2535,223 @@ export type UpdateFlowResponses = {
 };
 
 export type UpdateFlowResponse = UpdateFlowResponses[keyof UpdateFlowResponses];
+
+export type DeleteKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query: {
+        /**
+         * Key
+         */
+        key: string;
+    };
+    url: '/connection/{connection_id}/redis/keys';
+};
+
+export type DeleteKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteKeyError = DeleteKeyErrors[keyof DeleteKeyErrors];
+
+export type DeleteKeyResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteKeyResponse = DeleteKeyResponses[keyof DeleteKeyResponses];
+
+export type ScanKeysData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Pattern
+         */
+        pattern?: string;
+        /**
+         * Cursor
+         */
+        cursor?: number;
+        /**
+         * Count
+         */
+        count?: number | null;
+    };
+    url: '/connection/{connection_id}/redis/keys';
+};
+
+export type ScanKeysErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ScanKeysError = ScanKeysErrors[keyof ScanKeysErrors];
+
+export type ScanKeysResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisKeyListModel;
+};
+
+export type ScanKeysResponse = ScanKeysResponses[keyof ScanKeysResponses];
+
+export type ReadKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query: {
+        /**
+         * Key
+         */
+        key: string;
+    };
+    url: '/connection/{connection_id}/redis/keys/value';
+};
+
+export type ReadKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadKeyError = ReadKeyErrors[keyof ReadKeyErrors];
+
+export type ReadKeyResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisKeyValueModel;
+};
+
+export type ReadKeyResponse = ReadKeyResponses[keyof ReadKeyResponses];
+
+export type ServerInfoData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/redis/info';
+};
+
+export type ServerInfoErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ServerInfoError = ServerInfoErrors[keyof ServerInfoErrors];
+
+export type ServerInfoResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisInfoModel;
+};
+
+export type ServerInfoResponse = ServerInfoResponses[keyof ServerInfoResponses];
+
+export type ListChannelsData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Pattern
+         */
+        pattern?: string;
+    };
+    url: '/connection/{connection_id}/redis/channels';
+};
+
+export type ListChannelsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListChannelsError = ListChannelsErrors[keyof ListChannelsErrors];
+
+export type ListChannelsResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisChannelListModel;
+};
+
+export type ListChannelsResponse = ListChannelsResponses[keyof ListChannelsResponses];
+
+export type PublishData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query: {
+        /**
+         * Channel
+         */
+        channel: string;
+        /**
+         * Message
+         */
+        message?: string;
+    };
+    url: '/connection/{connection_id}/redis/publish';
+};
+
+export type PublishErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PublishError = PublishErrors[keyof PublishErrors];
+
+export type PublishResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisPublishResultModel;
+};
+
+export type PublishResponse = PublishResponses[keyof PublishResponses];
 
 export type HealthData = {
     body?: never;

@@ -34,6 +34,9 @@ class SourceConfig(str, Enum):
     SQLITE = "sqlite"
     MYSQL = "mysql"
     API = "api"
+    #: Redis has no tables and no query planner, so it has its own routes
+    #: rather than an adapter behind the ORM.
+    REDIS = "redis"
 
 
 class Environment(str, Enum):
