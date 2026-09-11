@@ -231,3 +231,113 @@ test.describe("flows in the sidebar", () => {
     await expect(page.getByRole("button", { name: "Flow 1", exact: true })).toHaveCount(0);
   });
 });
+
+test.describe("keyboard shortcuts", () => {
+  test("Q and R drop a node on the canvas", async ({ page }) => {
+    await newFlow(page);
+    await page.getByTestId("flow-canvas").click();
+
+    await page.keyboard.press("q");
+    await expect(node(page, "Query 1")).toBeVisible();
+
+    await page.keyboard.press("r");
+    await expect(node(page, "Request 1")).toBeVisible();
+  });
+
+  test("a letter typed into a field stays in the field", async ({ page }) => {
+    await newFlow(page);
+    await page.getByRole("button", { name: "Query node" }).click();
+
+    const name = page.getByLabel("Node name");
+    await name.fill("");
+    await name.type("query for quotes");
+
+    await expect(name).toHaveValue("query for quotes");
+    // one node, not one per q and r typed
+    await expect(page.locator('[data-testid^="flow-node-"]')).toHaveCount(1);
+  });
+
+  test("Delete removes the selected node and the edges into it", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+    await addRequestNode(page, "Send", "/echo");
+    await connect(page, "Rows", "Send");
+
+    await node(page, "Send").click();
+    await page.keyboard.press("Delete");
+
+    await expect(node(page, "Send")).toHaveCount(0);
+    await expect(node(page, "Rows")).toBeVisible();
+    await expect(page.locator(".react-flow__edge")).toHaveCount(0);
+  });
+
+  test("a deletion is offered for saving rather than lost quietly", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await node(page, "Rows").click();
+    await page.keyboard.press("Delete");
+
+    await expect(page.getByText("unsaved")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  test("duplicating copies the node rather than the reference to it", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+
+    await node(page, "Rows").click();
+    await page.keyboard.press("ControlOrMeta+d");
+
+    await expect(node(page, "Rows copy")).toBeVisible();
+    await page.getByLabel("Node name").fill("Renamed");
+    await expect(node(page, "Rows")).toBeVisible();
+  });
+
+  test("the shortcut list is there to be read, and Escape closes it", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await page.getByTestId("flow-canvas").click();
+
+    await page.keyboard.press("?");
+    const list = page.getByRole("list", { name: "Keyboard shortcuts" });
+    await expect(list).toBeVisible();
+    await expect(list).toContainText("Add a query node");
+    await expect(list).toContainText("Duplicate the selection");
+
+    await page.keyboard.press("Escape");
+    await expect(list).toHaveCount(0);
+  });
+
+  test("Ctrl+S saves without reaching for the button", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+    await expect(page.getByText("unsaved")).toBeVisible();
+
+    // from inside the query field, because that is where the caret will be
+    await page.getByLabel("Node query").press("ControlOrMeta+s");
+
+    await expect(page.getByText("unsaved")).toHaveCount(0);
+  });
+
+  test("arrows nudge the selected node", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+
+    const card = node(page, "Rows");
+    await card.click();
+    const before = (await card.boundingBox())!;
+
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+
+    const after = (await card.boundingBox())!;
+    expect(after.x).toBeGreaterThan(before.x);
+    expect(Math.abs(after.y - before.y)).toBeLessThan(2);
+  });
+});
