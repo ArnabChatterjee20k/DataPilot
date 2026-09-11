@@ -257,6 +257,63 @@ class SnapshotComparisonModel(BaseModel):
     queries: list[SlowQueryModel] = Field(default_factory=list)
 
 
+class RedisKeyModel(BaseModel):
+    key: str
+    type: str
+    label: str
+    #: -1 means no expiry, which is not the same as expired.
+    ttl: Optional[int] = None
+    size: Optional[int] = None
+
+
+class RedisKeyListModel(BaseModel):
+    connection_id: str
+    pattern: str = "*"
+    keys: list[RedisKeyModel] = Field(default_factory=list)
+    #: Pass back to ask for the next page; 0 means the scan finished.
+    cursor: int = 0
+    complete: bool = True
+
+
+class RedisKeyValueModel(BaseModel):
+    """One key's contents. Which fields are filled depends on its type."""
+
+    connection_id: str
+    key: str
+    type: str
+    label: str
+    ttl: Optional[int] = None
+    size: Optional[int] = None
+    encoding: Optional[str] = None
+    value: Optional[str] = None
+    is_text: bool = True
+    entries: list[dict] = Field(default_factory=list)
+    members: list[str] = Field(default_factory=list)
+    truncated: bool = False
+
+
+class RedisInfoModel(BaseModel):
+    connection_id: str
+    server: str
+    fields: list[dict] = Field(default_factory=list)
+    keyspace: list[dict] = Field(default_factory=list)
+    hit_rate: Optional[float] = None
+    pattern_subscriptions: int = 0
+
+
+class RedisChannelListModel(BaseModel):
+    connection_id: str
+    channels: list[dict] = Field(default_factory=list)
+    pattern_subscriptions: int = 0
+
+
+class RedisPublishResultModel(BaseModel):
+    connection_id: str
+    channel: str
+    #: How many subscribers received it, which is the part worth knowing.
+    received_by: int = 0
+
+
 class FlowSpecModel(BaseModel):
     """A node graph as it was drawn."""
 

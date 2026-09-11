@@ -8,7 +8,7 @@ import websockets
 from fastapi import APIRouter, HTTPException, status
 
 from . import UPLOAD_DIR
-from .. import http_client, mqtt_client
+from .. import http_client, mqtt_client, redis_client
 from ..config import SourceConfig, supports_schemas
 from ..models import (
     ConnectionProbeModel,
@@ -57,6 +57,15 @@ def validate_uri(source: str, connection_uri: str) -> None:
                     "http://, https://, ws://, wss://, mqtt:// or mqtts://"
                 ),
             )
+        return
+
+    if source == SourceConfig.REDIS.value:
+        try:
+            redis_client.parse_url(connection_uri)
+        except redis_client.RedisError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+            ) from error
         return
 
     if source != SourceConfig.SQLITE.value:
@@ -191,10 +200,38 @@ async def probe_api(connection_uri: str) -> ConnectionProbeModel:
         )
 
 
+async def probe_redis(connection_uri: str) -> ConnectionProbeModel:
+    """PING, and read back the version while we are there."""
+    started = time.perf_counter()
+    try:
+        address = redis_client.parse_url(connection_uri)
+    except redis_client.RedisError as error:
+        return ConnectionProbeModel(reachable=False, detail=str(error))
+
+    try:
+        async with redis_client.RedisSession(address) as session:
+            await session.ping()
+            info = await session.info()
+        return ConnectionProbeModel(
+            reachable=True,
+            detail=f"Connected to {address.display}",
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+            server_version=f"Redis {info.get('redis_version', '')}".strip(),
+        )
+    except Exception as error:
+        return ConnectionProbeModel(
+            reachable=False,
+            detail=redis_client.describe_failure(address, error),
+            latency_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+
+
 async def probe(source: str, connection_uri: str, name: str = "") -> ConnectionProbeModel:
     """Open a session and ask the server its version, nothing more."""
     if source == SourceConfig.API.value:
         return await probe_api(connection_uri)
+    if source == SourceConfig.REDIS.value:
+        return await probe_redis(connection_uri)
 
     probe_target = SimpleNamespace(
         source=source, connection_uri=connection_uri, name=name or "connection"
