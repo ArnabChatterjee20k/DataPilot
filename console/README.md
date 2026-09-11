@@ -60,7 +60,9 @@ JSON, timestamps, a low-cardinality column and a credential-shaped column name.
 `e2e/upstream.ts` runs an HTTP server, a WebSocket server and an MQTT broker in
 process, so the API client tests send real requests. The Redis tests skip
 themselves when no server answers at `TEST_REDIS_URL`, which defaults to
-`redis://127.0.0.1:56379/0`.
+`redis://127.0.0.1:56379/0`, and seed the keys they read from
+`e2e/redisSeed.ts` so they do not depend on what was left in the
+container.
 
 The fixture in `e2e/fixtures.ts` fails a test on an uncaught page error or a
 console error. A React crash renders a blank page, which otherwise shows up as a
