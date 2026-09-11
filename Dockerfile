@@ -46,7 +46,12 @@ FROM python:3.12-slim AS backend
 # has no reason to run as root
 RUN useradd --create-home --uid 10001 datapilot
 
-ENV PATH="/app/venv/bin:$PATH" \
+# HOME matters here: libpq looks in ~/.postgresql for a client certificate on
+# every connection, and the default /root cannot be read once privileges are
+# dropped, which surfaces as a connection failure rather than a home directory
+# problem
+ENV HOME=/home/datapilot \
+    PATH="/app/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     MODE=PROD \
