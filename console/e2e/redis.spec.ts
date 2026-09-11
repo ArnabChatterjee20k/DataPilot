@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "./fixtures";
 
 import { API_URL, deleteAllConnections, expandConnection, openPlayground } from "./helpers";
+import { seedRedis } from "./redisSeed";
 
 /**
  * Against a real Redis, because the point of the browser is showing each type
@@ -15,6 +16,9 @@ test.beforeAll(async ({ request }) => {
     data: { source: "redis", connection_uri: REDIS_URL },
   });
   available = probe.ok() && (await probe.json()).reachable === true;
+  // the keys these tests read are put there by the tests, not by whoever last
+  // used the container
+  if (available) await seedRedis(REDIS_URL);
 });
 
 test.beforeEach(async ({ request }) => {
@@ -49,9 +53,9 @@ test.describe("the key browser", () => {
     await openRedis(page);
     await expect(page.getByRole("list", { name: "Keys" })).toBeVisible();
 
-    await expect(keyRow(page, "leaderboard")).toContainText("Sorted set");
-    await expect(keyRow(page, "user:7")).toContainText("Hash");
-    await expect(keyRow(page, "events")).toContainText("Stream");
+    await expect(keyRow(page, "leaderboard")).toContainText("zset");
+    await expect(keyRow(page, "user:7")).toContainText("hash");
+    await expect(keyRow(page, "events")).toContainText("strm");
   });
 
   test("a sorted set keeps its scores, in score order", async ({ page }) => {
@@ -193,7 +197,7 @@ test.describe("pub/sub", () => {
     await page.getByLabel("Message to publish").fill("anyone there");
     await page.getByRole("button", { name: "Publish" }).click();
 
-    await expect(page.getByText(/nobody is listening to that channel/)).toBeVisible();
+    await expect(page.getByText(/Nobody is listening to that channel/)).toBeVisible();
   });
 
   test("a live subscription shows up in the channel list", async ({ page }) => {
@@ -241,5 +245,146 @@ test.describe("a Redis connection is not a SQL one", () => {
     await expect(
       page.getByText(/A Redis address starts with redis:\/\//)
     ).toBeVisible();
+  });
+});
+
+test.describe("the keyspace reads as a tree", () => {
+  test("keys sharing a prefix are grouped under it", async ({ page }) => {
+    await openRedis(page);
+
+    // session:abc and session:def collapse into one branch
+    const branch = page.getByRole("button", { name: /^session, \d+ keys$/ });
+    await expect(branch).toBeVisible();
+    await expect(keyRow(page, "abc")).toHaveCount(0);
+
+    await branch.click();
+    await expect(keyRow(page, "abc")).toBeVisible();
+    await expect(keyRow(page, "def")).toBeVisible();
+  });
+
+  test("the flat view gives the whole key name back", async ({ page }) => {
+    await openRedis(page);
+    await page.getByRole("button", { name: "Grouped" }).click();
+
+    await expect(page.getByRole("button", { name: "Flat" })).toBeVisible();
+    await expect(keyRow(page, "session:abc")).toBeVisible();
+    await expect(page.getByRole("button", { name: /^session, / })).toHaveCount(0);
+  });
+
+  test("a type filter narrows the list and says what it left out", async ({ page }) => {
+    await openRedis(page);
+    const total = (await page.getByRole("listitem").count()) > 0;
+    expect(total).toBe(true);
+
+    await page.getByRole("button", { name: /^Hash, \d+ keys$/ }).click();
+
+    await expect(keyRow(page, "leaderboard")).toHaveCount(0);
+    await expect(keyRow(page, "user:7")).toBeVisible();
+    await expect(page.getByText(/keys? of \d+/)).toBeVisible();
+  });
+
+  test("a stream is not labelled the same as a string", async ({ page }) => {
+    await openRedis(page);
+    await page.getByRole("button", { name: "Grouped" }).click();
+
+    // both start with "str", which is exactly the confusion the column creates
+    await expect(keyRow(page, "events")).toContainText("strm");
+    await expect(keyRow(page, "greeting")).toContainText("str");
+    await expect(keyRow(page, "greeting")).not.toContainText("strm");
+  });
+});
+
+test.describe("a value is shown as what it is", () => {
+  test("a JSON string opens as a tree, and raw text is still there", async ({
+    page,
+  }) => {
+    await openRedis(page);
+    await page.getByRole("button", { name: /^session, / }).click();
+    await keyRow(page, "abc").click();
+
+    const value = page.getByLabel("Key value");
+    await expect(value).toContainText("verified");
+    // a tree, not one escaped line: the braces are gone from the rendered text
+    await expect(value).not.toContainText('{"user"');
+
+    await page.getByRole("button", { name: "Raw", exact: true }).click();
+    await expect(page.getByLabel("Key value")).toContainText('{"user"');
+  });
+
+  test("a large hash can be filtered down to one field", async ({ page }) => {
+    await openRedis(page);
+    await keyRow(page, "metrics:daily").click();
+
+    const rows = page.getByRole("table", { name: "Hash fields" }).locator("tbody tr");
+    await expect(rows).toHaveCount(24);
+
+    await page.getByLabel("Filter entries").fill("day-13");
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("91");
+  });
+
+  test("a small hash is not given a filter it does not need", async ({ page }) => {
+    await openRedis(page);
+    await keyRow(page, "user:7").click();
+
+    await expect(page.getByRole("table", { name: "Hash fields" })).toBeVisible();
+    await expect(page.getByLabel("Filter entries")).toHaveCount(0);
+  });
+
+  test("a list keeps its real index while it is filtered", async ({ page }) => {
+    await openRedis(page);
+    await keyRow(page, "queue:jobs").click();
+
+    const rows = page.getByRole("table", { name: "List members" }).locator("tbody tr");
+    await expect(rows.last()).toContainText("third");
+    await expect(rows.last()).toContainText("2");
+  });
+});
+
+test.describe("channels other applications use", () => {
+  test("one is listed with its subscriber count, and this tab is not counted in", async ({
+    page,
+    context,
+  }) => {
+    const channel = uniqueChannel();
+
+    // a second tab standing in for another application on the same server
+    const other = await context.newPage();
+    await openRedis(other);
+    await other.getByRole("button", { name: "Pub/Sub" }).click();
+    await other.getByLabel("Channels to subscribe to").fill(channel);
+    await other.getByRole("button", { name: "Subscribe" }).click();
+    await expect(other.getByText(`Subscribed to ${channel}`)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await openRedis(page);
+    await page.getByRole("button", { name: "Pub/Sub" }).click();
+
+    const row = page.getByRole("button", { name: `Listen to ${channel}` });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await expect(row).toContainText("1 app");
+    await expect(row).not.toContainText("you");
+
+    // one click is the whole subscribe step
+    await row.click();
+    await expect(page.getByText(`Subscribed to ${channel}`)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(row).toContainText("you");
+    await expect(row).toContainText("1 app");
+
+    await other.close();
+  });
+
+  test("the Pub/Sub tab carries the live channel count", async ({ page }) => {
+    await openRedis(page);
+    await page.getByRole("button", { name: "Pub/Sub" }).click();
+    await page.getByLabel("Channels to subscribe to").fill(uniqueChannel());
+    await page.getByRole("button", { name: "Subscribe" }).click();
+
+    await expect(page.getByRole("button", { name: /Pub\/Sub \d+/ })).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });
