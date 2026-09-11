@@ -515,13 +515,10 @@ async def proxy_mqtt(websocket: WebSocket, connection_id: str):
         await fail_socket(websocket, str(error), code=1008)
         return
 
-    username, password = mqtt_client.credentials(address, variables)
-    session = mqtt_client.MqttSession(
-        address, username=username, password=password
-    )
+    options = mqtt_client.options_from(variables, address)
 
     try:
-        await session.connect()
+        session = await open_broker_session(address, options)
     except mqtt_client.MqttError as error:
         await fail_socket(websocket, str(error))
         return
@@ -530,9 +527,11 @@ async def proxy_mqtt(websocket: WebSocket, connection_id: str):
         return
 
     # only now is there a session; the client id is worth showing, because a
-    # broker evicts a session when a second one arrives with the same id
+    # broker evicts a session when a second arrives with the same id
     await send_control(
-        websocket, "ready", f"{address.display} as {session.identifier}"
+        websocket,
+        "ready",
+        f"{address.display} as {session.identifier} (MQTT {session.options.protocol})",
     )
 
     async def broker_to_browser():
@@ -567,6 +566,28 @@ async def proxy_mqtt(websocket: WebSocket, connection_id: str):
         await session.close()
 
 
+async def open_broker_session(address, options):
+    """Connect, falling back to MQTT 3.1.1 for a broker that refuses 5.
+
+    Asking for 5 first is right - user properties and enhanced authentication
+    exist nowhere else - but a broker that only speaks 3.1.1 should connect
+    rather than report a refusal the user cannot act on.
+    """
+    session = mqtt_client.MqttSession(address, options)
+    try:
+        await session.connect()
+        return session
+    except mqtt_client.MqttError:
+        if not (options.speaks_v5 and session.refused_protocol):
+            raise
+
+    fallback = mqtt_client.MqttSession(
+        address, options.with_protocol(mqtt_client.PROTOCOL_311)
+    )
+    await fallback.connect()
+    return fallback
+
+
 async def try_control(websocket: WebSocket, status_name: str, detail: str):
     """Report on a socket that may already be gone."""
     try:
@@ -585,14 +606,16 @@ async def run_mqtt_command(websocket: WebSocket, session, command: dict):
     topic = str(command.get("topic") or "")
     qos = mqtt_client.normalise_qos(command.get("qos"))
 
+    properties = command.get("user_properties")
+
     handlers = {
         "subscribe": (
-            lambda: session.subscribe(topic, qos=qos),
+            lambda: session.subscribe(topic, qos=qos, user_properties=properties),
             "subscribed",
             lambda: {"topic": topic, "qos": qos},
         ),
         "unsubscribe": (
-            lambda: session.unsubscribe(topic),
+            lambda: session.unsubscribe(topic, user_properties=properties),
             "unsubscribed",
             lambda: {"topic": topic},
         ),
@@ -602,6 +625,10 @@ async def run_mqtt_command(websocket: WebSocket, session, command: dict):
                 str(command.get("payload") or ""),
                 qos=qos,
                 retain=bool(command.get("retain")),
+                user_properties=properties,
+                content_type=command.get("content_type") or None,
+                response_topic=command.get("response_topic") or None,
+                correlation_data=command.get("correlation_data") or None,
             ),
             "published",
             lambda: {
