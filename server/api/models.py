@@ -257,6 +257,24 @@ class SnapshotComparisonModel(BaseModel):
     queries: list[SlowQueryModel] = Field(default_factory=list)
 
 
+class FlowSpecModel(BaseModel):
+    """A node graph as it was drawn."""
+
+    name: str = "Untitled flow"
+    graph: dict = Field(default_factory=lambda: {"nodes": [], "edges": []})
+
+
+class FlowModel(BaseModel):
+    uid: str
+    name: str
+    graph: dict = Field(default_factory=lambda: {"nodes": [], "edges": []})
+
+
+class FlowListModel(BaseModel):
+    flows: list[FlowModel] = Field(default_factory=list)
+    total: int = 0
+
+
 class ValueCountModel(BaseModel):
     value: Any = None
     count: int
