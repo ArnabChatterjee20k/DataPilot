@@ -1,67 +1,64 @@
+# A pattern without `**/` matches only at the root of the build context, which
+# is why `tests/` and `e2e/` used to ship: they live under server/ and console/.
+
 # Git
 .git
 .gitignore
+.github
 
 # Node
-node_modules
-npm-debug.log
-pnpm-debug.log
+**/node_modules
+**/npm-debug.log
+**/pnpm-debug.log
 
 # Python
 **/__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info
-dist
-build
+**/*.py[cod]
+**/*.so
+**/*.egg
+**/*.egg-info
 **/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
 **/.venv
-**/node_modules
+**/venv
 .coverage
 htmlcov
 
 # Environment files
-.env
-.env.local
-.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+!server/.env.test
 
 # IDE
 .vscode
 .idea
-*.swp
-*.swo
+**/*.sw[op]
 *~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Data directories (will be mounted as volumes)
+# Runtime state: the data directory is a mounted volume
 data/
+**/test-config.db
+**/test-bucket
 
-# Build artifacts
+# Build artifacts: the console is built inside the image
 console/dist
 console/.vite
 
-# Lock files (we copy them explicitly)
-# But ignore if they're in wrong location
-uv.lock
-pnpm-lock.yaml
-
-# Tests
-tests/
-e2e/
-playwright.config.ts
-playwright-report/
-test-results/
-*.test.ts
-*.test.tsx
-*.test.js
-*.test.jsx
+# Tests and their tooling, none of which runs in the image
+**/tests
+**/e2e
+**/playwright.config.ts
+**/playwright-report
+**/test-results
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
 
 # Documentation
 *.md
