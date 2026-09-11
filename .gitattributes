@@ -1,0 +1,9 @@
+# Shell scripts run inside Linux containers. A CRLF checkout on Windows makes
+# the kernel read "/bin/sh\r" as the interpreter, which fails with a "no such
+# file or directory" that names a file that is plainly there.
+*.sh text eol=lf
+
+# The same reasoning for anything else the image executes or parses.
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
