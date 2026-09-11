@@ -16,6 +16,7 @@ import { errorMessage } from "@/lib/errors";
 import { formatCount } from "@/lib/format";
 import type { DatabaseConnection, Tab } from "../store/store";
 import { EmptyState, EnvironmentBadge } from "../components/primitives";
+import { KeyTree } from "./KeyTree";
 import { RedisKeyValue } from "./RedisKeyValue";
 import {
   useChannels,
@@ -44,6 +45,11 @@ export function RedisWorkspace({
 }) {
   const [panel, setPanel] = useState<Panel>("keys");
 
+  // polled whichever panel is open, so the count answers "is anything talking
+  // on this server" without having to go and look
+  const live = useChannels(tab.connectionId);
+  const channelCount = live.data?.channels?.length ?? 0;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -71,6 +77,14 @@ export function RedisWorkspace({
             >
               <item.icon className="h-3.5 w-3.5" />
               {item.label}
+              {item.value === "pubsub" && channelCount > 0 && (
+                <span
+                  title={`${channelCount} channel${channelCount === 1 ? "" : "s"} with a listener`}
+                  className="rounded-full bg-emerald-500/15 px-1.5 text-[10px] tabular-nums text-emerald-400"
+                >
+                  {formatCount(channelCount)}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -83,16 +97,44 @@ export function RedisWorkspace({
   );
 }
 
+/** The types a keyspace can hold, in the order they are worth scanning for. */
+const TYPES = [
+  { value: "string", label: "String" },
+  { value: "hash", label: "Hash" },
+  { value: "list", label: "List" },
+  { value: "set", label: "Set" },
+  { value: "zset", label: "Sorted set" },
+  { value: "stream", label: "Stream" },
+] as const;
+
 function KeyBrowser({ connectionId }: { connectionId?: string }) {
   const [pattern, setPattern] = useState("*");
   const [draft, setDraft] = useState("*");
   const [selected, setSelected] = useState<string | null>(null);
+  const [types, setTypes] = useState<Set<string>>(new Set());
+  const [grouped, setGrouped] = useState(true);
 
   const scan = useKeyScan(connectionId, pattern);
   const value = useKeyValue(connectionId, selected);
   const remove = useDeleteKey(connectionId);
 
-  const keys = scan.data?.keys ?? [];
+  const all = scan.data?.keys ?? [];
+  // filtering here rather than in the scan: SCAN's TYPE option would need a
+  // round trip per change, and the page is already in hand
+  const keys = types.size ? all.filter((key) => types.has(key.type)) : all;
+
+  const counts = all.reduce<Record<string, number>>((totals, key) => {
+    totals[key.type] = (totals[key.type] ?? 0) + 1;
+    return totals;
+  }, {});
+
+  const toggleType = (type: string) =>
+    setTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -117,6 +159,7 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
             className="h-8 px-2 text-xs"
             type="submit"
             disabled={scan.isFetching}
+            aria-label="Scan"
           >
             {scan.isFetching ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -126,52 +169,79 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
           </Button>
         </form>
 
+        <div
+          className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5 empty:hidden"
+          role="group"
+          aria-label="Filter by type"
+        >
+          {TYPES.filter((type) => counts[type.value]).map((type) => (
+            <button
+              key={type.value}
+              type="button"
+              onClick={() => toggleType(type.value)}
+              aria-pressed={types.has(type.value)}
+              aria-label={`${type.label}, ${counts[type.value]} keys`}
+              className={cn(
+                "rounded-full border px-1.5 py-0.5 text-[10px] transition-colors",
+                types.has(type.value)
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {type.label}
+              <span className="ml-1 text-muted-foreground/70">
+                {counts[type.value]}
+              </span>
+            </button>
+          ))}
+        </div>
+
         {scan.error && (
           <p className="p-3 text-xs text-destructive">
             {errorMessage(scan.error, "Could not read the keyspace")}
           </p>
         )}
 
-        <div className="min-h-0 flex-1 overflow-auto" role="list" aria-label="Keys">
-          {keys.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="listitem"
-              onClick={() => setSelected(item.key)}
-              aria-pressed={selected === item.key}
-              className={cn(
-                "flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-muted/60",
-                selected === item.key && "bg-muted"
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate font-mono">{item.key}</span>
-              <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
-                {item.label}
-              </span>
-              {item.size != null && (
-                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">
-                  {formatCount(item.size)}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="min-h-0 flex-1 overflow-auto py-1">
+          <KeyTree
+            keys={keys}
+            selected={selected}
+            grouped={grouped}
+            onSelect={setSelected}
+          />
 
           {!scan.isLoading && keys.length === 0 && !scan.error && (
             <p className="p-3 text-xs text-muted-foreground">
               {/* an empty page with a cursor still to follow is not "no keys" */}
-              {scan.data?.complete
-                ? `Nothing matches ${pattern}.`
-                : "Still scanning…"}
+              {types.size && all.length
+                ? "No key of that type on this page."
+                : scan.data?.complete
+                  ? `Nothing matches ${pattern}.`
+                  : "Still scanning…"}
             </p>
           )}
         </div>
 
-        {scan.data && !scan.data.complete && (
-          <p className="border-t px-2 py-1.5 text-[10px] text-muted-foreground">
-            More to scan. Narrow the pattern to find a key faster.
-          </p>
-        )}
+        <div className="flex items-center gap-2 border-t px-2 py-1.5 text-[10px] text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setGrouped((current) => !current)}
+            aria-pressed={grouped}
+            title="Redis has no folders, but almost every keyspace is named as though it does"
+            className="rounded border px-1.5 py-0.5 hover:text-foreground"
+          >
+            {grouped ? "Grouped" : "Flat"}
+          </button>
+          <span className="ml-auto">
+            {formatCount(keys.length)} key{keys.length === 1 ? "" : "s"}
+            {types.size > 0 && ` of ${formatCount(all.length)}`}
+          </span>
+          {scan.data && !scan.data.complete && (
+            <span title="SCAN is cursored, so this is one page of the keyspace">
+              more to scan
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -301,58 +371,178 @@ function Dashboard({ connectionId }: { connectionId?: string }) {
   );
 }
 
+/** A channel list is comma or space separated, and either is worth accepting. */
+function splitList(text: string): string[] {
+  return text
+    .split(/[,\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function PubSub({ connectionId }: { connectionId?: string }) {
   const [channels, setChannels] = useState("");
   const [patterns, setPatterns] = useState("");
   const [message, setMessage] = useState("");
   const [publishTo, setPublishTo] = useState("");
+  const [query, setQuery] = useState("");
 
   const live = useChannels(connectionId);
   const subscription = useSubscription(connectionId);
   const send = usePublish(connectionId);
 
   const active = live.data?.channels ?? [];
+  const patternCount = live.data?.pattern_subscriptions ?? 0;
+
+  // what this tab asked for, against what the server confirmed: the second is
+  // the one that decides whether a channel counts one of its listeners as us
+  const wanted = new Set(splitList(channels));
+  const confirmed = new Set(subscription.subscribed);
+
+  const seen = subscription.messages.reduce<Record<string, number>>(
+    (totals, item) => {
+      totals[item.channel] = (totals[item.channel] ?? 0) + 1;
+      return totals;
+    },
+    {}
+  );
+
+  const needle = query.trim().toLowerCase();
+  const rows = active
+    .map((item) => {
+      const name = String(item.channel);
+      const subscribers = Number(item.subscribers) || 0;
+      const isMine = confirmed.has(name);
+      return {
+        name,
+        subscribers,
+        isMine,
+        // PUBSUB NUMSUB counts this tab too, so the interesting number is what
+        // is left after taking ourselves out: that is the other applications
+        others: Math.max(subscribers - (isMine ? 1 : 0), 0),
+        messages: seen[name] ?? 0,
+      };
+    })
+    .filter((item) => !needle || item.name.toLowerCase().includes(needle))
+    .sort((a, b) => b.others - a.others || a.name.localeCompare(b.name));
+
+  /** Add or drop a channel, and resubscribe so the change takes effect now. */
+  const toggleChannel = (name: string) => {
+    const next = new Set(wanted);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+
+    const text = [...next].join(", ");
+    setChannels(text);
+    setPublishTo((current) => current || name);
+
+    // a click on a channel means "listen to this", so it has to take effect
+    // without a second trip to the Subscribe button
+    if (subscription.state !== "closed") subscription.stop();
+    if (next.size || patterns.trim()) subscription.start(text, patterns);
+  };
 
   return (
     <div className="flex min-h-0 flex-1">
-      <div className="flex w-64 shrink-0 flex-col border-r">
-        <p className="border-b px-3 py-2 text-xs font-medium">Listening now</p>
+      <div className="flex w-72 shrink-0 flex-col border-r">
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <p className="text-xs font-medium">Channels on this server</p>
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+            title="Polled from PUBSUB CHANNELS every few seconds"
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                active.length ? "bg-emerald-400" : "bg-muted-foreground/40"
+              )}
+            />
+            {formatCount(active.length)}
+          </span>
+        </div>
+
+        {active.length > 8 && (
+          <div className="border-b px-3 py-1.5">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              aria-label="Filter channels"
+              placeholder="Filter channels"
+              className="h-6 w-full bg-transparent font-mono text-[11px] outline-none"
+            />
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-auto" aria-label="Active channels">
-          {active.length === 0 ? (
-            <p className="p-3 text-[11px] text-muted-foreground">
+          {rows.length === 0 ? (
+            <p className="p-3 text-[11px] leading-relaxed text-muted-foreground">
               {/* a channel exists only while something is listening to it */}
-              Nothing is subscribed to any channel. Redis keeps no list of
-              channel names, so a channel appears here only while someone is
-              listening.
+              {active.length
+                ? `No channel matches ${query}.`
+                : "Nothing is subscribed to any channel right now. Redis keeps no list of channel names, so a channel shows up here only while an application is listening to it."}
             </p>
           ) : (
-            active.map((item) => (
+            rows.map((item) => (
               <button
-                key={String(item.channel)}
+                key={item.name}
                 type="button"
-                onClick={() => {
-                  setChannels(String(item.channel));
-                  setPublishTo(String(item.channel));
-                }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60"
+                onClick={() => toggleChannel(item.name)}
+                aria-pressed={item.isMine}
+                aria-label={`Listen to ${item.name}`}
+                title={
+                  item.isMine
+                    ? `You are listening to ${item.name}. Click to stop.`
+                    : `Click to listen to ${item.name}`
+                }
+                className={cn(
+                  "flex w-full items-center gap-2 border-l-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60",
+                  item.isMine
+                    ? "border-l-emerald-400 bg-emerald-500/5"
+                    : "border-l-transparent"
+                )}
               >
                 <span className="min-w-0 flex-1 truncate font-mono">
-                  {String(item.channel)}
+                  {item.name}
                 </span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">
-                  {String(item.subscribers)}
+
+                {item.messages > 0 && (
+                  <span
+                    className="shrink-0 text-[10px] tabular-nums text-sky-400"
+                    title={`${item.messages} received in this tab`}
+                  >
+                    {formatCount(item.messages)}
+                  </span>
+                )}
+
+                <span
+                  className="shrink-0 text-[10px] text-muted-foreground"
+                  title={
+                    item.isMine
+                      ? `This tab, and ${item.others} other subscriber${item.others === 1 ? "" : "s"}`
+                      : `${item.others} subscriber${item.others === 1 ? "" : "s"}, none of them this tab`
+                  }
+                >
+                  {item.isMine && <span className="text-emerald-400">you</span>}
+                  {item.isMine && item.others > 0 && " + "}
+                  {(!item.isMine || item.others > 0) &&
+                    `${item.others} app${item.others === 1 ? "" : "s"}`}
                 </span>
               </button>
             ))
           )}
         </div>
-        {(live.data?.pattern_subscriptions ?? 0) > 0 && (
-          <p className="border-t px-3 py-1.5 text-[10px] text-muted-foreground">
-            {live.data?.pattern_subscriptions} pattern subscription
-            {live.data?.pattern_subscriptions === 1 ? "" : "s"}, which the list
-            above cannot show by name.
-          </p>
-        )}
+
+        <p className="border-t px-3 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+          Click a channel to listen to it.
+          {patternCount > 0 && (
+            <>
+              {" "}
+              {patternCount === 1
+                ? "One pattern subscription is"
+                : `${patternCount} pattern subscriptions are`}{" "}
+              also open, which Redis counts but cannot name.
+            </>
+          )}
+        </p>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -439,7 +629,9 @@ function PubSub({ connectionId }: { connectionId?: string }) {
               description={
                 subscription.state === "open"
                   ? "Messages appear here as they are published."
-                  : "Name a channel or a pattern, then press Subscribe."
+                  : active.length
+                    ? "Click one of the channels on the left, or name one here."
+                    : "Name a channel or a pattern, then press Subscribe."
               }
             />
           ) : (
@@ -509,7 +701,7 @@ function PubSub({ connectionId }: { connectionId?: string }) {
             {/* zero is the useful answer: it means nobody was listening */}
             Delivered to {send.data.received_by} subscriber
             {send.data.received_by === 1 ? "" : "s"}
-            {send.data.received_by === 0 && " — nobody is listening to that channel"}
+            {send.data.received_by === 0 && ". Nobody is listening to that channel."}
           </p>
         )}
       </div>
