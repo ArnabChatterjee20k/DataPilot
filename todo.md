@@ -301,6 +301,31 @@ traffic, not this tool's.
 
 ---
 
+## 🐳 DOCKER IMAGE
+
+**718MB → 307MB**, a 57% cut, and the dependency layer alone went 241MB → 90MB.
+
+- [x] **Build tools do not belong in the final image.** `git` was installed only
+      so `uv` could fetch laserorm, and stayed afterwards, as did `uv` and
+      `uvx` themselves (53MB of binaries)
+- [x] **Ship the virtualenv, not the toolchain.** A builder stage resolves and
+      installs; the final stage copies the venv and the source and nothing else
+- [x] **The tests shipped in the image.** `.dockerignore` had `tests/` and
+      `e2e/`, which match only at the root, so `server/tests` was copied in
+- [x] **Run as a non-root user**, verified against a bind-mounted volume as
+      well as the image's own directory
+- [x] **Drop `curl`**, installed only for the healthcheck, which `urllib` does
+      with what is already there
+- [x] **`fastapi[standard]` was pulling in a CLI we never run** - and through
+      it rich, typer, pygments, sentry-sdk and a cloud uploader. `black` was a
+      production dependency too. Both gone
+- [x] Measured before and after; a source change still rebuilds in 6s without
+      touching the dependency layer
+- [x] Verified end to end against the built image: upload, connection, probe,
+      tables, columns, query, CSV export, console served, healthcheck healthy
+
+---
+
 ## 🕸️ FLOW BUILDER — *node graph across the DB and API planes*
 
 > ⚠️ Note: **"Workflow automation"** is listed under OUT OF SCOPE below. This
