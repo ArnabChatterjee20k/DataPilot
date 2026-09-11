@@ -581,3 +581,25 @@ class TestApiConnections:
 
         assert response.status_code == 200
         assert "host.docker.internal" not in (response.json()["detail"] or "")
+
+
+class TestSecretNames:
+    """A name that says which scheme is in use is not itself a secret."""
+
+    @pytest.mark.parametrize(
+        "name", ["api_token", "mqtt_password", "mqtt_auth_data", "db_secret"]
+    )
+    def test_a_credential_is_masked(self, name):
+        from api import http_client
+
+        assert http_client.is_secret_variable(name)
+
+    @pytest.mark.parametrize(
+        "name",
+        ["mqtt_auth_method", "mqtt_username", "mqtt_client_id", "mqtt_protocol"],
+    )
+    def test_a_scheme_name_is_not(self, name):
+        """Masking the method hides the one thing you need to read to fix it."""
+        from api import http_client
+
+        assert not http_client.is_secret_variable(name)
