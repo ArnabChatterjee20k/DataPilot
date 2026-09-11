@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -297,6 +297,45 @@ export const getSnapshot = <ThrowOnError extends boolean = false>(options: Optio
  * you are looking at. The difference is the answer.
  */
 export const compareSnapshots = <ThrowOnError extends boolean = false>(options: Options<CompareSnapshotsData, ThrowOnError>): RequestResult<CompareSnapshotsResponses, CompareSnapshotsErrors, ThrowOnError> => (options.client ?? client).get<CompareSnapshotsResponses, CompareSnapshotsErrors, ThrowOnError>({ url: '/connection/{connection_id}/slow-queries/compare', ...options });
+
+/**
+ * List Flows
+ */
+export const listFlows = <ThrowOnError extends boolean = false>(options?: Options<ListFlowsData, ThrowOnError>): RequestResult<ListFlowsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ListFlowsResponses, unknown, ThrowOnError>({ url: '/flows', ...options });
+
+/**
+ * Create Flow
+ */
+export const createFlow = <ThrowOnError extends boolean = false>(options: Options<CreateFlowData, ThrowOnError>): RequestResult<CreateFlowResponses, CreateFlowErrors, ThrowOnError> => (options.client ?? client).post<CreateFlowResponses, CreateFlowErrors, ThrowOnError>({
+    url: '/flows',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Flow
+ */
+export const deleteFlow = <ThrowOnError extends boolean = false>(options: Options<DeleteFlowData, ThrowOnError>): RequestResult<DeleteFlowResponses, DeleteFlowErrors, ThrowOnError> => (options.client ?? client).delete<DeleteFlowResponses, DeleteFlowErrors, ThrowOnError>({ url: '/flows/{flow_uid}', ...options });
+
+/**
+ * Get Flow
+ */
+export const getFlow = <ThrowOnError extends boolean = false>(options: Options<GetFlowData, ThrowOnError>): RequestResult<GetFlowResponses, GetFlowErrors, ThrowOnError> => (options.client ?? client).get<GetFlowResponses, GetFlowErrors, ThrowOnError>({ url: '/flows/{flow_uid}', ...options });
+
+/**
+ * Update Flow
+ */
+export const updateFlow = <ThrowOnError extends boolean = false>(options: Options<UpdateFlowData, ThrowOnError>): RequestResult<UpdateFlowResponses, UpdateFlowErrors, ThrowOnError> => (options.client ?? client).put<UpdateFlowResponses, UpdateFlowErrors, ThrowOnError>({
+    url: '/flows/{flow_uid}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Health
