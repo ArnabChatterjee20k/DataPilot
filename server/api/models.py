@@ -200,6 +200,63 @@ class QueryInsightModel(BaseModel):
     plan: list[Any] = Field(default_factory=list)
 
 
+class SlowQueryModel(BaseModel):
+    """One statement the server itself recorded, whatever backend it came from."""
+
+    digest: str
+    statement: str
+    calls: int = 0
+    total_ms: float = 0.0
+    mean_ms: float = 0.0
+    max_ms: Optional[float] = None
+    rows: int = 0
+    rows_per_call: float = 0.0
+    rows_examined: Optional[int] = None
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+
+
+class SlowQueryReportModel(BaseModel):
+    connection_id: str
+    source: str
+    available: bool = True
+    queries: list[SlowQueryModel] = Field(default_factory=list)
+    #: Why there is nothing to show, and what to do about it.
+    detail: str = ""
+    origin: str = ""
+
+
+class SnapshotModel(BaseModel):
+    """A stored reading, so a comparison survives the counters being reset."""
+
+    uid: str
+    connection_id: str
+    taken_at: str
+    source: str
+    query_count: int = 0
+    total_ms: float = 0.0
+    note: str = ""
+
+
+class SnapshotListModel(BaseModel):
+    snapshots: list[SnapshotModel] = Field(default_factory=list)
+    total: int = 0
+
+
+class SnapshotDetailModel(BaseModel):
+    snapshot: SnapshotModel
+    queries: list[SlowQueryModel] = Field(default_factory=list)
+
+
+class SnapshotComparisonModel(BaseModel):
+    """What happened between two readings, as the difference in each counter."""
+
+    connection_id: str
+    before: SnapshotModel
+    after: SnapshotModel
+    queries: list[SlowQueryModel] = Field(default_factory=list)
+
+
 class ValueCountModel(BaseModel):
     value: Any = None
     count: int
