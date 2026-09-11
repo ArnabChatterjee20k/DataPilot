@@ -1,6 +1,6 @@
 import type { Column } from "@/lib/columns";
 
-export type SourceType = "sqlite" | "postgres" | "mysql" | "api";
+export type SourceType = "sqlite" | "postgres" | "mysql" | "api" | "redis";
 
 /**
  * Quote an identifier so a column called `order` or `select` still works.
