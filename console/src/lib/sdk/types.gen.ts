@@ -5,6 +5,57 @@ export type ClientOptions = {
 };
 
 /**
+ * AppwriteJWTRequest
+ *
+ * Provision a broker credential from an Appwrite project.
+ *
+ * Appwrite's MQTT push broker authenticates a client against a real session
+ * or JWT, so testing it needs one. Given the project and an API key with the
+ * users scope, the server mints a throwaway user's JWT - the credential the
+ * broker accepts - so the person does not have to leave DataPilot to sign in.
+ */
+export type AppwriteJwtRequest = {
+    /**
+     * Endpoint
+     */
+    endpoint: string;
+    /**
+     * Project
+     */
+    project: string;
+    /**
+     * Api Key
+     */
+    api_key: string;
+    /**
+     * Email
+     */
+    email?: string | null;
+    /**
+     * Password
+     */
+    password?: string | null;
+};
+
+/**
+ * AppwriteJWTResult
+ */
+export type AppwriteJwtResult = {
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Jwt
+     */
+    jwt: string;
+    /**
+     * Project
+     */
+    project: string;
+};
+
+/**
  * AuthModel
  */
 export type AuthModel = {
@@ -1278,6 +1329,12 @@ export type TestConnectionModel = {
      * Connection Uri
      */
     connection_uri: string;
+    /**
+     * Variables
+     */
+    variables?: {
+        [key: string]: unknown;
+    } | null;
 };
 
 /**
@@ -1373,6 +1430,31 @@ export type TestConnectionResponses = {
 };
 
 export type TestConnectionResponse = TestConnectionResponses[keyof TestConnectionResponses];
+
+export type ProvisionAppwriteJwtData = {
+    body: AppwriteJwtRequest;
+    path?: never;
+    query?: never;
+    url: '/connections/appwrite/jwt';
+};
+
+export type ProvisionAppwriteJwtErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ProvisionAppwriteJwtError = ProvisionAppwriteJwtErrors[keyof ProvisionAppwriteJwtErrors];
+
+export type ProvisionAppwriteJwtResponses = {
+    /**
+     * Successful Response
+     */
+    200: AppwriteJwtResult;
+};
+
+export type ProvisionAppwriteJwtResponse = ProvisionAppwriteJwtResponses[keyof ProvisionAppwriteJwtResponses];
 
 export type ListConnectionsData = {
     body?: never;

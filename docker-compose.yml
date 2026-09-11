@@ -21,6 +21,11 @@ services:
     # network (`docker network connect <network> datapilot`) and use its name.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # joined to Appwrite's network so sibling containers (e.g. appwrite-mqtt)
+    # are reachable directly by name, alongside this project's own network
+    networks:
+      - default
+      - appwrite
     restart: unless-stopped
     # the image carries no curl, so this is the same check the Dockerfile makes
     healthcheck:
@@ -29,3 +34,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+# `appwrite` is created by the Appwrite compose project; we attach to it rather
+# than define it, so it must already exist (`docker network ls`).
+networks:
+  appwrite:
+    external: true

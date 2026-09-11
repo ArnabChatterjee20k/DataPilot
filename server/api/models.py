@@ -52,6 +52,11 @@ class TestConnectionModel(BaseModel):
 
     source: SourceConfig
     connection_uri: str
+    #: The variables a saved connection would carry, so a broker that only
+    #: accepts an authenticated session - Appwrite's MQTT push broker asks for
+    #: a session or JWT over MQTT 5 enhanced authentication - can be tested
+    #: before it is saved, the same way it will really be used.
+    variables: Optional[dict[str, Any]] = None
 
 
 class ConnectionProbeModel(BaseModel):
@@ -59,6 +64,30 @@ class ConnectionProbeModel(BaseModel):
     detail: Optional[str] = None
     latency_ms: Optional[float] = None
     server_version: Optional[str] = None
+
+
+class AppwriteJWTRequest(BaseModel):
+    """Provision a broker credential from an Appwrite project.
+
+    Appwrite's MQTT push broker authenticates a client against a real session
+    or JWT, so testing it needs one. Given the project and an API key with the
+    users scope, the server mints a throwaway user's JWT - the credential the
+    broker accepts - so the person does not have to leave DataPilot to sign in.
+    """
+
+    endpoint: str
+    project: str
+    api_key: str
+    #: Reuse a specific user instead of creating a throwaway one; a fresh test
+    #: user is created when this is left blank.
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+
+class AppwriteJWTResult(BaseModel):
+    user_id: str
+    jwt: str
+    project: str
 
 
 class ConnectionStatusModel(BaseModel):

@@ -449,7 +449,7 @@ class MqttSession:
         self._settle(
             self._connected,
             None,
-            MqttError(connect_refusal(self.address, reason_code)),
+            MqttError(connect_refusal(self.address, reason_code, self.options)),
         )
 
     def _on_disconnect(
@@ -774,7 +774,9 @@ def is_success(reason_code) -> bool:
     return int(reason_code) == 0
 
 
-def connect_refusal(address: BrokerAddress, reason_code) -> str:
+def connect_refusal(
+    address: BrokerAddress, reason_code, options: Optional[BrokerOptions] = None
+) -> str:
     """CONNACK codes, in the words of what to do about them."""
     try:
         code = int(getattr(reason_code, "value", reason_code))
@@ -783,6 +785,15 @@ def connect_refusal(address: BrokerAddress, reason_code) -> str:
 
     target = address.display
     if code in (4, 5, 134, 135):
+        # a broker using enhanced authentication (Appwrite's takes an
+        # `appwrite-session` secret or an `appwrite-jwt`) wants the credential
+        # in mqtt_auth_data, not a username and password
+        if options is not None and options.auth_method:
+            return (
+                f"{target} refused the credential for '{options.auth_method}'. "
+                "Check mqtt_auth_data - for Appwrite it is a current session "
+                "secret or JWT, with the project in a projectId user property."
+            )
         return (
             f"{target} refused the credentials. Set mqtt_username and "
             "mqtt_password in the connection's variables."

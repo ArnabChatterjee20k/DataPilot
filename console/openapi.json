@@ -47,6 +47,48 @@
         }
       }
     },
+    "/connections/appwrite/jwt": {
+      "post": {
+        "tags": [
+          "connections"
+        ],
+        "summary": "Provision Appwrite Jwt",
+        "description": "Mint a short-lived Appwrite JWT for a test user.\n\nThe broker validates a client against an Appwrite session or JWT, so a\nconnection to it can only be tested with a real one. This is the\nserver-side sign-in the load harness uses: create a user, open a session,\nmint a JWT (`users.create` -> `users.create_session` -> `users.create_jwt`).\nThe API key authorises this call only and is never stored; only the JWT is\nkept, masked, as the connection's mqtt_auth_data.",
+        "operationId": "provision_appwrite_jwt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppwriteJWTRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppwriteJWTResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/connections": {
       "get": {
         "tags": [
@@ -2310,6 +2352,75 @@
   },
   "components": {
     "schemas": {
+      "AppwriteJWTRequest": {
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "title": "Endpoint"
+          },
+          "project": {
+            "type": "string",
+            "title": "Project"
+          },
+          "api_key": {
+            "type": "string",
+            "title": "Api Key"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "endpoint",
+          "project",
+          "api_key"
+        ],
+        "title": "AppwriteJWTRequest",
+        "description": "Provision a broker credential from an Appwrite project.\n\nAppwrite's MQTT push broker authenticates a client against a real session\nor JWT, so testing it needs one. Given the project and an API key with the\nusers scope, the server mints a throwaway user's JWT - the credential the\nbroker accepts - so the person does not have to leave DataPilot to sign in."
+      },
+      "AppwriteJWTResult": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "jwt": {
+            "type": "string",
+            "title": "Jwt"
+          },
+          "project": {
+            "type": "string",
+            "title": "Project"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "jwt",
+          "project"
+        ],
+        "title": "AppwriteJWTResult"
+      },
       "AuthModel": {
         "properties": {
           "type": {
@@ -4342,6 +4453,18 @@
           "connection_uri": {
             "type": "string",
             "title": "Connection Uri"
+          },
+          "variables": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variables"
           }
         },
         "type": "object",

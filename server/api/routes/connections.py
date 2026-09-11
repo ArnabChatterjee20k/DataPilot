@@ -1,6 +1,8 @@
 import asyncio
 import time
+import uuid
 from types import SimpleNamespace
+from typing import Optional
 
 import httpx
 import websockets
@@ -11,6 +13,8 @@ from . import UPLOAD_DIR
 from .. import http_client, mqtt_client, redis_client
 from ..config import SourceConfig, supports_schemas
 from ..models import (
+    AppwriteJWTRequest,
+    AppwriteJWTResult,
     ConnectionProbeModel,
     ConnectionStatusModel,
     ConnectionsModel,
@@ -117,37 +121,66 @@ def unreachable_hint(source: str, connection_uri: str, detail: str) -> str:
     return http_client.container_hint(connection_uri, detail)
 
 
-async def probe_broker(base: str, started: float) -> ConnectionProbeModel:
-    """Connect to a broker and disconnect, which is the whole test."""
+async def probe_broker(
+    base: str, started: float, variables: Optional[dict] = None
+) -> ConnectionProbeModel:
+    """Connect to a broker and disconnect, which is the whole test.
+
+    The connection's variables are honoured, so authentication is exercised as
+    it really will be: Appwrite's MQTT push broker rejects an anonymous client,
+    and asks instead for a session or JWT over MQTT 5 enhanced authentication.
+    Testing without the credential would report a broker that works perfectly
+    as unreachable.
+    """
+    variables = variables or {}
     try:
-        address = mqtt_client.parse_broker_url(base)
+        address = mqtt_client.parse_broker_url(
+            str(http_client.interpolate(base, variables))
+        )
     except ValueError as error:
         return ConnectionProbeModel(reachable=False, detail=str(error))
 
-    # the probe speaks 3.1.1: every broker accepts it, and the point here is
-    # whether the address answers at all
-    session = mqtt_client.MqttSession(
-        address,
-        mqtt_client.BrokerOptions(protocol=mqtt_client.PROTOCOL_311),
-        identifier=mqtt_client.client_id("dp-probe"),
+    options = mqtt_client.options_from(variables, address)
+    probe_id = options.client_id or mqtt_client.client_id("dp-probe")
+
+    def latency() -> float:
+        return round((time.perf_counter() - started) * 1000, 2)
+
+    async def try_connect(opts):
+        """Connect, then close: a probe holds nothing open either way."""
+        session = mqtt_client.MqttSession(address, opts, identifier=probe_id)
+        try:
+            await session.connect(timeout=PROBE_TIMEOUT)
+            return session, None
+        except Exception as error:
+            return session, error
+        finally:
+            await session.close()
+
+    session, error = await try_connect(options)
+    # a broker that only speaks 3.1.1 refuses a v5 CONNECT; retry on 3.1.1 the
+    # way the live relay does, so the verdict matches what a real session gets
+    if error is not None and options.speaks_v5 and session.refused_protocol:
+        _fallback, error = await try_connect(
+            options.with_protocol(mqtt_client.PROTOCOL_311)
+        )
+
+    if error is not None:
+        # connect() already phrases both transport and CONNACK failures for a
+        # person (bad credentials, unresolved host, a broker that is not up)
+        detail = str(error) or mqtt_client.describe_failure(address, error)
+        return ConnectionProbeModel(reachable=False, detail=detail, latency_ms=latency())
+
+    return ConnectionProbeModel(
+        reachable=True,
+        detail=f"Connected to {address.display}",
+        latency_ms=latency(),
     )
-    try:
-        await session.connect(timeout=PROBE_TIMEOUT)
-        await session.close()
-        return ConnectionProbeModel(
-            reachable=True,
-            detail=f"Connected to {address.display}",
-            latency_ms=round((time.perf_counter() - started) * 1000, 2),
-        )
-    except Exception as error:
-        return ConnectionProbeModel(
-            reachable=False,
-            detail=mqtt_client.describe_failure(address, error),
-            latency_ms=round((time.perf_counter() - started) * 1000, 2),
-        )
 
 
-async def probe_api(connection_uri: str) -> ConnectionProbeModel:
+async def probe_api(
+    connection_uri: str, variables: Optional[dict] = None
+) -> ConnectionProbeModel:
     """Dial an API connection for real.
 
     A websocket base is handshaked and closed; an HTTP base is asked for its
@@ -159,7 +192,7 @@ async def probe_api(connection_uri: str) -> ConnectionProbeModel:
 
     try:
         if mqtt_client.is_mqtt_url(base):
-            return await probe_broker(base, started)
+            return await probe_broker(base, started, variables)
 
         if base.startswith(("ws://", "wss://")):
             connection = await asyncio.wait_for(
@@ -226,10 +259,15 @@ async def probe_redis(connection_uri: str) -> ConnectionProbeModel:
         )
 
 
-async def probe(source: str, connection_uri: str, name: str = "") -> ConnectionProbeModel:
+async def probe(
+    source: str,
+    connection_uri: str,
+    name: str = "",
+    variables: Optional[dict] = None,
+) -> ConnectionProbeModel:
     """Open a session and ask the server its version, nothing more."""
     if source == SourceConfig.API.value:
-        return await probe_api(connection_uri)
+        return await probe_api(connection_uri, variables)
     if source == SourceConfig.REDIS.value:
         return await probe_redis(connection_uri)
 
@@ -266,7 +304,97 @@ async def test_connection(payload: TestConnectionModel):
         # connection, not a failed request
         return ConnectionProbeModel(reachable=False, detail=str(error.detail))
 
-    return await probe(payload.source, payload.connection_uri)
+    return await probe(
+        payload.source, payload.connection_uri, variables=payload.variables
+    )
+
+
+def appwrite_base(endpoint: str) -> str:
+    """The API root, whether or not the person kept the /v1 on the URL."""
+    base = str(endpoint or "").strip().rstrip("/")
+    if not base:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An Appwrite endpoint is required, e.g. http://appwrite-traefik/v1.",
+        )
+    if not base.endswith("/v1"):
+        base = f"{base}/v1"
+    return base
+
+
+def appwrite_error(response: httpx.Response, step: str) -> HTTPException:
+    """Turn Appwrite's JSON error into one worth showing a person."""
+    try:
+        message = response.json().get("message") or response.text
+    except ValueError:
+        message = response.text or f"HTTP {response.status_code}"
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"Appwrite refused to {step}: {message}",
+    )
+
+
+@router.post("/connections/appwrite/jwt", response_model=AppwriteJWTResult)
+async def provision_appwrite_jwt(payload: AppwriteJWTRequest):
+    """Mint a short-lived Appwrite JWT for a test user.
+
+    The broker validates a client against an Appwrite session or JWT, so a
+    connection to it can only be tested with a real one. This is the
+    server-side sign-in the load harness uses: create a user, open a session,
+    mint a JWT (`users.create` -> `users.create_session` -> `users.create_jwt`).
+    The API key authorises this call only and is never stored; only the JWT is
+    kept, masked, as the connection's mqtt_auth_data.
+    """
+    if not payload.api_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An API key with the users scope is required to mint a JWT.",
+        )
+
+    base = appwrite_base(payload.endpoint)
+    headers = {
+        "X-Appwrite-Project": payload.project,
+        "X-Appwrite-Key": payload.api_key,
+        "Content-Type": "application/json",
+    }
+    email = payload.email or f"datapilot-{uuid.uuid4().hex[:12]}@example.com"
+    password = payload.password or uuid.uuid4().hex
+
+    try:
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as client:
+            created = await client.post(
+                f"{base}/users",
+                headers=headers,
+                json={"userId": "unique()", "email": email, "password": password},
+            )
+            if created.status_code >= 400:
+                raise appwrite_error(created, "create a user")
+            user_id = created.json()["$id"]
+
+            session = await client.post(
+                f"{base}/users/{user_id}/sessions", headers=headers, json={}
+            )
+            if session.status_code >= 400:
+                raise appwrite_error(session, "open a session")
+            session_id = session.json()["$id"]
+
+            minted = await client.post(
+                f"{base}/users/{user_id}/jwts",
+                headers=headers,
+                json={"sessionId": session_id, "duration": 3600},
+            )
+            if minted.status_code >= 400:
+                raise appwrite_error(minted, "mint a JWT")
+            jwt = minted.json()["jwt"]
+    except httpx.HTTPError as error:
+        # the endpoint is dialled from the server, so localhost is this
+        # container - the hint points at the usual sibling-container fix
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=http_client.describe_transport_failure(base, error),
+        ) from error
+
+    return AppwriteJWTResult(user_id=user_id, jwt=jwt, project=payload.project)
 
 
 @router.post("/connections", response_model=ConnectionsModel)
@@ -328,7 +456,12 @@ async def delete_connection(connection_uid: str, db: DBSession):
 async def get_connection_status(connection_uid: str, db: DBSession):
     """Dial the connection and report whether it answers, without running a query."""
     connection = await load_connection(db, connection_uid)
+    # the stored variables carry the broker's credential, so an authenticated
+    # broker reports its true status instead of a permanent "unreachable"
     result = await probe(
-        connection.source, connection.connection_uri, connection.name
+        connection.source,
+        connection.connection_uri,
+        connection.name,
+        variables=getattr(connection, "variables", None) or {},
     )
     return ConnectionStatusModel(uid=connection_uid, **result.model_dump())

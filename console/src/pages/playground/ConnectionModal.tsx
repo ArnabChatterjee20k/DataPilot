@@ -8,6 +8,7 @@ import {
   Radio,
   Loader2,
   PlugZap,
+  Waypoints,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,8 @@ import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import {
   getConnection,
+  provisionAppwriteJwt,
+  setVariables,
   testConnection,
   uploadFile,
   type ConnectionProbeModel,
@@ -46,6 +49,15 @@ import {
 import { useCreateConnection, useUpdateConnection } from "./hooks";
 
 const SQLITE_SUFFIXES = [".db", ".sqlite", ".sqlite3", ".db3"];
+
+/**
+ * Where the Appwrite preset points by default - Cloud, unless a deploy sets
+ * VITE_APPWRITE_ENDPOINT (e.g. a region host, or a self-hosted URL). It seeds
+ * the endpoint when minting a JWT from an API key.
+ */
+const DEFAULT_APPWRITE_ENDPOINT =
+  (import.meta.env.VITE_APPWRITE_ENDPOINT as string | undefined) ??
+  "https://cloud.appwrite.io/v1";
 
 /**
  * What you are connecting to, which is not quite the same as the backend's
@@ -100,6 +112,15 @@ const SOURCES = [
     uriLabel: "Broker address",
     hint: "Username and password go in the connection's variables as mqtt_username and mqtt_password, where they are stored masked.",
   },
+  {
+    value: "appwrite",
+    source: "api",
+    label: "Appwrite MQTT",
+    icon: Waypoints,
+    placeholder: "mqtt://appwrite-mqtt:1883   or mqtts://…:8883",
+    uriLabel: "Broker address",
+    hint: "Appwrite's push broker authenticates over MQTT 5: a session secret or JWT, plus your project ID. They are stored masked as the connection's variables.",
+  },
 ] as const satisfies readonly SourceOption[];
 
 interface SourceOption {
@@ -124,7 +145,7 @@ function uriMismatch(kind: Kind | null, connectionUri: string): string | null {
   if (kind === "redis" && !/^rediss?:\/\//i.test(uri)) {
     return "A Redis address starts with redis:// or rediss:// for TLS.";
   }
-  if (kind === "mqtt" && !/^mqtts?:\/\//i.test(uri)) {
+  if ((kind === "mqtt" || kind === "appwrite") && !/^mqtts?:\/\//i.test(uri)) {
     return "A broker address starts with mqtt:// or mqtts://. For an HTTP or websocket service, choose HTTP / WebSocket instead.";
   }
   if (kind === "api" && /^mqtts?:\/\//i.test(uri)) {
@@ -177,6 +198,18 @@ export function ConnectionModal({
   const [role, setRole] = useState<Role>("primary");
   const [readOnly, setReadOnly] = useState(true);
   const [file, setFile] = useState<File | null>(null);
+  // Appwrite MQTT preset: the credential and project that become the
+  // connection's enhanced-auth variables.
+  const [appwriteAuth, setAppwriteAuth] = useState<"session" | "jwt">("session");
+  const [appwriteCredential, setAppwriteCredential] = useState("");
+  const [appwriteProjectId, setAppwriteProjectId] = useState("");
+  // Two ways to get that credential: paste one, or have the server mint a
+  // throwaway user's JWT from an API key.
+  const [appwriteMode, setAppwriteMode] = useState<"paste" | "provision">("paste");
+  const [appwriteEndpoint, setAppwriteEndpoint] = useState(DEFAULT_APPWRITE_ENDPOINT);
+  const [appwriteApiKey, setAppwriteApiKey] = useState("");
+  const [provisionedUser, setProvisionedUser] = useState<string | null>(null);
+  const [isProvisioning, setIsProvisioning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -198,8 +231,70 @@ export function ConnectionModal({
     setRole("primary");
     setReadOnly(true);
     setFile(null);
+    setAppwriteAuth("session");
+    setAppwriteCredential("");
+    setAppwriteProjectId("");
+    setAppwriteMode("paste");
+    setAppwriteEndpoint(DEFAULT_APPWRITE_ENDPOINT);
+    setAppwriteApiKey("");
+    setProvisionedUser(null);
     setError(null);
     setProbe(null);
+  };
+
+  /**
+   * Mint a JWT server-side from an API key. The key is sent for this call only
+   * - it is never stored - and the JWT it returns becomes the credential, the
+   * same as if it had been pasted.
+   */
+  const handleProvision = async () => {
+    if (!appwriteEndpoint.trim() || !appwriteProjectId.trim() || !appwriteApiKey.trim()) {
+      setError("Endpoint, Project ID and API key are all needed to mint a JWT.");
+      return;
+    }
+    setError(null);
+    setIsProvisioning(true);
+    try {
+      const response = await provisionAppwriteJwt({
+        body: {
+          endpoint: appwriteEndpoint.trim(),
+          project: appwriteProjectId.trim(),
+          api_key: appwriteApiKey,
+        },
+        throwOnError: true,
+      });
+      const minted = response.data;
+      if (!minted?.jwt) throw new Error("Appwrite did not return a JWT");
+      setAppwriteCredential(minted.jwt);
+      setAppwriteAuth("jwt");
+      setProvisionedUser(minted.user_id);
+    } catch (provisionError) {
+      setProvisionedUser(null);
+      setAppwriteCredential("");
+      setError(errorMessage(provisionError, "Could not mint a JWT from Appwrite"));
+    } finally {
+      setIsProvisioning(false);
+    }
+  };
+
+  /**
+   * The Appwrite preset is a friendly face over MQTT 5 enhanced authentication:
+   * the credential is the AuthenticationData, the scheme is the method, and the
+   * project rides along as a user property - the same shape the Appwrite SDK's
+   * MQTT client sends on connect.
+   */
+  const appwriteVariables = (): Record<string, string> => {
+    const variables: Record<string, string> = {
+      mqtt_protocol: "5",
+      mqtt_auth_method: appwriteAuth === "jwt" ? "appwrite-jwt" : "appwrite-session",
+    };
+    if (appwriteCredential) variables.mqtt_auth_data = appwriteCredential;
+    if (appwriteProjectId.trim()) {
+      variables.mqtt_user_properties = JSON.stringify([
+        { key: "projectId", value: appwriteProjectId.trim(), enabled: true },
+      ]);
+    }
+    return variables;
   };
 
   useEffect(() => {
@@ -235,7 +330,15 @@ export function ConnectionModal({
 
   useEffect(() => {
     setProbe(null);
-  }, [kind, connectionUri, file]);
+  }, [
+    kind,
+    connectionUri,
+    file,
+    appwriteAuth,
+    appwriteCredential,
+    appwriteProjectId,
+    appwriteMode,
+  ]);
 
   const handleTest = async () => {
     if (!source) return;
@@ -252,7 +355,13 @@ export function ConnectionModal({
       }
 
       const response = await testConnection({
-        body: { source, connection_uri: uri },
+        body: {
+          source,
+          connection_uri: uri,
+          // exercise the broker's real auth so an Appwrite session is tested
+          // the way it will be used, not rejected as an anonymous client
+          ...(kind === "appwrite" ? { variables: appwriteVariables() } : {}),
+        },
         throwOnError: true,
       });
       setProbe(response.data ?? null);
@@ -330,6 +439,15 @@ export function ConnectionModal({
           role,
           read_only: readOnly,
         });
+        // the credential could not be saved until the connection existed to
+        // hang it on; do it now, before handing the connection back
+        if (kind === "appwrite" && created?.uid) {
+          await setVariables({
+            path: { connection_id: created.uid },
+            body: { variables: appwriteVariables() },
+            throwOnError: true,
+          });
+        }
         onSuccess?.(created?.uid);
       }
 
@@ -454,6 +572,146 @@ export function ConnectionModal({
                     )}
                     {uriWarning && (
                       <p className="text-[11px] text-amber-500">{uriWarning}</p>
+                    )}
+                  </div>
+                )}
+
+                {kind === "appwrite" && (
+                  <div className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-2.5">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="appwrite-project" className="text-xs">
+                        Project ID
+                      </Label>
+                      <Input
+                        id="appwrite-project"
+                        value={appwriteProjectId}
+                        onChange={(event) => setAppwriteProjectId(event.target.value)}
+                        placeholder="my-project"
+                        className="h-8 font-mono text-xs"
+                      />
+                    </div>
+
+                    {/* two ways to the same credential: bring your own, or let
+                        the server mint one from an API key */}
+                    <div className="grid grid-cols-2 gap-1 rounded-md bg-muted/60 p-0.5">
+                      {(
+                        [
+                          ["paste", "Paste credential"],
+                          ["provision", "Mint from API key"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setAppwriteMode(value)}
+                          className={cn(
+                            "rounded px-2 py-1 text-xs transition-colors",
+                            appwriteMode === value
+                              ? "bg-background font-medium shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {appwriteMode === "paste" ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={appwriteAuth}
+                            onValueChange={(value) =>
+                              setAppwriteAuth(value as "session" | "jwt")
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-36 shrink-0 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="session">Session secret</SelectItem>
+                              <SelectItem value="jwt">JWT</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            id="appwrite-credential"
+                            type="password"
+                            value={appwriteCredential}
+                            onChange={(event) =>
+                              setAppwriteCredential(event.target.value)
+                            }
+                            placeholder={
+                              appwriteAuth === "jwt"
+                                ? "a current Appwrite JWT"
+                                : "a current session secret"
+                            }
+                            className="h-8 font-mono text-xs"
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Stored masked. Mint a session or JWT for a user in this
+                          project; the broker verifies it on connect.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="appwrite-endpoint" className="text-xs">
+                            Appwrite endpoint
+                          </Label>
+                          <Input
+                            id="appwrite-endpoint"
+                            value={appwriteEndpoint}
+                            onChange={(event) =>
+                              setAppwriteEndpoint(event.target.value)
+                            }
+                            placeholder="http://appwrite-traefik/v1"
+                            className="h-8 font-mono text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="appwrite-key" className="text-xs">
+                            API key
+                          </Label>
+                          <Input
+                            id="appwrite-key"
+                            type="password"
+                            value={appwriteApiKey}
+                            onChange={(event) => setAppwriteApiKey(event.target.value)}
+                            placeholder="standard_… (users scope)"
+                            className="h-8 font-mono text-xs"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-1.5"
+                          onClick={handleProvision}
+                          disabled={isProvisioning}
+                        >
+                          {isProvisioning ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <PlugZap className="h-3.5 w-3.5" />
+                          )}
+                          {isProvisioning
+                            ? "Minting…"
+                            : "Create test user + JWT"}
+                        </Button>
+                        {provisionedUser && appwriteCredential ? (
+                          <p className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            JWT ready for user{" "}
+                            <span className="font-mono">{provisionedUser}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">
+                            Creates a throwaway user and mints its JWT. The key is
+                            used for this call only and never stored.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
