@@ -5,8 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "black>=25.9.0",
-    "fastapi[standard]>=0.121.0",
+    # not fastapi[standard]: that pulls in fastapi-cli and, through it, rich,
+    # typer, pygments, sentry-sdk and a cloud uploader - a command line we
+    # never run, since the server is started with uvicorn directly
+    "fastapi>=0.121.0",
+    "uvicorn[standard]>=0.34.0",
+    # what the upload endpoint needs out of [standard]
+    "python-multipart>=0.0.20",
     "laserorm[postgres,sqlite,mysql]",
     "python-dotenv>=1.2.1",
     # the API client sends requests and proxies sockets on the user's behalf
@@ -18,6 +23,7 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = [
+    "black>=25.9.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "httpx>=0.27.0",
