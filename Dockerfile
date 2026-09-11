@@ -59,11 +59,17 @@ COPY --from=python-builder /app/venv /app/venv
 COPY --chown=datapilot:datapilot server/ ./
 COPY --from=frontend-builder --chown=datapilot:datapilot /app/console/dist ./static
 
-# the volume mount point has to exist and be writable before the volume is
-# attached, or a first run on a fresh host cannot create the database
+# the volume mount point has to exist before the volume is attached, or a first
+# run on a fresh host cannot create the database
 RUN mkdir -p /app/server/data/buckets && chown -R datapilot:datapilot /app/server/data
 
-USER datapilot
+# the entrypoint fixes the mounted directory's ownership and then drops to
+# `datapilot`, because a volume hides whatever the build did to it and carries
+# the ownership the host or an earlier run gave it instead
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 EXPOSE 8000
 
