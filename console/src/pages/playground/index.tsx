@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Command as CommandIcon, Globe, Plus, X } from "lucide-react";
+import { Command as CommandIcon, Globe, Loader2, Plus, X } from "lucide-react";
 
 import {
   ResizableHandle,
@@ -7,6 +7,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/errors";
 import { client } from "@/lib/sdk/client.gen";
 import { CodeArea } from "./code-area";
 import DatabaseSidebar from "./DatabaseSidebar";
@@ -15,6 +16,9 @@ import { RequestBuilder } from "./components/RequestBuilder";
 import { ResponseView } from "./components/ResponseView";
 import { MqttConsole } from "./components/MqttConsole";
 import { SlowQueries } from "./components/SlowQueries";
+import { FlowCanvas } from "./flow/FlowCanvas";
+import type { FlowGraph } from "./flow/types";
+import { useFlow } from "./hooks/useFlows";
 import { SocketConsole } from "./components/SocketConsole";
 import {
   CommandPalette,
@@ -301,6 +305,9 @@ function TabWorkspace({ tab }: { tab: Tab }) {
     [connections, tab.connectionId]
   );
 
+  if (tab.type === "flow") {
+    return <FlowWorkspace tab={tab} />;
+  }
   if (tab.type === "slow") {
     return <SlowQueries tab={tab} connection={connection} />;
   }
@@ -314,6 +321,37 @@ function TabWorkspace({ tab }: { tab: Tab }) {
     return <RequestWorkspace tab={tab} connection={connection} />;
   }
   return <QueryWorkspace tab={tab} connection={connection} />;
+}
+
+function FlowWorkspace({ tab }: { tab: Tab }) {
+  const { data: connections = [] } = useConnections();
+  const { data: flow, isLoading, error } = useFlow(tab.flowUid);
+
+  if (isLoading) {
+    return (
+      <p className="flex items-center gap-2 p-6 text-xs text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Loading the flow…
+      </p>
+    );
+  }
+  if (error || !flow) {
+    return (
+      <p className="p-6 text-xs text-destructive">
+        {errorMessage(error, "Could not load this flow")}
+      </p>
+    );
+  }
+
+  return (
+    <FlowCanvas
+      key={flow.uid}
+      flowUid={flow.uid}
+      name={flow.name}
+      graph={(flow.graph ?? { nodes: [], edges: [] }) as unknown as FlowGraph}
+      connections={connections}
+    />
+  );
 }
 
 function RequestWorkspace({
