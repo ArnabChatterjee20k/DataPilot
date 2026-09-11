@@ -328,28 +328,49 @@ traffic, not this tool's.
 
 ## 🕸️ FLOW BUILDER — *node graph across the DB and API planes*
 
-> ⚠️ Note: **"Workflow automation"** is listed under OUT OF SCOPE below. This
-> overlaps with it. Worth settling which of the two readings is wanted before
-> building, because they are different products:
->
-> 1. **Composition** — wire a query into a request, run the chain once, watch
->    the data move. A debugging and exploration tool. Fits the North Star.
-> 2. **Automation** — save it, schedule it, retry it, alert on it. That is the
->    thing the roadmap rules out.
+Built as **composition**, not automation: run it once and watch the data move.
+No schedule, no retry, no alerts — those were the parts the roadmap rules out.
 
-- [ ] Node canvas — drag a **DB node** (connection + query) and an **API node**
-      (connection + request) onto a surface and connect them
-- [ ] Data flows along the edges; a downstream node reads upstream output with
-      `{{node.field}}`, reusing the variable syntax the API client already has
-- [ ] **Branching** — one node feeding several, run in parallel
-- [ ] **Every node shows its own state on the canvas** — idle / running /
-      succeeded / failed, with row or status counts, timing, and the actual
-      result available from the node. Debugging a flow means seeing where the
-      data stopped being what you expected, so a node that hides its output is
-      useless
-- [ ] A failed node names what failed and does not blame the nodes downstream
-      of it
-- [ ] Stored either as its own connection kind, or inside an existing one
+- [x] Node canvas — a **DB node** (connection + query) and an **API node**
+      (connection + request), dragged, joined and moved
+- [x] Data flows along the edges; a downstream node reads upstream output with
+      `{{Node.first.id}}`, `{{Node.rows.2.name}}`, `{{Node.row_count}}`,
+      `{{Node.json.field}}` and `{{Node.status}}` — by node name or id
+- [x] **Branching** — a node runs the moment its own dependencies finish, so
+      two branches off one node run at the same time
+- [x] **Every node shows its own state on the canvas** — idle / running /
+      succeeded / failed / skipped, with row or status counts and timing, and
+      the whole result in the inspector
+- [x] A failed node names what failed, and the nodes after it are marked
+      **skipped, waiting on it** rather than failed — they never ran, which is
+      a different thing, and calling both "failed" hides which one to fix
+- [x] A reference to a node that produced nothing is a **warning on the node
+      that used it**, not a silent blank — the request still went out, visibly
+      wrong
+- [x] Stored as its own kind, since a flow crosses connections rather than
+      belonging to one
+- [x] A destructive statement is refused: a flow runs unattended once started,
+      so nothing is there to confirm it
+- [x] A loop is reported by naming the nodes in it
+
+---
+
+## 🟥 REDIS — *a fourth connection kind*
+
+- [ ] **Connection** — `redis://` / `rediss://`, with database number, username
+      and password, and TLS
+- [ ] **Browse keys** by pattern, without `KEYS *` on a production instance —
+      `SCAN` with a cursor, so a big keyspace does not stall the server
+- [ ] **Every type, shown as itself**: string, hash, list, set, sorted set
+      (with scores), stream (entries and fields), and the TTL and memory of
+      each key
+- [ ] **A dashboard**: what the server reports about itself — memory, clients,
+      hit rate, evictions, uptime, keyspace size per database
+- [ ] **Pub/sub**: list the active channels and pattern subscriptions, then
+      subscribe and watch messages arrive live, with the channel they came in
+      on. Same readiness rule as MQTT and the websocket proxy: "subscribed"
+      must mean the server agreed
+- [ ] Publish to a channel, to test the other side of it
 
 ---
 

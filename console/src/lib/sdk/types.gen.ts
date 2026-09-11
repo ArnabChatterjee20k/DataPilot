@@ -269,6 +269,58 @@ export type CreateConnectionsModel = {
 export type Environment = 'local' | 'staging' | 'production';
 
 /**
+ * FlowListModel
+ */
+export type FlowListModel = {
+    /**
+     * Flows
+     */
+    flows?: Array<FlowModel>;
+    /**
+     * Total
+     */
+    total?: number;
+};
+
+/**
+ * FlowModel
+ */
+export type FlowModel = {
+    /**
+     * Uid
+     */
+    uid: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Graph
+     */
+    graph?: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * FlowSpecModel
+ *
+ * A node graph as it was drawn.
+ */
+export type FlowSpecModel = {
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Graph
+     */
+    graph?: {
+        [key: string]: unknown;
+    };
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -2170,6 +2222,137 @@ export type CompareSnapshotsResponses = {
 };
 
 export type CompareSnapshotsResponse = CompareSnapshotsResponses[keyof CompareSnapshotsResponses];
+
+export type ListFlowsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/flows';
+};
+
+export type ListFlowsResponses = {
+    /**
+     * Successful Response
+     */
+    200: FlowListModel;
+};
+
+export type ListFlowsResponse = ListFlowsResponses[keyof ListFlowsResponses];
+
+export type CreateFlowData = {
+    body: FlowSpecModel;
+    path?: never;
+    query?: never;
+    url: '/flows';
+};
+
+export type CreateFlowErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateFlowError = CreateFlowErrors[keyof CreateFlowErrors];
+
+export type CreateFlowResponses = {
+    /**
+     * Successful Response
+     */
+    200: FlowModel;
+};
+
+export type CreateFlowResponse = CreateFlowResponses[keyof CreateFlowResponses];
+
+export type DeleteFlowData = {
+    body?: never;
+    path: {
+        /**
+         * Flow Uid
+         */
+        flow_uid: string;
+    };
+    query?: never;
+    url: '/flows/{flow_uid}';
+};
+
+export type DeleteFlowErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteFlowError = DeleteFlowErrors[keyof DeleteFlowErrors];
+
+export type DeleteFlowResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteFlowResponse = DeleteFlowResponses[keyof DeleteFlowResponses];
+
+export type GetFlowData = {
+    body?: never;
+    path: {
+        /**
+         * Flow Uid
+         */
+        flow_uid: string;
+    };
+    query?: never;
+    url: '/flows/{flow_uid}';
+};
+
+export type GetFlowErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetFlowError = GetFlowErrors[keyof GetFlowErrors];
+
+export type GetFlowResponses = {
+    /**
+     * Successful Response
+     */
+    200: FlowModel;
+};
+
+export type GetFlowResponse = GetFlowResponses[keyof GetFlowResponses];
+
+export type UpdateFlowData = {
+    body: FlowSpecModel;
+    path: {
+        /**
+         * Flow Uid
+         */
+        flow_uid: string;
+    };
+    query?: never;
+    url: '/flows/{flow_uid}';
+};
+
+export type UpdateFlowErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateFlowError = UpdateFlowErrors[keyof UpdateFlowErrors];
+
+export type UpdateFlowResponses = {
+    /**
+     * Successful Response
+     */
+    200: FlowModel;
+};
+
+export type UpdateFlowResponse = UpdateFlowResponses[keyof UpdateFlowResponses];
 
 export type HealthData = {
     body?: never;

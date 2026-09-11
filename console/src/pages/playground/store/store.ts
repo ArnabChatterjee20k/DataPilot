@@ -45,7 +45,8 @@ export type TabType =
   | "request"
   | "socket"
   | "mqtt"
-  | "slow";
+  | "slow"
+  | "flow";
 
 export type KeyValueRow = KeyValueModel;
 export type HttpMethod = NonNullable<RequestSpecModel["method"]>;
@@ -135,6 +136,8 @@ export interface Tab {
   mqttQos?: number;
   mqttRetain?: boolean;
   subscriptions?: Subscription[];
+  /** The flow a flow tab is editing. */
+  flowUid?: string;
   /** Set when the tab is editing a request that has been saved. */
   requestId?: string;
   /** Socket tabs only. */
@@ -237,6 +240,7 @@ interface TabStore {
   addSocketTab: (connectionId: string) => string;
   addMqttTab: (connectionId: string) => string;
   addSlowQueryTab: (connectionId: string) => string;
+  addFlowTab: (flowUid: string, name: string) => string;
   updateRequest: (tabId: string, patch: Partial<RequestDraft>) => void;
   setRequestResult: (tabId: string, result: RequestResultState | undefined) => void;
   recordRequestRun: (run: Omit<RequestRun, "id">) => void;
@@ -351,6 +355,19 @@ export const useTabsStore = create<TabStore>()(
           ...baseTab(tabId, "Slow queries", "slow"),
           connectionId,
         };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      addFlowTab: (flowUid, name) => {
+        const tabId = `flow:${flowUid}`;
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const tab: Tab = { ...baseTab(tabId, name, "flow"), flowUid };
         set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
         return tabId;
       },

@@ -43,9 +43,17 @@ class QueryLogs(Model):
     metadata: dict
 
 
+class Flows(Model):
+    """A node graph across the database and API planes, stored as drawn."""
+
+    uid: str = lambda: str(uuid4())
+    name: str
+    graph: dict
+
+
 class Bucket(Model):
     uid: str
     metadata: dict
 
 
-models = [Connections, ApiRequests, QueryLogs, Bucket]
+models = [Connections, ApiRequests, QueryLogs, Flows, Bucket]
