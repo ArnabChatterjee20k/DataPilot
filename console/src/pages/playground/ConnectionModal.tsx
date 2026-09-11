@@ -459,20 +459,32 @@ export function ConnectionModal({
     }
   };
 
-  const canTest =
-    !!source &&
-    (source === "sqlite" ? !!file || !!connectionUri : !!connectionUri.trim());
+  // an Appwrite broker rejects a connection with no credential, so saving one
+  // without it only moves the failure to the first click
+  const appwriteMissing =
+    kind === "appwrite"
+      ? !appwriteProjectId.trim()
+        ? "Project ID"
+        : !appwriteCredential.trim()
+          ? appwriteMode === "provision"
+            ? "a minted JWT"
+            : "a session secret or JWT"
+          : null
+      : null;
 
-  const canSave =
-    !!source &&
-    !isSaving &&
-    (source !== "sqlite" || !!file || !!connectionUri) &&
-    (source === "sqlite" || !!connectionUri.trim());
+  const hasUri =
+    source === "sqlite" ? !!file || !!connectionUri : !!connectionUri.trim();
+
+  const canTest = !!source && hasUri && !appwriteMissing;
+  const canSave = !!source && !isSaving && hasUri && !appwriteMissing;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      {/* the form outgrew a short window once the Appwrite preset was added,
+          and a dialog does not scroll on its own, so Create sat below the fold
+          with no way to reach it */}
+      <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-4">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{isEditMode ? "Edit connection" : "New connection"}</DialogTitle>
           <DialogDescription>
             {isEditMode
@@ -487,7 +499,7 @@ export function ConnectionModal({
             Loading…
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="-mr-1 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             {error && (
               <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -804,11 +816,12 @@ export function ConnectionModal({
           </div>
         )}
 
-        <DialogFooter className="sm:justify-between">
+        <DialogFooter className="shrink-0 sm:justify-between">
           <Button
             variant="outline"
             onClick={handleTest}
             disabled={!canTest || isTesting || isSaving}
+            title={appwriteMissing ? `${appwriteMissing} is still needed` : undefined}
             className="gap-1.5"
           >
             {isTesting ? (
@@ -823,7 +836,11 @@ export function ConnectionModal({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!canSave}>
+          <Button
+            onClick={handleSave}
+            disabled={!canSave}
+            title={appwriteMissing ? `${appwriteMissing} is still needed` : undefined}
+          >
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
