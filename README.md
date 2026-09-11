@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/header/graph.svg?title=DataPilot&subtitle=One+console+for+your+databases+and+your+APIs&mode=dark" />
-    <img alt="DataPilot" src="https://shieldcn.dev/header/graph.svg?title=DataPilot&subtitle=One+console+for+your+databases+and+your+APIs&mode=light" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/header/graph.svg?title=DataPilot&subtitle=Browse+your+databases,+call+your+APIs,+join+them+in+a+flow&mode=dark" />
+    <img alt="DataPilot" src="https://shieldcn.dev/header/graph.svg?title=DataPilot&subtitle=Browse+your+databases,+call+your+APIs,+join+them+in+a+flow&mode=light" />
   </picture>
 </p>
 
@@ -17,6 +17,9 @@ A console for the things an application talks to. Databases, HTTP APIs,
 WebSocket endpoints, MQTT brokers and Redis all open in tabs next to each other,
 so you can read a table, send the request that changed it, and watch the message
 it published without switching tools.
+
+Flows join them up. Feed a query's rows into a request, run the chain once, and
+watch each node report what it produced.
 
 The server holds every connection. The browser never opens a socket to your
 database or sends your API credentials. That is what makes a browser-based
