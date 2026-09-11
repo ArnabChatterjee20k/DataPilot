@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteKeyData, DeleteKeyErrors, DeleteKeyResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListChannelsData, ListChannelsErrors, ListChannelsResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, PublishData, PublishErrors, PublishResponses, ReadKeyData, ReadKeyErrors, ReadKeyResponses, ScanKeysData, ScanKeysErrors, ScanKeysResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, ServerInfoData, ServerInfoErrors, ServerInfoResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteKeyData, DeleteKeyErrors, DeleteKeyResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListChannelsData, ListChannelsErrors, ListChannelsResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, ProvisionAppwriteJwtData, ProvisionAppwriteJwtErrors, ProvisionAppwriteJwtResponses, PublishData, PublishErrors, PublishResponses, ReadKeyData, ReadKeyErrors, ReadKeyResponses, ScanKeysData, ScanKeysErrors, ScanKeysResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, ServerInfoData, ServerInfoErrors, ServerInfoResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -26,6 +26,27 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
  */
 export const testConnection = <ThrowOnError extends boolean = false>(options: Options<TestConnectionData, ThrowOnError>): RequestResult<TestConnectionResponses, TestConnectionErrors, ThrowOnError> => (options.client ?? client).post<TestConnectionResponses, TestConnectionErrors, ThrowOnError>({
     url: '/connections/test',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Provision Appwrite Jwt
+ *
+ * Mint a short-lived Appwrite JWT for a test user.
+ *
+ * The broker validates a client against an Appwrite session or JWT, so a
+ * connection to it can only be tested with a real one. This is the
+ * server-side sign-in the load harness uses: create a user, open a session,
+ * mint a JWT (`users.create` -> `users.create_session` -> `users.create_jwt`).
+ * The API key authorises this call only and is never stored; only the JWT is
+ * kept, masked, as the connection's mqtt_auth_data.
+ */
+export const provisionAppwriteJwt = <ThrowOnError extends boolean = false>(options: Options<ProvisionAppwriteJwtData, ThrowOnError>): RequestResult<ProvisionAppwriteJwtResponses, ProvisionAppwriteJwtErrors, ThrowOnError> => (options.client ?? client).post<ProvisionAppwriteJwtResponses, ProvisionAppwriteJwtErrors, ThrowOnError>({
+    url: '/connections/appwrite/jwt',
     ...options,
     headers: {
         'Content-Type': 'application/json',
