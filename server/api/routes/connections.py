@@ -115,8 +115,12 @@ async def probe_broker(base: str, started: float) -> ConnectionProbeModel:
     except ValueError as error:
         return ConnectionProbeModel(reachable=False, detail=str(error))
 
+    # the probe speaks 3.1.1: every broker accepts it, and the point here is
+    # whether the address answers at all
     session = mqtt_client.MqttSession(
-        address, identifier=mqtt_client.client_id("dp-probe")
+        address,
+        mqtt_client.BrokerOptions(protocol=mqtt_client.PROTOCOL_311),
+        identifier=mqtt_client.client_id("dp-probe"),
     )
     try:
         await session.connect(timeout=PROBE_TIMEOUT)

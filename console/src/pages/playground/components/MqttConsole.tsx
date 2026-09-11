@@ -6,6 +6,7 @@ import {
   PlugZap,
   Radio,
   SendHorizontal,
+  Tags,
   Trash2,
   X,
 } from "lucide-react";
@@ -19,15 +20,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { client } from "@/lib/sdk/client.gen";
 import type {
   DatabaseConnection,
+  KeyValueRow,
   SocketMessage,
   Subscription,
   Tab,
 } from "../store/store";
-import { useTabsStore } from "../store/store";
+import { emptyRow, useTabsStore } from "../store/store";
+import { BrokerSettings } from "./BrokerSettings";
+import { KeyValueEditor } from "./KeyValueEditor";
 import { EnvironmentBadge, EmptyState } from "./primitives";
 
 type State = "closed" | "connecting" | "open";
@@ -56,6 +65,11 @@ interface BrokerMessage {
   is_text: boolean;
   qos: number;
   retain: boolean;
+  /** MQTT 5 metadata; empty on a 3.1.1 session, which has none. */
+  user_properties?: string[][];
+  content_type?: string | null;
+  response_topic?: string | null;
+  correlation_data?: string | null;
 }
 
 function readControlFrame(data: string): ControlFrame | null {
@@ -105,6 +119,11 @@ export function MqttConsole({
   const [failure, setFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [payload, setPayload] = useState("");
+  // MQTT 5 properties for the next subscribe or publish; brokers route and
+  // authorise on these, so they belong next to the topic rather than buried
+  const [properties, setProperties] = useState<KeyValueRow[]>([emptyRow()]);
+  const [contentType, setContentType] = useState("");
+  const [responseTopic, setResponseTopic] = useState("");
   const opened = useRef(false);
   const socketRef = useRef<WebSocket | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
@@ -205,11 +224,20 @@ export function MqttConsole({
         log("received", data);
         return;
       }
+      const meta = [
+        message.retain ? "retained" : null,
+        `QoS ${message.qos}`,
+        message.content_type ? `type ${message.content_type}` : null,
+        message.response_topic ? `reply to ${message.response_topic}` : null,
+        message.correlation_data ? `correlation ${message.correlation_data}` : null,
+        ...(message.user_properties ?? []).map(([key, value]) => `${key}=${value}`),
+      ].filter(Boolean);
+
       log(
         "received",
-        `${message.topic}${message.retain ? " (retained)" : ""} · QoS ${
-          message.qos
-        }\n${message.is_text ? message.payload : "(binary, base64) " + message.payload}`
+        `${message.topic} · ${meta.join(" · ")}\n${
+          message.is_text ? message.payload : "(binary, base64) " + message.payload
+        }`
       );
     };
 
@@ -240,6 +268,23 @@ export function MqttConsole({
   };
 
   const canAct = state === "open" && !!topic.trim();
+  const activeProperties = properties.filter(
+    (row) => row.key.trim() && row.enabled !== false
+  );
+
+  const publish = () => {
+    command({
+      action: "publish",
+      topic,
+      payload,
+      qos,
+      retain,
+      user_properties: activeProperties,
+      content_type: contentType || undefined,
+      response_topic: responseTopic || undefined,
+    });
+    setPayload("");
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -290,6 +335,12 @@ export function MqttConsole({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
+          {tab.connectionId && (
+            <BrokerSettings
+              connectionId={tab.connectionId}
+              disabled={state !== "closed"}
+            />
+          )}
           {state === "closed" ? (
             <Button size="sm" className="h-8 px-3 text-xs" onClick={connect}>
               Connect
@@ -332,12 +383,83 @@ export function MqttConsole({
           </SelectContent>
         </Select>
 
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 px-2 text-xs"
+              title="MQTT 5 properties for the next subscribe or publish"
+            >
+              <Tags className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">Properties</span>
+              {activeProperties.length > 0 && (
+                <span className="text-[10px] text-muted-foreground">
+                  {activeProperties.length}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-96 space-y-3 p-3">
+            <div>
+              <p className="text-xs font-medium">Message properties</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                MQTT 5 only. Brokers route and authorise on user properties, and
+                a request/response pair is carried by the reply topic and the
+                correlation data.
+              </p>
+            </div>
+
+            <KeyValueEditor
+              label="User property"
+              rows={properties}
+              onChange={setProperties}
+              keyPlaceholder="subId"
+              valuePlaceholder="value"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1">
+                <span className="text-[11px] text-muted-foreground">
+                  Content type
+                </span>
+                <input
+                  value={contentType}
+                  onChange={(event) => setContentType(event.target.value)}
+                  aria-label="Content type"
+                  placeholder="application/json"
+                  className="h-8 w-full rounded-md border bg-background px-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[11px] text-muted-foreground">
+                  Reply to topic
+                </span>
+                <input
+                  value={responseTopic}
+                  onChange={(event) => setResponseTopic(event.target.value)}
+                  aria-label="Reply to topic"
+                  placeholder="replies/1"
+                  className="h-8 w-full rounded-md border bg-background px-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+            </div>
+          </PopoverContent>
+        </Popover>
+
         <Button
           size="sm"
           variant="outline"
           className="h-8 gap-1.5 px-2 text-xs"
           disabled={!canAct}
-          onClick={() => command({ action: "subscribe", topic, qos })}
+          onClick={() =>
+            command({
+              action: "subscribe",
+              topic,
+              qos,
+              user_properties: activeProperties,
+            })
+          }
           title="Subscribe, and wait for the broker to acknowledge it"
         >
           <Radio className="h-3.5 w-3.5" />
@@ -431,10 +553,7 @@ export function MqttConsole({
           value={payload}
           onChange={(event) => setPayload(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && canAct) {
-              command({ action: "publish", topic, payload, qos, retain });
-              setPayload("");
-            }
+            if (event.key === "Enter" && canAct) publish();
           }}
           disabled={state !== "open"}
           aria-label="Payload to publish"
@@ -458,10 +577,7 @@ export function MqttConsole({
           size="sm"
           className="h-8 gap-1.5 px-3 text-xs"
           disabled={!canAct}
-          onClick={() => {
-            command({ action: "publish", topic, payload, qos, retain });
-            setPayload("");
-          }}
+          onClick={publish}
           title={
             state !== "open"
               ? "Connect first"

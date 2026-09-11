@@ -106,6 +106,9 @@ class TestMqttProxy:
             frame = read_control(socket, "ready")
             assert "mqtt://127.0.0.1" in frame["detail"]
             assert "datapilot-" in frame["detail"]
+            # the version is on screen, because it decides whether user
+            # properties and enhanced authentication are available at all
+            assert "MQTT 3.1.1" in frame["detail"] or "MQTT 5" in frame["detail"]
 
     def test_a_subscribe_is_acknowledged_before_it_is_reported(
         self, client, mqtt_connection
@@ -303,3 +306,169 @@ class TestBrokerConnections:
         )
         assert response.status_code == 400
         assert "MQTT tab" in response.json()["detail"]
+
+
+class TestBrokerOptions:
+    """Everything about a session that is not the address lives in variables."""
+
+    def test_defaults_ask_for_mqtt_5(self):
+        address = mqtt_client.parse_broker_url("mqtt://host")
+        options = mqtt_client.options_from({}, address)
+        assert options.protocol == mqtt_client.PROTOCOL_5
+        assert options.speaks_v5
+
+    def test_the_protocol_can_be_pinned(self):
+        address = mqtt_client.parse_broker_url("mqtt://host")
+        options = mqtt_client.options_from({"mqtt_protocol": "3.1.1"}, address)
+        assert not options.speaks_v5
+
+    def test_an_unknown_protocol_falls_back_to_the_default(self):
+        address = mqtt_client.parse_broker_url("mqtt://host")
+        options = mqtt_client.options_from({"mqtt_protocol": "4"}, address)
+        assert options.protocol == mqtt_client.PROTOCOL_5
+
+    def test_enhanced_authentication_is_read(self):
+        """A JWT or session secret goes in as a named method, not a password."""
+        address = mqtt_client.parse_broker_url("mqtt://host")
+        options = mqtt_client.options_from(
+            {"mqtt_auth_method": "appwrite-jwt", "mqtt_auth_data": "tok_1"}, address
+        )
+        assert (options.auth_method, options.auth_data) == ("appwrite-jwt", "tok_1")
+
+    def test_tls_verification_can_be_turned_off(self):
+        address = mqtt_client.parse_broker_url("mqtts://host")
+        assert mqtt_client.options_from({}, address).verify_tls is True
+        assert (
+            mqtt_client.options_from({"mqtt_tls_insecure": "true"}, address).verify_tls
+            is False
+        )
+
+    def test_a_fixed_client_id_is_honoured(self):
+        address = mqtt_client.parse_broker_url("mqtt://host")
+        options = mqtt_client.options_from({"mqtt_client_id": "fixed-1"}, address)
+        assert options.client_id == "fixed-1"
+
+
+class TestUserProperties:
+    @pytest.mark.parametrize(
+        "stored",
+        [
+            {"projectId": "p1", "region": "eu"},
+            [{"key": "projectId", "value": "p1"}, {"key": "region", "value": "eu"}],
+            '{"projectId": "p1", "region": "eu"}',
+            [["projectId", "p1"], ["region", "eu"]],
+        ],
+    )
+    def test_every_shape_a_property_list_arrives_in_is_read(self, stored):
+        assert mqtt_client.pairs_from(stored) == [("projectId", "p1"), ("region", "eu")]
+
+    def test_a_disabled_row_is_left_out(self):
+        rows = [
+            {"key": "keep", "value": "1"},
+            {"key": "drop", "value": "2", "enabled": False},
+        ]
+        assert mqtt_client.pairs_from(rows) == [("keep", "1")]
+
+    def test_a_repeated_name_survives(self):
+        """MQTT allows the same property name twice; an object cannot."""
+        rows = [{"key": "tag", "value": "a"}, {"key": "tag", "value": "b"}]
+        assert mqtt_client.pairs_from(rows) == [("tag", "a"), ("tag", "b")]
+
+    def test_nothing_is_nothing(self):
+        assert mqtt_client.pairs_from(None) == []
+        assert mqtt_client.pairs_from("not json") == []
+
+    def test_connect_properties_are_only_built_when_there_are_any(self):
+        assert mqtt_client.connect_properties(mqtt_client.BrokerOptions()) is None
+
+        built = mqtt_client.connect_properties(
+            mqtt_client.BrokerOptions(
+                auth_method="appwrite-jwt",
+                auth_data="tok",
+                user_properties=[("projectId", "p1")],
+            )
+        )
+        assert built.AuthenticationMethod == "appwrite-jwt"
+        assert built.AuthenticationData == b"tok"
+        assert built.UserProperty == [("projectId", "p1")]
+
+    def test_publish_properties_carry_the_request_response_fields(self):
+        built = mqtt_client.build_properties(
+            "PUBLISH",
+            [("tag", "a")],
+            content_type="application/json",
+            response_topic="replies/1",
+            correlation_data="c-1",
+        )
+        assert built.ContentType == "application/json"
+        assert built.ResponseTopic == "replies/1"
+        assert built.CorrelationData == b"c-1"
+
+    def test_a_packet_with_nothing_to_say_builds_nothing(self):
+        assert mqtt_client.build_properties("SUBSCRIBE", []) is None
+
+
+class TestIncomingProperties:
+    def test_an_mqtt_3_message_has_none(self):
+        read = mqtt_client.read_message_properties(None)
+        assert read["user_properties"] == []
+        assert read["content_type"] is None
+
+    def test_the_metadata_comes_through(self):
+        from paho.mqtt.packettypes import PacketTypes
+        from paho.mqtt.properties import Properties
+
+        properties = Properties(PacketTypes.PUBLISH)
+        properties.UserProperty = [("subId", "s1")]
+        properties.ContentType = "application/json"
+        properties.ResponseTopic = "replies/1"
+        properties.CorrelationData = b"c-1"
+
+        read = mqtt_client.read_message_properties(properties)
+        assert read["user_properties"] == [["subId", "s1"]]
+        assert read["content_type"] == "application/json"
+        assert read["response_topic"] == "replies/1"
+        assert read["correlation_data"] == "c-1"
+
+
+class TestProtocolFallback:
+    def test_a_broker_that_only_speaks_3_1_1_still_connects(
+        self, client, mqtt_connection
+    ):
+        """Asking for 5 first is right; refusing to connect over it is not."""
+        with client.websocket_connect(
+            f"/connection/{mqtt_connection['uid']}/mqtt"
+        ) as socket:
+            frame = read_control(socket, "ready")
+            assert "MQTT" in frame["detail"]
+
+    def test_properties_on_a_3_1_1_session_do_not_break_it(
+        self, client, mqtt_connection
+    ):
+        """MQTT 3 has no properties, so they are dropped rather than sent."""
+        with client.websocket_connect(
+            f"/connection/{mqtt_connection['uid']}/mqtt"
+        ) as socket:
+            read_control(socket, "ready")
+            send(
+                socket,
+                action="subscribe",
+                topic="props/test",
+                qos=1,
+                user_properties=[{"key": "subId", "value": "s1"}],
+            )
+            read_control(socket, "subscribed")
+
+            send(
+                socket,
+                action="publish",
+                topic="props/test",
+                payload="hello",
+                qos=1,
+                user_properties=[{"key": "tag", "value": "a"}],
+                content_type="text/plain",
+            )
+            read_control(socket, "published")
+
+            message = read_message(socket)
+            assert message["payload"] == "hello"

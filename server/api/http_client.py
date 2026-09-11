@@ -62,8 +62,21 @@ def is_secret_header(name: str) -> bool:
     return any(pattern in lowered for pattern in SECRET_HEADER_PATTERNS)
 
 
+#: Names that match a secret pattern but name a scheme rather than a value.
+#: Masking these would hide which method is configured, which is the one thing
+#: you need to read to fix it.
+NOT_SECRET_VARIABLES = (
+    "mqtt_auth_method",
+    "mqtt_username",
+    "mqtt_client_id",
+    "mqtt_protocol",
+)
+
+
 def is_secret_variable(name: str) -> bool:
     lowered = (name or "").lower()
+    if lowered in NOT_SECRET_VARIABLES:
+        return False
     return any(pattern in lowered for pattern in SECRET_VARIABLE_PATTERNS)
 
 
