@@ -231,33 +231,6 @@ def mqtt_connection(client, broker):
 
 
 @pytest.fixture()
-def sqlite_connection_uri(client):
-    """A minimal SQLite upload, for asserting the API routes refuse databases."""
-    import io
-    import sqlite3
-    import tempfile
-    from pathlib import Path
-
-    temp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    temp.close()
-    path = Path(temp.name)
-    connection = sqlite3.connect(str(path))
-    connection.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
-    connection.commit()
-    connection.close()
-
-    response = client.post(
-        "/bucket",
-        files={
-            "file": (path.name, io.BytesIO(path.read_bytes()), "application/octet-stream")
-        },
-    )
-    path.unlink(missing_ok=True)
-    assert response.status_code == 200, response.text
-    return response.json()["connection_uri"]
-
-
-@pytest.fixture()
 def api_connection(client, upstream):
     """An API connection pointing at the upstream server."""
     response = client.post(

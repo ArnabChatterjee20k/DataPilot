@@ -14,6 +14,7 @@ import { ResultView } from "./components/ResultView";
 import { RequestBuilder } from "./components/RequestBuilder";
 import { ResponseView } from "./components/ResponseView";
 import { MqttConsole } from "./components/MqttConsole";
+import { SlowQueries } from "./components/SlowQueries";
 import { SocketConsole } from "./components/SocketConsole";
 import {
   CommandPalette,
@@ -300,6 +301,9 @@ function TabWorkspace({ tab }: { tab: Tab }) {
     [connections, tab.connectionId]
   );
 
+  if (tab.type === "slow") {
+    return <SlowQueries tab={tab} connection={connection} />;
+  }
   if (tab.type === "mqtt") {
     return <MqttConsole tab={tab} connection={connection} />;
   }

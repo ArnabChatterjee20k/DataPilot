@@ -18,11 +18,13 @@ from .bucket import router as BucketRouter
 from .queries import router as QueryRouter
 from .insights import router as InsightsRouter
 from .requests import router as RequestsRouter
+from .slow_queries import router as SlowQueryRouter
 
 router.include_router(ConnectionsRouter)
 router.include_router(BucketRouter)
 router.include_router(QueryRouter)
 router.include_router(InsightsRouter)
 router.include_router(RequestsRouter)
+router.include_router(SlowQueryRouter)
 
 __all__ = ["router", "UPLOAD_DIR"]

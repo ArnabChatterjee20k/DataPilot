@@ -1448,6 +1448,331 @@
         }
       }
     },
+    "/connection/{connection_id}/slow-queries": {
+      "get": {
+        "tags": [
+          "slow-queries"
+        ],
+        "summary": "Get Slow Queries",
+        "description": "The slowest statements the server itself has recorded.\n\nNot the queries DataPilot has run - those would only describe DataPilot.",
+        "operationId": "get_slow_queries",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 500,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "order_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "total",
+              "title": "Order By"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlowQueryReportModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/slow-queries/snapshots": {
+      "post": {
+        "tags": [
+          "slow-queries"
+        ],
+        "summary": "Take Snapshot",
+        "description": "Store the current reading.\n\nThe server's counters only ever go up and are lost on a reset or a\nrestart, so a reading kept here is what makes \"what changed since\nyesterday\" answerable at all.",
+        "operationId": "take_snapshot",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "note",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Note"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDetailModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "slow-queries"
+        ],
+        "summary": "List Snapshots",
+        "operationId": "list_snapshots",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotListModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/slow-queries/snapshots/{snapshot_uid}": {
+      "get": {
+        "tags": [
+          "slow-queries"
+        ],
+        "summary": "Get Snapshot",
+        "operationId": "get_snapshot",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "snapshot_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Snapshot Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotDetailModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "slow-queries"
+        ],
+        "summary": "Delete Snapshot",
+        "operationId": "delete_snapshot",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "snapshot_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Snapshot Uid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connection/{connection_id}/slow-queries/compare": {
+      "get": {
+        "tags": [
+          "slow-queries"
+        ],
+        "summary": "Compare Snapshots",
+        "description": "What happened between two readings.\n\nThe absolute numbers include every statement since the counters were last\nreset, which may be weeks of traffic that has nothing to do with the change\nyou are looking at. The difference is the answer.",
+        "operationId": "compare_snapshots",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Before"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotComparisonModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -2747,6 +3072,244 @@
           "url"
         ],
         "title": "SentRequestModel"
+      },
+      "SlowQueryModel": {
+        "properties": {
+          "digest": {
+            "type": "string",
+            "title": "Digest"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement"
+          },
+          "calls": {
+            "type": "integer",
+            "title": "Calls",
+            "default": 0
+          },
+          "total_ms": {
+            "type": "number",
+            "title": "Total Ms",
+            "default": 0.0
+          },
+          "mean_ms": {
+            "type": "number",
+            "title": "Mean Ms",
+            "default": 0.0
+          },
+          "max_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Ms"
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows",
+            "default": 0
+          },
+          "rows_per_call": {
+            "type": "number",
+            "title": "Rows Per Call",
+            "default": 0.0
+          },
+          "rows_examined": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Examined"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "digest",
+          "statement"
+        ],
+        "title": "SlowQueryModel",
+        "description": "One statement the server itself recorded, whatever backend it came from."
+      },
+      "SlowQueryReportModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "default": true
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/SlowQueryModel"
+            },
+            "type": "array",
+            "title": "Queries"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "source"
+        ],
+        "title": "SlowQueryReportModel"
+      },
+      "SnapshotComparisonModel": {
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "before": {
+            "$ref": "#/components/schemas/SnapshotModel"
+          },
+          "after": {
+            "$ref": "#/components/schemas/SnapshotModel"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/SlowQueryModel"
+            },
+            "type": "array",
+            "title": "Queries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connection_id",
+          "before",
+          "after"
+        ],
+        "title": "SnapshotComparisonModel",
+        "description": "What happened between two readings, as the difference in each counter."
+      },
+      "SnapshotDetailModel": {
+        "properties": {
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotModel"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/SlowQueryModel"
+            },
+            "type": "array",
+            "title": "Queries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "snapshot"
+        ],
+        "title": "SnapshotDetailModel"
+      },
+      "SnapshotListModel": {
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotModel"
+            },
+            "type": "array",
+            "title": "Snapshots"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "SnapshotListModel"
+      },
+      "SnapshotModel": {
+        "properties": {
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          },
+          "connection_id": {
+            "type": "string",
+            "title": "Connection Id"
+          },
+          "taken_at": {
+            "type": "string",
+            "title": "Taken At"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "query_count": {
+            "type": "integer",
+            "title": "Query Count",
+            "default": 0
+          },
+          "total_ms": {
+            "type": "number",
+            "title": "Total Ms",
+            "default": 0.0
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid",
+          "connection_id",
+          "taken_at",
+          "source"
+        ],
+        "title": "SnapshotModel",
+        "description": "A stored reading, so a comparison survives the counters being reset."
       },
       "SourceConfig": {
         "type": "string",

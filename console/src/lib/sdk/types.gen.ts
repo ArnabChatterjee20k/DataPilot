@@ -768,6 +768,167 @@ export type SentRequestModel = {
 };
 
 /**
+ * SlowQueryModel
+ *
+ * One statement the server itself recorded, whatever backend it came from.
+ */
+export type SlowQueryModel = {
+    /**
+     * Digest
+     */
+    digest: string;
+    /**
+     * Statement
+     */
+    statement: string;
+    /**
+     * Calls
+     */
+    calls?: number;
+    /**
+     * Total Ms
+     */
+    total_ms?: number;
+    /**
+     * Mean Ms
+     */
+    mean_ms?: number;
+    /**
+     * Max Ms
+     */
+    max_ms?: number | null;
+    /**
+     * Rows
+     */
+    rows?: number;
+    /**
+     * Rows Per Call
+     */
+    rows_per_call?: number;
+    /**
+     * Rows Examined
+     */
+    rows_examined?: number | null;
+    /**
+     * First Seen
+     */
+    first_seen?: string | null;
+    /**
+     * Last Seen
+     */
+    last_seen?: string | null;
+};
+
+/**
+ * SlowQueryReportModel
+ */
+export type SlowQueryReportModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Available
+     */
+    available?: boolean;
+    /**
+     * Queries
+     */
+    queries?: Array<SlowQueryModel>;
+    /**
+     * Detail
+     */
+    detail?: string;
+    /**
+     * Origin
+     */
+    origin?: string;
+};
+
+/**
+ * SnapshotComparisonModel
+ *
+ * What happened between two readings, as the difference in each counter.
+ */
+export type SnapshotComparisonModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    before: SnapshotModel;
+    after: SnapshotModel;
+    /**
+     * Queries
+     */
+    queries?: Array<SlowQueryModel>;
+};
+
+/**
+ * SnapshotDetailModel
+ */
+export type SnapshotDetailModel = {
+    snapshot: SnapshotModel;
+    /**
+     * Queries
+     */
+    queries?: Array<SlowQueryModel>;
+};
+
+/**
+ * SnapshotListModel
+ */
+export type SnapshotListModel = {
+    /**
+     * Snapshots
+     */
+    snapshots?: Array<SnapshotModel>;
+    /**
+     * Total
+     */
+    total?: number;
+};
+
+/**
+ * SnapshotModel
+ *
+ * A stored reading, so a comparison survives the counters being reset.
+ */
+export type SnapshotModel = {
+    /**
+     * Uid
+     */
+    uid: string;
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Taken At
+     */
+    taken_at: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Query Count
+     */
+    query_count?: number;
+    /**
+     * Total Ms
+     */
+    total_ms?: number;
+    /**
+     * Note
+     */
+    note?: string;
+};
+
+/**
  * SourceConfig
  */
 export type SourceConfig = 'postgres' | 'sqlite' | 'mysql' | 'api';
@@ -1798,6 +1959,217 @@ export type SetVariablesResponses = {
 };
 
 export type SetVariablesResponse = SetVariablesResponses[keyof SetVariablesResponses];
+
+export type GetSlowQueriesData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number | null;
+        /**
+         * Order By
+         */
+        order_by?: string;
+    };
+    url: '/connection/{connection_id}/slow-queries';
+};
+
+export type GetSlowQueriesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSlowQueriesError = GetSlowQueriesErrors[keyof GetSlowQueriesErrors];
+
+export type GetSlowQueriesResponses = {
+    /**
+     * Successful Response
+     */
+    200: SlowQueryReportModel;
+};
+
+export type GetSlowQueriesResponse = GetSlowQueriesResponses[keyof GetSlowQueriesResponses];
+
+export type ListSnapshotsData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/slow-queries/snapshots';
+};
+
+export type ListSnapshotsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListSnapshotsError = ListSnapshotsErrors[keyof ListSnapshotsErrors];
+
+export type ListSnapshotsResponses = {
+    /**
+     * Successful Response
+     */
+    200: SnapshotListModel;
+};
+
+export type ListSnapshotsResponse = ListSnapshotsResponses[keyof ListSnapshotsResponses];
+
+export type TakeSnapshotData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Note
+         */
+        note?: string;
+    };
+    url: '/connection/{connection_id}/slow-queries/snapshots';
+};
+
+export type TakeSnapshotErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type TakeSnapshotError = TakeSnapshotErrors[keyof TakeSnapshotErrors];
+
+export type TakeSnapshotResponses = {
+    /**
+     * Successful Response
+     */
+    200: SnapshotDetailModel;
+};
+
+export type TakeSnapshotResponse = TakeSnapshotResponses[keyof TakeSnapshotResponses];
+
+export type DeleteSnapshotData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Snapshot Uid
+         */
+        snapshot_uid: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/slow-queries/snapshots/{snapshot_uid}';
+};
+
+export type DeleteSnapshotErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteSnapshotError = DeleteSnapshotErrors[keyof DeleteSnapshotErrors];
+
+export type DeleteSnapshotResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteSnapshotResponse = DeleteSnapshotResponses[keyof DeleteSnapshotResponses];
+
+export type GetSnapshotData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+        /**
+         * Snapshot Uid
+         */
+        snapshot_uid: string;
+    };
+    query?: never;
+    url: '/connection/{connection_id}/slow-queries/snapshots/{snapshot_uid}';
+};
+
+export type GetSnapshotErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetSnapshotError = GetSnapshotErrors[keyof GetSnapshotErrors];
+
+export type GetSnapshotResponses = {
+    /**
+     * Successful Response
+     */
+    200: SnapshotDetailModel;
+};
+
+export type GetSnapshotResponse = GetSnapshotResponses[keyof GetSnapshotResponses];
+
+export type CompareSnapshotsData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query: {
+        /**
+         * Before
+         */
+        before: string;
+        /**
+         * After
+         */
+        after?: string | null;
+    };
+    url: '/connection/{connection_id}/slow-queries/compare';
+};
+
+export type CompareSnapshotsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CompareSnapshotsError = CompareSnapshotsErrors[keyof CompareSnapshotsErrors];
+
+export type CompareSnapshotsResponses = {
+    /**
+     * Successful Response
+     */
+    200: SnapshotComparisonModel;
+};
+
+export type CompareSnapshotsResponse = CompareSnapshotsResponses[keyof CompareSnapshotsResponses];
 
 export type HealthData = {
     body?: never;

@@ -39,7 +39,13 @@ export type { Column };
 
 export type SortState = { column: string; direction: "asc" | "desc" } | null;
 
-export type TabType = "query" | "table" | "request" | "socket" | "mqtt";
+export type TabType =
+  | "query"
+  | "table"
+  | "request"
+  | "socket"
+  | "mqtt"
+  | "slow";
 
 export type KeyValueRow = KeyValueModel;
 export type HttpMethod = NonNullable<RequestSpecModel["method"]>;
@@ -230,6 +236,7 @@ interface TabStore {
   ) => string;
   addSocketTab: (connectionId: string) => string;
   addMqttTab: (connectionId: string) => string;
+  addSlowQueryTab: (connectionId: string) => string;
   updateRequest: (tabId: string, patch: Partial<RequestDraft>) => void;
   setRequestResult: (tabId: string, result: RequestResultState | undefined) => void;
   recordRequestRun: (run: Omit<RequestRun, "id">) => void;
@@ -327,6 +334,22 @@ export const useTabsStore = create<TabStore>()(
           mqttTopic: "",
           mqttQos: 0,
           subscriptions: [],
+        };
+        set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
+        return tabId;
+      },
+
+      addSlowQueryTab: (connectionId) => {
+        const tabId = `slow:${connectionId}`;
+        const existing = get().tabs.find((tab) => tab.id === tabId);
+        if (existing) {
+          set({ activeTabId: tabId });
+          return tabId;
+        }
+
+        const tab: Tab = {
+          ...baseTab(tabId, "Slow queries", "slow"),
+          connectionId,
         };
         set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tabId }));
         return tabId;
