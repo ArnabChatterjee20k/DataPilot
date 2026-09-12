@@ -88,6 +88,7 @@ class Node:
     query: str = ""
     request: dict = field(default_factory=dict)
     constants: list[dict] = field(default_factory=list)
+    checks: list[dict] = field(default_factory=list)
     position: dict = field(default_factory=dict)
 
     @property
@@ -183,6 +184,7 @@ def read_graph(payload: dict) -> Graph:
                 query=str(raw.get("query") or ""),
                 request=raw.get("request") or {},
                 constants=read_constants(node_id, raw.get("constants")),
+                checks=read_checks(node_id, raw.get("checks")),
                 position=raw.get("position") or {},
             )
         )
@@ -243,6 +245,68 @@ def read_constants(node_id: str, rows: Any) -> list[dict]:
     return cleaned
 
 
+#: What a check can ask, and how each one reads when it is written out.
+OPERATORS: dict[str, str] = {
+    "exists": "to be there",
+    "missing": "not to be there",
+    "eq": "to be",
+    "ne": "not to be",
+    "gt": "to be more than",
+    "gte": "to be at least",
+    "lt": "to be less than",
+    "lte": "to be at most",
+    "contains": "to contain",
+    "not_contains": "not to contain",
+    "matches": "to match",
+    "count_eq": "to have exactly",
+    "count_gt": "to have more than",
+    "count_lt": "to have fewer than",
+    "empty": "to be empty",
+    "not_empty": "not to be empty",
+}
+
+#: Operators that read the value on their own, with nothing to compare against.
+LONE_OPERATORS = {"exists", "missing", "empty", "not_empty"}
+
+#: Where a check looks: at what came in, or at what this node produced.
+ON_INPUT = "input"
+ON_OUTPUT = "output"
+
+
+def read_checks(node_id: str, rows: Any) -> list[dict]:
+    """Clean the assertions a node was drawn with."""
+    cleaned: list[dict] = []
+
+    for raw in rows or []:
+        if not isinstance(raw, dict):
+            continue
+        path = str(raw.get("path") or "").strip()
+        if not path:
+            continue
+        operator = str(raw.get("op") or "eq").strip()
+        if operator not in OPERATORS:
+            raise FlowError(
+                f"'{node_id}' checks something with '{operator}', which is not "
+                f"one of {', '.join(sorted(OPERATORS))}."
+            )
+        on = str(raw.get("on") or ON_OUTPUT).strip()
+        if on not in (ON_INPUT, ON_OUTPUT):
+            raise FlowError(
+                f"'{node_id}' has a check on '{on}'; a check looks at the "
+                f"{ON_INPUT} or the {ON_OUTPUT}."
+            )
+        cleaned.append(
+            {
+                "on": on,
+                "path": path,
+                "op": operator,
+                "value": str(raw.get("value") or ""),
+                "enabled": raw.get("enabled", True) is not False,
+            }
+        )
+    return cleaned
+
+
 def find_cycle(graph: Graph) -> list[str]:
     """Return one cycle, or nothing. Naming it beats saying 'invalid graph'."""
     children = graph.children()
@@ -272,7 +336,7 @@ def find_cycle(graph: Graph) -> list[str]:
 
 
 #: Stored on every node, whatever it is.
-COMMON_FIELDS = ("id", "name", "kind", "connection_id", "position")
+COMMON_FIELDS = ("id", "name", "kind", "connection_id", "position", "checks")
 
 
 def node_payload(node: Node) -> dict:
@@ -575,6 +639,138 @@ def name_index(graph: Graph) -> dict[str, str]:
             index[node.name] = node.id
             index[node.name.replace(" ", "_")] = node.id
     return index
+
+
+def _as_number(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _length(value: Any) -> Optional[int]:
+    if isinstance(value, (list, dict, str, tuple, set)):
+        return len(value)
+    return None
+
+
+def _compare(operator: str, actual: Any, expected: str) -> tuple[bool, str]:
+    """Run one comparison, and say why when it could not be run at all."""
+    if operator == "exists":
+        return actual is not None, ""
+    if operator == "missing":
+        return actual is None, ""
+    if operator == "empty":
+        return not actual, ""
+    if operator == "not_empty":
+        return bool(actual), ""
+
+    if operator in ("eq", "ne"):
+        # compare as numbers when both sides are numbers, so 200 and "200"
+        # are the same answer rather than a puzzle
+        left, right = _as_number(actual), _as_number(expected)
+        same = (
+            left == right
+            if left is not None and right is not None
+            else as_text(actual) == expected
+        )
+        return (same if operator == "eq" else not same), ""
+
+    if operator in ("gt", "gte", "lt", "lte"):
+        left, right = _as_number(actual), _as_number(expected)
+        if left is None:
+            return False, f"{as_text(actual)!r} is not a number"
+        if right is None:
+            return False, f"{expected!r} is not a number"
+        return (
+            {
+                "gt": left > right,
+                "gte": left >= right,
+                "lt": left < right,
+                "lte": left <= right,
+            }[operator],
+            "",
+        )
+
+    if operator in ("contains", "not_contains"):
+        inside = expected in as_text(actual)
+        return (inside if operator == "contains" else not inside), ""
+
+    if operator == "matches":
+        try:
+            pattern = re.compile(expected)
+        except re.error as problem:
+            return False, f"that is not a valid pattern: {problem}"
+        return bool(pattern.search(as_text(actual))), ""
+
+    if operator in ("count_eq", "count_gt", "count_lt"):
+        size = _length(actual)
+        if size is None:
+            return False, f"{as_text(actual)!r} has no length to count"
+        wanted = _as_number(expected)
+        if wanted is None:
+            return False, f"{expected!r} is not a number"
+        return (
+            {
+                "count_eq": size == wanted,
+                "count_gt": size > wanted,
+                "count_lt": size < wanted,
+            }[operator],
+            "",
+        )
+
+    return False, f"'{operator}' is not something a check can ask"
+
+
+def describe_check(check: dict) -> str:
+    """`status to be 200`, so a result reads without the operator table."""
+    reading = OPERATORS.get(check["op"], check["op"])
+    if check["op"] in LONE_OPERATORS:
+        return f"{check['path']} {reading}"
+    return f"{check['path']} {reading} {check['value']}"
+
+
+def check(
+    checks: list[dict], scope: dict, names: dict, on: str
+) -> list[dict]:
+    """Run the checks that look at `on`, and report what each one saw.
+
+    Never raises and never decides anything about the node: a failed check is
+    a finding, and the node it is attached to still succeeded or failed on its
+    own merits.
+    """
+    results: list[dict] = []
+
+    for item in checks:
+        if item["on"] != on or not item.get("enabled", True):
+            continue
+
+        if on == ON_INPUT:
+            actual, absent = resolve_reference(item["path"], scope, names)
+            detail = absent.reason if absent else ""
+        else:
+            actual = resolve_path(
+                scope, item["path"].replace("[", ".").replace("]", "").split(".")
+            )
+            detail = ""
+
+        passed, problem = _compare(item["op"], actual, item["value"])
+        preview = as_text(actual)
+        results.append(
+            {
+                "on": on,
+                "path": item["path"],
+                "op": item["op"],
+                "value": item["value"],
+                "passed": passed,
+                "actual": preview[:PREVIEW_CHARS]
+                + ("…" if len(preview) > PREVIEW_CHARS else ""),
+                "detail": problem or (detail if not passed else ""),
+                "description": describe_check(item),
+            }
+        )
+
+    return results
 
 
 def describe_missing(missing: list[Missing]) -> str:

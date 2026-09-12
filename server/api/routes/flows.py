@@ -377,6 +377,23 @@ async def run_flow(websocket: WebSocket, flow_uid: str):
                         ),
                         "failed": failed,
                         "skipped": skipped,
+                        # nested rather than alongside the states above: a
+                        # failed check is a finding about the data, not a
+                        # verdict on the run
+                        "checks": {
+                            "passed": sum(
+                                1
+                                for run in runs.values()
+                                for item in run.checks
+                                if item["passed"]
+                            ),
+                            "failed": [
+                                f"{run.name}: {item['description']}"
+                                for run in runs.values()
+                                for item in run.checks
+                                if not item["passed"]
+                            ],
+                        },
                     }
                 ),
             )
