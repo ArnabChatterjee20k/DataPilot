@@ -361,6 +361,51 @@ class FlowListModel(BaseModel):
     total: int = 0
 
 
+class NodeRunModel(BaseModel):
+    """One node's outcome, the same shape the live run reports."""
+
+    id: str
+    name: str
+    kind: str
+    state: str
+    elapsed_ms: Optional[float] = None
+    summary: str = ""
+    result: Any = None
+    error: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    blocked_by: list[str] = Field(default_factory=list)
+
+
+class NodeReferenceModel(BaseModel):
+    """A `{{...}}` someone can copy, and what it holds right now."""
+
+    reference: str
+    value: str = ""
+
+
+class NodeReferenceGroupModel(BaseModel):
+    """The references one upstream node offers."""
+
+    node: str
+    kind: str
+    references: list[NodeReferenceModel] = Field(default_factory=list)
+
+
+class NodeTestModel(BaseModel):
+    """Testing one node: what it produced, and what it was actually sent."""
+
+    node: NodeRunModel
+    #: The query after `{{...}}` was replaced, or the request as it went out.
+    resolved_query: str = ""
+    resolved_request: Optional[dict] = None
+    #: Nodes that had to run first for this one to have any input.
+    upstream: list[NodeRunModel] = Field(default_factory=list)
+    #: What this node can refer to, ready to copy into a query or a body.
+    available: list[NodeReferenceGroupModel] = Field(default_factory=list)
+    #: How a node after this one refers to what this one just produced.
+    offers: list[NodeReferenceModel] = Field(default_factory=list)
+
+
 class ValueCountModel(BaseModel):
     value: Any = None
     count: int

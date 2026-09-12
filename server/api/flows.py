@@ -87,6 +87,36 @@ class Graph:
             children[edge.source].append(edge.target)
         return children
 
+    def ancestors(self, node_id: str) -> set[str]:
+        """Everything `node_id` depends on, however far back."""
+        parents = self.parents()
+        found: set[str] = set()
+        stack = list(parents.get(node_id, []))
+        while stack:
+            current = stack.pop()
+            if current in found:
+                continue
+            found.add(current)
+            stack.extend(parents.get(current, []))
+        return found
+
+    def upto(self, node_id: str) -> "Graph":
+        """The part of the flow needed to reach one node, and no more.
+
+        Testing a node means running what feeds it, not the branches beside
+        it: a request that fires on the way past is a surprise nobody asked
+        for.
+        """
+        keep = self.ancestors(node_id) | {node_id}
+        return Graph(
+            nodes=[node for node in self.nodes if node.id in keep],
+            edges=[
+                edge
+                for edge in self.edges
+                if edge.source in keep and edge.target in keep
+            ],
+        )
+
 
 def read_graph(payload: dict) -> Graph:
     """Read a stored or submitted graph, refusing one that cannot run."""
@@ -232,6 +262,62 @@ def node_output(kind: str, result: Any) -> dict:
             for header in result.get("headers") or []
         },
     }
+
+
+#: How many columns or JSON keys are worth listing before the list is noise.
+MAX_SUGGESTIONS = 12
+
+#: How much of a value is shown beside a reference.
+PREVIEW_CHARS = 80
+
+
+def reference_name(name: str, node_id: str) -> str:
+    """What to write in `{{...}}` for this node.
+
+    A name with a space in it cannot be written literally, so the underscore
+    form is the one to hand people rather than one they have to work out
+    after a reference silently fails.
+    """
+    return name.replace(" ", "_") if name else node_id
+
+
+def suggest_references(node_name: str, kind: str, output: dict) -> list[dict]:
+    """Every reference this node offers, with what it resolves to right now.
+
+    Someone wiring a request to a query should not have to learn the output
+    shape from the docs and the node name from the canvas and then guess how
+    the two combine. The answer is copyable instead.
+    """
+    paths: list[str] = []
+    if kind == QUERY:
+        paths = ["rows", "row_count", "columns", "columns.0"]
+        first = output.get("first")
+        if isinstance(first, dict):
+            paths += [f"first.{column}" for column in list(first)[:MAX_SUGGESTIONS]]
+            # indexing is a pattern rather than one value, so it is shown on a
+            # row that exists: a suggestion resolving to nothing teaches nothing
+            for index in range(min(len(output.get("rows") or []), 2)):
+                paths += [f"rows.{index}.{column}" for column in list(first)[:1]]
+    else:
+        paths = ["status", "ok", "body", "json"]
+        parsed = output.get("json")
+        if isinstance(parsed, dict):
+            paths += [f"json.{key}" for key in list(parsed)[:MAX_SUGGESTIONS]]
+
+    suggestions = []
+    for path in paths:
+        value = resolve_path(output, path.replace("[", ".").replace("]", "").split("."))
+        if value is None:
+            continue
+        preview = as_text(value)
+        suggestions.append(
+            {
+                "reference": f"{{{{{node_name}.{path}}}}}",
+                "value": preview[:PREVIEW_CHARS]
+                + ("…" if len(preview) > PREVIEW_CHARS else ""),
+            }
+        )
+    return suggestions
 
 
 def resolve_path(source: Any, path: list[str]) -> Any:
