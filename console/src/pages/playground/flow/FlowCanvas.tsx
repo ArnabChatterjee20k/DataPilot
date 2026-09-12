@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import type { DatabaseConnection } from "../store/store";
-import { useSaveFlow } from "../hooks/useFlows";
+import { useSaveFlow, useTestNode } from "../hooks/useFlows";
 import { FlowNodeCard, type FlowNodeCardData } from "./FlowNodeCard";
 import { NodeInspector } from "./NodeInspector";
 import { useFlowRun } from "./useFlowRun";
@@ -89,6 +89,7 @@ export function FlowCanvas({
   connections: DatabaseConnection[];
 }) {
   const save = useSaveFlow(flowUid);
+  const test = useTestNode(flowUid);
   const { runs, isRunning, summary, failure, run, reset } = useFlowRun(flowUid);
 
   // React Flow owns the array: it stores the measurements a node needs before
@@ -105,6 +106,10 @@ export function FlowCanvas({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [help, setHelp] = useState(false);
+
+  useEffect(() => {
+    test.reset();
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setNodes(graph.nodes.map(toCanvas));
@@ -291,6 +296,13 @@ export function FlowCanvas({
       setSaveError(errorMessage(problem, "Could not save the flow"));
       return false;
     }
+  };
+
+  const testNode = async (id: string) => {
+    // the server reads the stored graph, so an unsaved edit would be tested
+    // as it was before the edit, which is worse than not testing at all
+    if (dirty && !(await persist())) return;
+    test.mutate(id);
   };
 
   const start = async () => {
@@ -500,6 +512,13 @@ export function FlowCanvas({
             node={toDomain(selected)}
             run={runs[selected.id]}
             connections={connections}
+            test={{
+              outcome: test.data,
+              isPending: test.isPending,
+              error: test.error,
+              dirty,
+              onRun: () => void testNode(selected.id),
+            }}
             onChange={(patch) => patchNode(selected.id, patch)}
             onDelete={() => removeNode(selected.id)}
             onClose={() => setSelectedId(null)}

@@ -5,8 +5,10 @@ import {
   deleteFlow,
   getFlow,
   listFlows,
+  testNode,
   updateFlow,
   type FlowModel,
+  type NodeTestModel,
 } from "@/lib/sdk";
 import type { FlowGraph } from "../flow/types";
 
@@ -85,5 +87,24 @@ export function useDeleteFlow() {
       await deleteFlow({ path: { flow_uid: uid }, throwOnError: true });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: flowKeys.list() }),
+  });
+}
+
+/**
+ * Running one node rather than the whole flow.
+ *
+ * The server runs whatever feeds it and nothing beside it, and reports what
+ * the node was actually sent, which is the thing worth seeing when a flow
+ * does something unexpected.
+ */
+export function useTestNode(flowUid: string | undefined) {
+  return useMutation({
+    mutationFn: async (nodeId: string): Promise<NodeTestModel> => {
+      const response = await testNode({
+        path: { flow_uid: flowUid!, node_id: nodeId },
+        throwOnError: true,
+      });
+      return response.data!;
+    },
   });
 }

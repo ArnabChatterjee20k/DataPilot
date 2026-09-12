@@ -13,6 +13,8 @@ import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { DatabaseConnection } from "../store/store";
 import { CopyButton } from "../components/primitives";
+import type { NodeTestModel } from "@/lib/sdk";
+import { NodeTest } from "./NodeTest";
 import type { FlowNode, NodeRun } from "./types";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -29,6 +31,7 @@ export function NodeInspector({
   node,
   run,
   connections,
+  test,
   onChange,
   onDelete,
   onClose,
@@ -36,6 +39,13 @@ export function NodeInspector({
   node: FlowNode;
   run?: NodeRun;
   connections: DatabaseConnection[];
+  test: {
+    outcome?: NodeTestModel;
+    isPending: boolean;
+    error: unknown;
+    dirty: boolean;
+    onRun: () => void;
+  };
   onChange: (patch: Partial<FlowNode>) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -200,8 +210,11 @@ export function NodeInspector({
               upstream node produced. A query node offers{" "}
               <code>rows</code>, <code>first</code> and <code>row_count</code>;
               a request node offers <code>status</code>, <code>json</code> and{" "}
-              <code>body</code>.
+              <code>body</code>. Test the node to see the exact references,
+              with what each one holds.
             </p>
+
+            <NodeTest {...test} />
           </>
         ) : (
           <ResultPanel run={run} />
