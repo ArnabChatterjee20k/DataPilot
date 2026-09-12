@@ -685,3 +685,93 @@ test.describe("a constants node", () => {
     await expect(page.getByRole("alert")).toContainText("two values called 'same'");
   });
 });
+
+test.describe("checks on a node", () => {
+  async function addCheck(
+    page: Page,
+    path: string,
+    operator: string,
+    value?: string
+  ) {
+    // the path is typed last on purpose: filling it opens the next blank row,
+    // and everything after would then land in that one instead
+    const checks = page.getByRole("group", { name: "Checks" });
+    await checks.getByLabel("Comparison").last().click();
+    await page.getByRole("option", { name: operator, exact: true }).click();
+    if (value !== undefined) {
+      await checks.getByLabel("Expected value").last().fill(value);
+    }
+    await checks.getByLabel("Path to check").last().fill(path);
+  }
+
+  test("a failing check reports without failing the node", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 3");
+    await addCheck(page, "row_count", "more than", "5");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    const results = page.getByLabel("Check results");
+    await expect(results).toContainText("row_count to be more than 5");
+    await expect(results).toContainText("got 3");
+    // the node itself still did what it was asked
+    await expect(page.getByText("3 rows")).toBeVisible();
+  });
+
+  test("a passing check says so", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 3");
+    await addCheck(page, "row_count", "is", "3");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByLabel("Check results")).toContainText("row_count to be 3");
+    await expect(page.getByLabel("Check results")).not.toContainText("got");
+  });
+
+  test("the run summary counts them and the card shows the tally", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 3");
+    await addCheck(page, "row_count", "is", "3");
+    await addCheck(page, "row_count", "more than", "99");
+
+    await page.getByRole("button", { name: "Run" }).click();
+
+    await expect(page.getByRole("status")).toContainText("1 check failed");
+    await expect(page.getByRole("status")).toContainText("row_count to be more than 99");
+    await expect(node(page, "Rows")).toContainText("1/2 checks passed");
+    // and the flow did not stop
+    await expect(page.getByRole("status")).toContainText("1 succeeded");
+  });
+
+  test("a check on what a node receives reads the upstream node", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 3");
+    await addRequestNode(page, "Send", "/echo");
+    await connect(page, "Rows", "Send");
+
+    await node(page, "Send").click();
+    const checks = page.getByRole("group", { name: "Checks" });
+    await checks.getByLabel("What to check").last().click();
+    await page.getByRole("option", { name: "it receives" }).click();
+    await addCheck(page, "Rows.row_count", "is", "3");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByLabel("Check results")).toContainText(
+      "Rows.row_count to be 3"
+    );
+  });
+
+  test("an operator that stands alone takes no value", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 3");
+    await addCheck(page, "first.id", "is there");
+
+    const checks = page.getByRole("group", { name: "Checks" });
+    await expect(checks.getByLabel("Expected value").first()).toBeDisabled();
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+    await expect(page.getByLabel("Check results")).toContainText("first.id to be there");
+  });
+});
