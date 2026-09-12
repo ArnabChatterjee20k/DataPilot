@@ -16,6 +16,7 @@ import { CopyButton } from "../components/primitives";
 import { KeyValueEditor } from "../components/KeyValueEditor";
 import type { NodeTestModel } from "@/lib/sdk";
 import { ChecksEditor } from "./ChecksEditor";
+import { LivePanel, type LiveControls } from "./LivePanel";
 import { NodeTest } from "./NodeTest";
 import type { FlowNode, NodeRun } from "./types";
 
@@ -34,6 +35,7 @@ export function NodeInspector({
   run,
   connections,
   test,
+  live,
   onChange,
   onDelete,
   onClose,
@@ -48,6 +50,7 @@ export function NodeInspector({
     dirty: boolean;
     onRun: () => void;
   };
+  live?: LiveControls;
   onChange: (patch: Partial<FlowNode>) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -147,7 +150,24 @@ export function NodeInspector({
             </label>
             )}
 
-            {node.kind === "constants" ? (
+            {node.kind === "socket" ? (
+              <label className="block space-y-1">
+                <span className="text-[11px] text-muted-foreground">Path</span>
+                <input
+                  value={node.socket?.path ?? ""}
+                  onChange={(event) =>
+                    onChange({ socket: { ...node.socket, path: event.target.value } })
+                  }
+                  aria-label="Socket path"
+                  placeholder="/feed"
+                  className="h-8 w-full rounded-md border bg-background px-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  Joined to the connection's address. The subscription is held
+                  open by this tab, so it stops when the tab does.
+                </span>
+              </label>
+            ) : node.kind === "constants" ? (
               <div className="space-y-1">
                 <span className="text-[11px] text-muted-foreground">Values</span>
                 <KeyValueEditor
@@ -227,7 +247,7 @@ export function NodeInspector({
               </>
             )}
 
-            {node.kind !== "constants" && (
+            {node.kind !== "constants" && node.kind !== "socket" && (
             <p className="text-[11px] text-muted-foreground">
               Write <code>{"{{NodeName.first.id}}"}</code> to use what an
               upstream node produced. A query node offers{" "}
@@ -238,6 +258,9 @@ export function NodeInspector({
             </p>
             )}
 
+            {/* a live node is never executed by the server, so a check on it
+                would be a control that quietly does nothing */}
+            {node.kind !== "socket" && (
             <div className="space-y-1 border-t pt-3">
               <span className="text-[11px] text-muted-foreground">Checks</span>
               <ChecksEditor
@@ -258,8 +281,9 @@ export function NodeInspector({
                 summary. It never stops the flow.
               </p>
             </div>
+            )}
 
-            <NodeTest {...test} />
+            {live ? <LivePanel {...live} /> : <NodeTest {...test} />}
           </>
         ) : (
           <ResultPanel run={run} />

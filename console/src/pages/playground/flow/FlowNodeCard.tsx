@@ -6,6 +6,7 @@ import {
   Circle,
   Braces,
   Database,
+  Radio,
   Globe,
   Loader2,
   MinusCircle,
@@ -16,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { KeyValueRow } from "../store/store";
-import type { NodeKind, NodeRun, NodeState } from "./types";
+import type { NodeKind, NodeRun, NodeState, SocketConfig } from "./types";
 
 const STATE_STYLE: Record<NodeState, string> = {
   idle: "border-border",
@@ -24,6 +25,7 @@ const STATE_STYLE: Record<NodeState, string> = {
   succeeded: "border-emerald-500/50",
   failed: "border-destructive/60 shadow-[0_0_0_3px] shadow-destructive/10",
   skipped: "border-border border-dashed opacity-70",
+  live: "border-sky-500/50",
 };
 
 const STATE_TEXT: Record<NodeState, string> = {
@@ -32,6 +34,7 @@ const STATE_TEXT: Record<NodeState, string> = {
   succeeded: "text-emerald-400",
   failed: "text-destructive",
   skipped: "text-muted-foreground",
+  live: "text-sky-400",
 };
 
 function StateIcon({ state }: { state: NodeState }) {
@@ -40,6 +43,7 @@ function StateIcon({ state }: { state: NodeState }) {
   if (state === "succeeded") return <CheckCircle2 className={className} />;
   if (state === "failed") return <XCircle className={className} />;
   if (state === "skipped") return <MinusCircle className={className} />;
+  if (state === "live") return <Radio className={className} />;
   return <Circle className={className} />;
 }
 
@@ -51,6 +55,7 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  socket?: SocketConfig;
   checks?: unknown[];
   /** Derived for the card: the line under the title. */
   subtitle: string;
@@ -73,7 +78,13 @@ export const FlowNodeCard = memo(function FlowNodeCard({
   const run = card.run;
   const state: NodeState = run?.state ?? "idle";
   const Icon =
-    card.kind === "query" ? Database : card.kind === "constants" ? Braces : Globe;
+    card.kind === "query"
+      ? Database
+      : card.kind === "constants"
+        ? Braces
+        : card.kind === "socket"
+          ? Radio
+          : Globe;
   // a constants node has nothing to connect to, so the amber warning below
   // would make a correctly configured one look permanently broken
   const needsConnection = card.kind !== "constants";

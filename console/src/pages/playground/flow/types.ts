@@ -1,7 +1,7 @@
 import type { RequestSpecModel } from "@/lib/sdk";
 import { emptyRow, type KeyValueRow } from "../store/store";
 
-export type NodeKind = "query" | "request" | "constants";
+export type NodeKind = "query" | "request" | "constants" | "socket";
 
 /**
  * A node's state during a run.
@@ -15,7 +15,9 @@ export type NodeState =
   | "running"
   | "succeeded"
   | "failed"
-  | "skipped";
+  | "skipped"
+  // runs in the browser, so the server never starts or finishes it
+  | "live";
 
 export interface FlowNodeData {
   name: string;
@@ -24,8 +26,14 @@ export interface FlowNodeData {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  socket?: SocketConfig;
   checks?: FlowCheck[];
   [key: string]: unknown;
+}
+
+/** What a socket node subscribes to. The connection carries the base URL. */
+export interface SocketConfig {
+  path?: string;
 }
 
 export interface FlowNode {
@@ -36,6 +44,7 @@ export interface FlowNode {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  socket?: SocketConfig;
   checks?: FlowCheck[];
   position?: { x: number; y: number };
 }
@@ -107,6 +116,7 @@ export interface RunSummary {
   succeeded: number;
   failed: string[];
   skipped: string[];
+  live?: string[];
   checks?: { passed: number; failed: string[] };
 }
 
@@ -140,6 +150,14 @@ export const NEW_CONSTANTS_NODE = (id: string): FlowNode => ({
   name: "Config",
   kind: "constants",
   constants: [emptyRow()],
+  position: { x: 0, y: 0 },
+});
+
+export const NEW_SOCKET_NODE = (id: string): FlowNode => ({
+  id,
+  name: "Stream",
+  kind: "socket",
+  socket: { path: "" },
   position: { x: 0, y: 0 },
 });
 
