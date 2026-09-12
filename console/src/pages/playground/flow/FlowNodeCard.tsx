@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { KeyValueRow } from "../store/store";
+import { FlowChart } from "./Chart";
+import { toPoints } from "./chartData";
 import type {
   ChartConfig,
   NodeKind,
@@ -69,6 +71,8 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   subtitle: string;
   connectionName?: string;
   run?: NodeRun;
+  /** For a graph node: what its upstream has produced so far. */
+  rows?: Record<string, unknown>[];
 }
 
 /**
@@ -99,16 +103,35 @@ export const FlowNodeCard = memo(function FlowNodeCard({
   // would make a correctly configured one look permanently broken
   const needsConnection = card.kind !== "constants" && card.kind !== "graph";
 
+  // a chart in a 256px box is a thumbnail of a chart; a graph node is given
+  // room by default and can be dragged bigger from there
+  const isGraph = card.kind === "graph";
+  const series = (card.chart?.y ?? []).filter(Boolean);
+  const width = isGraph ? (card.chart?.w ?? 340) : undefined;
+  const height = isGraph ? (card.chart?.h ?? 210) : undefined;
+
   return (
     <div
       className={cn(
-        "w-64 rounded-lg border bg-card text-left shadow-sm transition-shadow",
+        "flex flex-col rounded-lg border bg-card text-left shadow-sm transition-shadow",
+        !isGraph && "w-64",
         STATE_STYLE[state],
         selected && "ring-2 ring-ring"
       )}
+      style={isGraph ? { width, height } : undefined}
       data-testid={`flow-node-${card.name}`}
       data-state={state}
     >
+      {isGraph && (
+        <NodeResizer
+          isVisible={selected}
+          minWidth={260}
+          minHeight={160}
+          lineClassName="!border-ring"
+          handleClassName="!h-2 !w-2 !rounded-sm !border-ring !bg-background"
+        />
+      )}
+
       <Handle
         type="target"
         position={Position.Left}
@@ -121,6 +144,30 @@ export const FlowNodeCard = memo(function FlowNodeCard({
         <StateIcon state={state} />
       </div>
 
+      {isGraph ? (
+        <div className="min-h-0 flex-1 px-2.5 py-1.5">
+          {series.length ? (
+            <FlowChart
+              points={toPoints(
+                card.rows ?? [],
+                card.chart?.x ?? "",
+                series,
+                card.chart?.window ?? 100
+              )}
+              series={series}
+              type={card.chart?.type ?? "line"}
+              height={Math.max((height ?? 210) - 74, 90)}
+              label={`${series.join(", ")} by ${card.chart?.x || "arrival"}`}
+            />
+          ) : (
+            <p className="py-6 text-center text-[11px] text-muted-foreground">
+              {/* the node is the picture, so it says what it is missing here
+                  rather than only in a panel somebody has to open */}
+              Nothing to draw yet. Name a field in the panel.
+            </p>
+          )}
+        </div>
+      ) : (
       <div className="space-y-1 px-2.5 py-1.5">
         <p
           className="truncate font-mono text-[11px] text-muted-foreground"
@@ -184,6 +231,7 @@ export const FlowNodeCard = memo(function FlowNodeCard({
           </p>
         )}
       </div>
+      )}
 
       <Handle
         type="source"

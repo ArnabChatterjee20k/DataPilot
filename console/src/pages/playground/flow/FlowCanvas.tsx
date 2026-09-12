@@ -67,10 +67,18 @@ const NODE_TYPES = { datapilot: FlowNodeCard };
 
 type CanvasNode = Node<FlowNodeCardData>;
 
-/** Where a new node lands, so two in a row do not sit on top of each other. */
+/**
+ * Where a new node lands, so two in a row do not sit on top of each other.
+ *
+ * The step clears the widest node rather than the common one: a graph node is
+ * 340px, and a grid pitched for the 256px cards drops the next node on top of
+ * one.
+ */
 const nextPosition = (count: number) => ({
-  x: 40 + (count % 3) * 300,
-  y: 40 + Math.floor(count / 3) * 190,
+  // two across rather than three: at the width a graph node needs, a third
+  // column lands outside the canvas somebody is looking at
+  x: 40 + (count % 2) * 380,
+  y: 40 + Math.floor(count / 2) * 250,
 });
 
 function subtitleOf(data: FlowNodeCardData): string {
@@ -170,6 +178,16 @@ export function FlowCanvas({
 
   // the run state and the derived labels are layered on by spreading, which
   // keeps every field React Flow put on the node
+  const domain = nodes.map(toDomain);
+  const live = useLiveNodes(domain);
+
+  /** The rows a graph node has to draw, from whichever node feeds it. */
+  const rowsFor = (id: string) => {
+    const parent = edges.find((edge) => edge.target === id)?.source;
+    const upstream = domain.find((node) => node.id === parent);
+    return rowsFrom(upstream, parent ? runs[parent] : undefined, live.feed(parent ?? ""));
+  };
+
   const rendered = useMemo<CanvasNode[]>(
     () =>
       nodes.map((node) => ({
@@ -179,14 +197,34 @@ export function FlowCanvas({
           subtitle: subtitleOf(node.data),
           connectionName: connectionName(node.data.connection_id),
           run: runs[node.id],
+          // the chart is drawn on the canvas, so what it draws has to get
+          // there; feeds is in the dependencies so a live one keeps moving
+          rows: node.data.kind === "graph" ? rowsFor(node.id) : undefined,
         },
       })),
-    [nodes, runs, connectionName]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, runs, connectionName, edges, live.feeds]
   );
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<CanvasNode>[]) => {
       onNodesChange(changes);
+
+      // a graph node that was dragged bigger keeps its size, which lives in
+      // the chart settings because that is what gets saved
+      for (const change of changes) {
+        if (change.type !== "dimensions" || !change.resizing) continue;
+        const node = nodes.find((item) => item.id === change.id);
+        if (node?.data.kind !== "graph" || !change.dimensions) continue;
+        patchNode(change.id, {
+          chart: {
+            ...(node.data.chart as FlowNode["chart"]),
+            w: Math.round(change.dimensions.width),
+            h: Math.round(change.dimensions.height),
+          },
+        });
+      }
+
       if (
         changes.some(
           (change) => change.type === "position" && change.dragging === false
@@ -195,7 +233,8 @@ export function FlowCanvas({
         setDirty(true);
       }
     },
-    [onNodesChange]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onNodesChange, nodes]
   );
 
   const onConnect = useCallback(
@@ -435,15 +474,6 @@ export function FlowCanvas({
 
   const selected = nodes.find((node) => node.id === selectedId);
   const marked = nodes.filter((node) => node.selected);
-  const domain = nodes.map(toDomain);
-  const live = useLiveNodes(domain);
-
-  /** The rows a graph node has to draw, from whichever node feeds it. */
-  const feedFor = (id: string) => {
-    const parent = edges.find((edge) => edge.target === id)?.source;
-    const upstream = domain.find((node) => node.id === parent);
-    return rowsFrom(upstream, parent ? runs[parent] : undefined, live.feed(parent ?? ""));
-  };
   const isMac = isMacPlatform();
   const modKey = isMac ? "⌘" : "Ctrl";
 
@@ -735,7 +765,7 @@ export function FlowCanvas({
                     node={toDomain(selected)}
                     rows={
                       selected.data.kind === "graph"
-                        ? feedFor(selected.id)
+                        ? rowsFor(selected.id)
                         : undefined
                     }
                     live={
