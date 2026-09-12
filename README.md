@@ -228,6 +228,21 @@ happened.
 A flow connects a query to a request. Drop a database node and an API node on a
 canvas, join them, and run the chain once.
 
+Five kinds of node:
+
+| Node | What it does |
+| --- | --- |
+| Query | runs SQL on a database connection |
+| Request | sends an HTTP request on an API connection |
+| Constants | holds key/value pairs several nodes share, with no connection |
+| Websocket | subscribes to a feed and keeps the last 500 messages |
+| Graph | draws what feeds it, live or finished |
+
+The first three run once on the server when the flow runs. The last two run in
+your browser for as long as the tab is open, which is why an edge from one of
+them into a query or a request is refused when the flow is saved: the server
+could never resolve a reference to a value that only exists in a tab.
+
 A downstream node reads what an upstream one produced:
 
 | Written | Gives |
@@ -268,6 +283,11 @@ calling both the same thing hides which one to go and fix. A `{{...}}` that
 points at nothing is a warning on the node that used it, and the reference is
 left in the request as written so the call that went out is visibly wrong
 instead of silently sending nothing.
+
+A node can carry **checks** on what it receives and what it returns: `status is
+200`, `row_count more than 0`, `json.items has more than 2`. They are reported
+on the node and counted in the run summary, and they never stop the flow. A
+failed check is a finding about the data, not a verdict on the run.
 
 This is composition, not automation. There is no schedule, no retry and no
 alerting. A flow runs unattended once started, so DataPilot refuses a
