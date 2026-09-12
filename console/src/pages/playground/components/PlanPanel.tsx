@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { AlertCircle, Gauge, Loader2, Zap } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import { formatCount } from "@/lib/format";
 import type { QueryInsightModel } from "@/lib/sdk";
-import { EmptyState } from "./primitives";
+import { CopyButton, EmptyState } from "./primitives";
 
 const SPEED_STYLE: Record<string, string> = {
   fast: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
@@ -146,14 +147,64 @@ export function PlanPanel({
         </div>
       )}
 
-      <details className="rounded-md border">
-        <summary className="cursor-pointer px-2.5 py-1.5 text-xs text-muted-foreground">
-          Raw plan
-        </summary>
-        <pre className="max-h-64 overflow-auto border-t p-2.5 font-mono text-[11px] leading-relaxed">
-          {JSON.stringify(plan.plan, null, 2)}
-        </pre>
-      </details>
+      <PlanSource plan={plan} />
+    </div>
+  );
+}
+
+/**
+ * The plan itself, under everything this panel decided about it.
+ *
+ * Everything above is an opinion: which scans happen, whether that counts as
+ * fast. Checking an opinion means reading the plan the database actually
+ * produced, printed the way its own client would print it, so it can be
+ * compared with what the docs say and pasted somewhere else.
+ */
+function PlanSource({ plan }: { plan: QueryInsightModel }) {
+  const text = plan.plan_text ?? "";
+  const json = JSON.stringify(plan.plan, null, 2);
+  const [raw, setRaw] = useState(false);
+  const shown = raw || !text ? json : text;
+
+  return (
+    <div className="rounded-md border">
+      <div className="flex items-center gap-2 border-b px-2.5 py-1.5">
+        <p className="text-xs text-muted-foreground">The plan itself</p>
+
+        {!!text && (
+          <div className="flex items-center rounded border p-0.5">
+            {([["text", "Plain text"], ["json", "JSON"]] as const).map(
+              ([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setRaw(mode === "json")}
+                  aria-pressed={raw === (mode === "json")}
+                  className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] transition-colors",
+                    raw === (mode === "json")
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        <span className="ml-auto">
+          <CopyButton value={shown} label="Copy the plan" className="h-6 w-6" />
+        </span>
+      </div>
+
+      <pre
+        aria-label="Query plan source"
+        className="max-h-64 overflow-auto p-2.5 font-mono text-[11px] leading-relaxed"
+      >
+        {shown}
+      </pre>
     </div>
   );
 }
