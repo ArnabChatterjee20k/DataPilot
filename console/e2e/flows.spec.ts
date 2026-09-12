@@ -846,10 +846,18 @@ test.describe("a websocket source", () => {
   });
 });
 
+const SAMPLE = JSON.stringify({ t: 1, value: 10 });
+
 test.describe("a graph node", () => {
   async function joinTo(page: Page, from: string, to: string) {
     await connect(page, from, to);
     await node(page, to).click();
+  }
+
+  /** Name a field to draw, rather than tick one that already exists. */
+  async function drawField(page: Page, name: string) {
+    await page.getByLabel("Field to draw").fill(name);
+    await page.getByRole("button", { name: "Draw this field" }).click();
   }
 
   test("draws a live websocket as it arrives", async ({ page }) => {
@@ -866,17 +874,16 @@ test.describe("a graph node", () => {
     await joinTo(page, "Stream", "Chart 1");
 
     // the fields come from what actually arrived, not from a schema
-    const series = page.getByRole("group", { name: "Series" });
-    await expect(series.getByLabel("value")).toBeVisible();
-    await series.getByLabel("value").check();
+    await drawField(page, "value");
 
-    await expect(page.getByLabel(/value by/)).toBeVisible();
-    await expect(page.getByText(/\d+ of \d+ points/)).toBeVisible();
+    // the chart is on the node, not tucked into a panel
+    const chart = node(page, "Chart 1").getByLabel(/value by/);
+    await expect(chart).toBeVisible();
 
-    // and it keeps growing while the feed runs
-    const first = await page.getByText(/\d+ of \d+ points/).textContent();
+    // and it keeps redrawing while the feed runs
+    const first = await chart.locator("path").first().getAttribute("d");
     await expect
-      .poll(async () => page.getByText(/\d+ of \d+ points/).textContent(), {
+      .poll(async () => chart.locator("path").first().getAttribute("d"), {
         timeout: 15_000,
       })
       .not.toBe(first);
@@ -897,8 +904,8 @@ test.describe("a graph node", () => {
     });
 
     await node(page, "Chart 1").click();
-    await page.getByRole("group", { name: "Series" }).getByLabel("total").check();
-    await expect(page.getByLabel(/total by/)).toBeVisible();
+    await drawField(page, "total");
+    await expect(node(page, "Chart 1").getByLabel(/total by/)).toBeVisible();
   });
 
   test("only offers fields that hold numbers", async ({ page }) => {
@@ -912,10 +919,12 @@ test.describe("a graph node", () => {
     });
     await node(page, "Chart 1").click();
 
-    const series = page.getByRole("group", { name: "Series" });
-    await expect(series.getByLabel("id")).toBeVisible();
-    // a line through people's names would draw nothing
-    await expect(series.getByLabel("name")).toHaveCount(0);
+    // suggestions come from the data, and only fields holding numbers:
+    // a line through the names would draw nothing
+    await expect(page.getByRole("button", { name: "id", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "name", exact: true })
+    ).toHaveCount(0);
   });
 
   test("two series get a legend, so identity is never colour alone", async ({ page }) => {
@@ -929,14 +938,91 @@ test.describe("a graph node", () => {
     });
 
     await node(page, "Chart 1").click();
-    const series = page.getByRole("group", { name: "Series" });
-    await series.getByLabel("total").check();
-    await expect(page.getByRole("list", { name: "Series" })).toHaveCount(0);
+    await drawField(page, "total");
+    await expect(
+      node(page, "Chart 1").getByRole("list", { name: "Series" })
+    ).toHaveCount(0);
 
-    await series.getByLabel("user_id").check();
-    const legend = page.getByRole("list", { name: "Series" });
+    await drawField(page, "user_id");
+    const legend = node(page, "Chart 1").getByRole("list", { name: "Series" });
     await expect(legend).toContainText("total");
     await expect(legend).toContainText("user_id");
+  });
+
+
+  test("is set up before anything has produced data for it", async ({ page }) => {
+    await newFlow(page);
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+
+    // a flow is drawn before it is run, so an example stands in for the data
+    await page.getByRole("button", { name: "Paste an example of the data" }).click();
+    await page.getByLabel("Example data").fill(SAMPLE);
+
+    const offered = page.getByRole("button", { name: "value", exact: true });
+    await expect(offered).toBeVisible();
+    await offered.click();
+
+    // the node draws its axes with nothing in them yet
+    await expect(node(page, "Chart 1").getByLabel(/value by/)).toBeVisible();
+  });
+
+  test("an example that is not JSON says so rather than going quiet", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await page.getByRole("button", { name: "Paste an example of the data" }).click();
+    await page.getByLabel("Example data").fill("t=1, value=10");
+
+    await expect(page.getByText(/not JSON yet/)).toBeVisible();
+  });
+
+  test("every chart type draws its own kind of mark", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id, total from orders order by id");
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await joinTo(page, "Rows", "Chart 1");
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Chart 1").click();
+    await drawField(page, "total");
+    const chart = node(page, "Chart 1").getByLabel(/total by/);
+
+    const shapes: [string, string][] = [
+      ["Line", "path"],
+      ["Step", "path"],
+      ["Area", "path"],
+      ["Bar", "rect"],
+      ["Bars across", "rect"],
+      ["Scatter", "circle"],
+    ];
+    for (const [type, mark] of shapes) {
+      await page.getByLabel("Chart type").click();
+      await page.getByRole("option", { name: type, exact: true }).click();
+      await expect(chart.locator(mark).first()).toBeVisible();
+    }
+  });
+
+  test("too many bars for the space is pointed out", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id, total from orders order by id");
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await joinTo(page, "Rows", "Chart 1");
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Chart 1").click();
+    await drawField(page, "total");
+    await page.getByLabel("Chart type").click();
+    await page.getByRole("option", { name: "Bar", exact: true }).click();
+
+    // a hundred bars in a node is a solid block, which is a picture of nothing
+    await expect(page.getByText(/is a lot of bars for this space/)).toBeVisible();
   });
 
   test("it needs no connection and is offered no checks", async ({ page }) => {
