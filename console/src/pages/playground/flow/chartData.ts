@@ -98,3 +98,49 @@ export function toPoints(
     return point;
   });
 }
+
+
+/**
+ * The keys in a pasted example.
+ *
+ * Accepts one object or a list of them, because people paste whichever they
+ * happen to have in front of them.
+ */
+export function fieldsFromSample(sample: string): string[] {
+  const text = (sample ?? "").trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return fieldsOf(rows.filter((row) => row && typeof row === "object"));
+  } catch {
+    return [];
+  }
+}
+
+/** Is a pasted example there but unreadable? Worth saying, rather than ignoring. */
+export function sampleIsBroken(sample: string): boolean {
+  const text = (sample ?? "").trim();
+  if (!text) return false;
+  try {
+    JSON.parse(text);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Every field worth offering, from the data and from the example together.
+ *
+ * Real data wins the ordering, because once something has arrived it is the
+ * better answer; the example keeps offering what has not arrived yet.
+ */
+export function suggestedFields(
+  rows: Record<string, unknown>[],
+  sample: string
+): string[] {
+  const real = numericFields(rows);
+  const seen = new Set(real);
+  return [...real, ...fieldsFromSample(sample).filter((field) => !seen.has(field))];
+}

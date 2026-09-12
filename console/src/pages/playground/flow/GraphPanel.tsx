@@ -1,6 +1,6 @@
-import { BarChart3 } from "lucide-react";
+import { useState } from "react";
+import { Plus, X } from "lucide-react";
 
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -8,18 +8,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatCount } from "@/lib/format";
-import { EmptyState } from "../components/primitives";
-import { FlowChart, MAX_SERIES, seriesColour, type ChartType } from "./Chart";
-import { numericFields, toPoints } from "./chartData";
+import { cn } from "@/lib/utils";
+import { CHART_TYPES, MAX_SERIES, seriesColour, type ChartType } from "./Chart";
+import { sampleIsBroken, suggestedFields } from "./chartData";
 import type { ChartConfig } from "./types";
 
 /**
- * Setting up what a graph node draws, next to the thing it draws.
+ * Setting up what a graph node draws.
  *
- * The fields come from the data that actually arrived rather than from a
- * schema, so a live feed and a finished query are configured the same way and
- * neither needs to be described twice.
+ * A flow is drawn before it is run, so every field here can be typed by hand.
+ * Waiting for data before the chart can be configured would mean building the
+ * flow twice: once to make data, once to say what to do with it.
+ *
+ * Keys that have actually arrived are offered as suggestions, and so are the
+ * keys in a pasted example, which is how a feed that has not started yet still
+ * gets a chart ready for it.
  */
 export function GraphPanel({
   chart,
@@ -30,31 +33,26 @@ export function GraphPanel({
   rows: Record<string, unknown>[];
   onChange: (chart: ChartConfig) => void;
 }) {
-  const fields = numericFields(rows);
-  const series = (chart.y ?? []).filter((name) => fields.includes(name));
-  const points = toPoints(rows, chart.x ?? "", series, chart.window ?? 100);
+  const [adding, setAdding] = useState("");
+  const [showSample, setShowSample] = useState(false);
 
-  const toggle = (name: string) => {
-    const next = series.includes(name)
-      ? series.filter((item) => item !== name)
-      : [...series, name].slice(0, MAX_SERIES);
-    onChange({ ...chart, y: next });
+  const series = chart.y ?? [];
+  const suggestions = suggestedFields(rows, chart.sample ?? "").filter(
+    (field) => !series.includes(field)
+  );
+  const broken = sampleIsBroken(chart.sample ?? "");
+  const bars = (chart.type ?? "line") === "bar" || chart.type === "bars-across";
+  const crowded = bars && rows.length > 40;
+
+  const add = (name: string) => {
+    const key = name.trim();
+    if (!key || series.includes(key)) return;
+    onChange({ ...chart, y: [...series, key].slice(0, MAX_SERIES) });
+    setAdding("");
   };
 
-  if (!rows.length) {
-    return (
-      <div className="space-y-2 border-t pt-3">
-        <EmptyState
-          icon={BarChart3}
-          title="Nothing to draw yet"
-          description="Join this to a query or a websocket, then run or connect it."
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-2 border-t pt-3">
+    <div className="space-y-3 border-t pt-3">
       <div className="flex items-center gap-1.5">
         <Select
           value={chart.type ?? "line"}
@@ -64,77 +62,157 @@ export function GraphPanel({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="line">Line</SelectItem>
-            <SelectItem value="bar">Bar</SelectItem>
-            <SelectItem value="area">Area</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={chart.x || "__order__"}
-          onValueChange={(x) => onChange({ ...chart, x: x === "__order__" ? "" : x })}
-        >
-          <SelectTrigger className="h-7 min-w-0 flex-1 text-[11px]" aria-label="Bottom axis">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__order__">in the order they arrived</SelectItem>
-            {fields.map((field) => (
-              <SelectItem key={field} value={field}>
-                {field}
+            {CHART_TYPES.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        <label className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="shrink-0 text-[11px] text-muted-foreground">x</span>
+          <input
+            value={chart.x ?? ""}
+            onChange={(event) => onChange({ ...chart, x: event.target.value })}
+            list="graph-fields"
+            aria-label="Bottom axis"
+            placeholder="in the order they arrive"
+            className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring"
+          />
+        </label>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">
+        {CHART_TYPES.find((option) => option.value === (chart.type ?? "line"))?.hint}
+      </p>
+
+      {crowded && (
+        <p className="text-[10px] text-amber-400">
+          {/* a hundred bars in a node is a solid block, which is a picture of
+              nothing; saying so beats letting someone stare at it */}
+          {rows.length} rows is a lot of bars for this space. A line or an area
+          reads better, or narrow the query.
+        </p>
+      )}
+
+      <div className="space-y-1.5">
+        <p className="text-[11px] text-muted-foreground">Draw</p>
+
+        {!!series.length && (
+          <ul className="flex flex-wrap gap-1" aria-label="Series">
+            {series.map((name, index) => (
+              <li
+                key={name}
+                className="flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px]"
+              >
+                <span
+                  aria-hidden
+                  className="h-2 w-2 shrink-0 rounded-sm"
+                  style={{ background: seriesColour(index) }}
+                />
+                <span className="font-mono">{name}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({ ...chart, y: series.filter((item) => item !== name) })
+                  }
+                  aria-label={`Stop drawing ${name}`}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form
+          className="flex items-center gap-1.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            add(adding);
+          }}
+        >
+          <input
+            value={adding}
+            onChange={(event) => setAdding(event.target.value)}
+            list="graph-fields"
+            aria-label="Field to draw"
+            placeholder="a field to draw"
+            className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="submit"
+            aria-label="Draw this field"
+            disabled={!adding.trim()}
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </form>
+
+        {/* both inputs share one list, so anything known can be typed or picked */}
+        <datalist id="graph-fields">
+          {suggestions.map((field) => (
+            <option key={field} value={field} />
+          ))}
+        </datalist>
+
+        {!!suggestions.length && (
+          <div className="flex flex-wrap gap-1">
+            {suggestions.slice(0, 12).map((field) => (
+              <button
+                key={field}
+                type="button"
+                onClick={() => add(field)}
+                className="rounded-full border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                {field}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {!suggestions.length && !series.length && (
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Type the field you expect, or paste an example below and pick from
+            it. Nothing has to have run yet.
+          </p>
+        )}
       </div>
 
       <div className="space-y-1">
-        <p className="text-[11px] text-muted-foreground">Draw</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-1" role="group" aria-label="Series">
-          {fields.map((field) => {
-            const index = series.indexOf(field);
-            return (
-              <label
-                key={field}
-                className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-              >
-                <Checkbox
-                  checked={index >= 0}
-                  onCheckedChange={() => toggle(field)}
-                  aria-label={field}
-                />
-                {index >= 0 && (
-                  <span
-                    aria-hidden
-                    className="h-2 w-2 rounded-sm"
-                    style={{ background: seriesColour(index) }}
-                  />
-                )}
-                {field}
-              </label>
-            );
-          })}
-        </div>
-      </div>
+        <button
+          type="button"
+          onClick={() => setShowSample((current) => !current)}
+          aria-expanded={showSample}
+          className="text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          {showSample ? "Hide the example" : "Paste an example of the data"}
+        </button>
 
-      {series.length ? (
-        <div className="rounded border bg-background p-2">
-          <FlowChart
-            points={points}
-            series={series}
-            type={chart.type ?? "line"}
-            label={`${series.join(", ")} by ${chart.x || "arrival"}`}
-          />
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            {/* what is drawn is a window onto the data, not all of it */}
-            {formatCount(points.length)} of {formatCount(rows.length)} points
-          </p>
-        </div>
-      ) : (
-        <p className="text-[11px] text-muted-foreground">
-          Pick a field to draw. Only fields holding numbers are offered.
-        </p>
-      )}
+        {showSample && (
+          <>
+            <textarea
+              value={chart.sample ?? ""}
+              onChange={(event) => onChange({ ...chart, sample: event.target.value })}
+              aria-label="Example data"
+              spellCheck={false}
+              placeholder={'{"t": 1, "value": 10}'}
+              className={cn(
+                "h-20 w-full resize-y rounded-md border bg-background p-2 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring",
+                broken && "border-amber-500/50"
+              )}
+            />
+            <p className="text-[10px] text-muted-foreground">
+              {broken
+                ? "That is not JSON yet, so no keys could be read out of it."
+                : "One object or a list of them. Its keys join the suggestions."}
+            </p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
