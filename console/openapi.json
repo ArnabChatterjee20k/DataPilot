@@ -3069,6 +3069,59 @@
         ],
         "title": "KeyValueModel"
       },
+      "NodeCheckModel": {
+        "properties": {
+          "on": {
+            "type": "string",
+            "enum": [
+              "input",
+              "output"
+            ],
+            "title": "On"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "op": {
+            "type": "string",
+            "title": "Op"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "default": ""
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "actual": {
+            "type": "string",
+            "title": "Actual",
+            "default": ""
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "on",
+          "path",
+          "op",
+          "passed"
+        ],
+        "title": "NodeCheckModel",
+        "description": "One assertion, and what it saw.\n\n`passed` false is a finding, not a verdict: the node's own state is\ndecided by whether it ran, never by this."
+      },
       "NodeReferenceGroupModel": {
         "properties": {
           "node": {
@@ -3169,6 +3222,13 @@
             },
             "type": "array",
             "title": "Blocked By"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/NodeCheckModel"
+            },
+            "type": "array",
+            "title": "Checks"
           }
         },
         "type": "object",

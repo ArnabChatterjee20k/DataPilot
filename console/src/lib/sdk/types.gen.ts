@@ -422,6 +422,49 @@ export type KeyValueModel = {
 };
 
 /**
+ * NodeCheckModel
+ *
+ * One assertion, and what it saw.
+ *
+ * `passed` false is a finding, not a verdict: the node's own state is
+ * decided by whether it ran, never by this.
+ */
+export type NodeCheckModel = {
+    /**
+     * On
+     */
+    on: 'input' | 'output';
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Op
+     */
+    op: string;
+    /**
+     * Value
+     */
+    value?: string;
+    /**
+     * Passed
+     */
+    passed: boolean;
+    /**
+     * Actual
+     */
+    actual?: string;
+    /**
+     * Detail
+     */
+    detail?: string;
+    /**
+     * Description
+     */
+    description?: string;
+};
+
+/**
  * NodeReferenceGroupModel
  *
  * The references one upstream node offers.
@@ -503,6 +546,10 @@ export type NodeRunModel = {
      * Blocked By
      */
     blocked_by?: Array<string>;
+    /**
+     * Checks
+     */
+    checks?: Array<NodeCheckModel>;
 };
 
 /**

@@ -36,6 +36,9 @@ class NodeRun:
     warnings: list[str] = field(default_factory=list)
     #: For a skipped node: what it was waiting on.
     blocked_by: list[str] = field(default_factory=list)
+    #: Assertions this node carried, and what each one saw. A failed check is
+    #: a finding rather than a verdict: it never changes `state`.
+    checks: list[dict] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -49,6 +52,7 @@ class NodeRun:
             "error": self.error,
             "warnings": self.warnings,
             "blocked_by": self.blocked_by,
+            "checks": self.checks,
         }
 
 
@@ -128,14 +132,22 @@ class FlowRun:
         run.started_at = time.perf_counter()
         await self._announce(run)
 
+        inputs = self._inputs(node)
+        # checked before the node runs, so they are still reported when it
+        # then fails - which is exactly when what went in is worth seeing
+        run.checks = flows.check(node.checks, inputs, self.names, flows.ON_INPUT)
+
         try:
             summary, result = await asyncio.wait_for(
-                self.execute(node, self._inputs(node)), timeout=NODE_TIMEOUT
+                self.execute(node, inputs), timeout=NODE_TIMEOUT
             )
             run.state = flows.SUCCEEDED
             run.summary = summary
             run.result = result
             self.outputs[node_id] = flows.node_output(node.kind, result)
+            run.checks += flows.check(
+                node.checks, self.outputs[node_id], self.names, flows.ON_OUTPUT
+            )
         except asyncio.TimeoutError:
             run.state = flows.FAILED
             run.error = f"{node.label} took longer than {NODE_TIMEOUT:g}s."

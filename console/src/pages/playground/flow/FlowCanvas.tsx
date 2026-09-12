@@ -90,6 +90,7 @@ const toCanvas = (node: FlowNode): CanvasNode => ({
     query: node.query ?? "",
     request: node.request,
     constants: node.constants ?? [],
+    checks: node.checks ?? [],
     subtitle: "",
   },
 });
@@ -102,6 +103,7 @@ const toDomain = (node: CanvasNode): FlowNode => ({
   query: String(node.data.query ?? ""),
   request: node.data.request,
   constants: (node.data.constants as FlowNode["constants"]) ?? [],
+  checks: (node.data.checks as FlowNode["checks"]) ?? [],
   position: node.position,
 });
 
@@ -540,6 +542,18 @@ export function FlowCanvas({
           {summary.failed.length > 0 && ` · ${summary.failed.join(", ")} failed`}
           {summary.skipped.length > 0 &&
             ` · ${summary.skipped.join(", ")} never ran, waiting on it`}
+          {!!summary.checks?.failed.length && (
+            <span className="text-amber-400">
+              {` · ${summary.checks.failed.length} check${
+                summary.checks.failed.length === 1 ? "" : "s"
+              } failed: ${summary.checks.failed.join("; ")}`}
+            </span>
+          )}
+          {!summary.checks?.failed.length && !!summary.checks?.passed && (
+            ` · ${summary.checks.passed} check${
+              summary.checks.passed === 1 ? "" : "s"
+            } passed`
+          )}
         </div>
       )}
 

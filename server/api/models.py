@@ -364,6 +364,26 @@ class FlowListModel(BaseModel):
     total: int = 0
 
 
+class NodeCheckModel(BaseModel):
+    """One assertion, and what it saw.
+
+    `passed` false is a finding, not a verdict: the node's own state is
+    decided by whether it ran, never by this.
+    """
+
+    on: Literal["input", "output"]
+    path: str
+    op: str
+    value: str = ""
+    passed: bool
+    #: What the path held, as text and truncated - never the raw value.
+    actual: str = ""
+    #: Why it could not be judged, when that is the interesting part.
+    detail: str = ""
+    #: `status to be 200`, ready to show without the operator table.
+    description: str = ""
+
+
 class NodeRunModel(BaseModel):
     """One node's outcome, the same shape the live run reports."""
 
@@ -377,6 +397,7 @@ class NodeRunModel(BaseModel):
     error: str = ""
     warnings: list[str] = Field(default_factory=list)
     blocked_by: list[str] = Field(default_factory=list)
+    checks: list[NodeCheckModel] = Field(default_factory=list)
 
 
 class NodeReferenceModel(BaseModel):
