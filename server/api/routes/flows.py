@@ -193,6 +193,9 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
 
         # the connection is loaded per branch rather than up front: not every
         # kind needs one, and demanding it here would rule those out entirely
+        if node.kind == flows.CONSTANTS:
+            return run_constants_node(node, inputs, runner)
+
         if node.kind == flows.QUERY:
             connection = await load_connection_for(session, node.connection_id, node)
             sql, missing = flows.interpolate(node.query, inputs, runner.names)
@@ -213,6 +216,26 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
         return await run_request_node(connection, node, spec)
 
     return execute
+
+
+def run_constants_node(node: flows.Node, inputs: dict, runner) -> tuple[str, dict]:
+    """Hand a node's own key/value rows downstream.
+
+    The values are interpolated like any other input, so a constant can be
+    built out of what an upstream node produced - which is the point of having
+    one place to change a shared fragment rather than three copies of it.
+    """
+    rows = [row for row in node.constants if row.get("enabled", True)]
+    values: dict[str, str] = {}
+
+    for row in rows:
+        text, missing = flows.interpolate(row["value"], inputs, runner.names)
+        if missing:
+            runner.warn(node.id, flows.describe_missing(missing))
+        values[row["key"]] = text
+
+    count = len(values)
+    return f"{count} value{'' if count == 1 else 's'}", {"values": values}
 
 
 @router.post("/flows/{flow_uid}/nodes/{node_id}/test", response_model=NodeTestModel)

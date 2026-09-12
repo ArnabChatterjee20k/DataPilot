@@ -30,9 +30,10 @@ REFERENCE = re.compile(r"\{\{\s*([\w.\-\[\]]+)\s*\}\}")
 
 QUERY = "query"
 REQUEST = "request"
+CONSTANTS = "constants"
 
 #: Kinds the server runs, once, when the flow runs.
-SERVER_KINDS = (QUERY, REQUEST)
+SERVER_KINDS = (QUERY, REQUEST, CONSTANTS)
 
 #: Kinds that run in the browser instead, for as long as the tab is open.
 LIVE_KINDS: tuple[str, ...] = ()
@@ -45,6 +46,7 @@ KINDS = SERVER_KINDS + LIVE_KINDS
 KIND_FIELDS: dict[str, tuple[str, ...]] = {
     QUERY: ("query",),
     REQUEST: ("request",),
+    CONSTANTS: ("constants",),
 }
 
 
@@ -54,8 +56,12 @@ def is_live(kind: str) -> bool:
 
 
 def kind_list() -> str:
-    """`a query, a request or a graph`, for an error somebody has to read."""
-    names = [f"a {kind}" for kind in KINDS]
+    """`query, request or constants`, for an error somebody has to read.
+
+    Plain names rather than `a query, a request`: once `constants` is in the
+    list the article version reads as "a constants", which is not English.
+    """
+    names = list(KINDS)
     if len(names) == 1:
         return names[0]
     return f"{', '.join(names[:-1])} or {names[-1]}"
@@ -81,6 +87,7 @@ class Node:
     connection_id: Optional[str] = None
     query: str = ""
     request: dict = field(default_factory=dict)
+    constants: list[dict] = field(default_factory=list)
     position: dict = field(default_factory=dict)
 
     @property
@@ -164,7 +171,7 @@ def read_graph(payload: dict) -> Graph:
         if kind not in KINDS:
             raise FlowError(
                 f"'{node_id}' is a '{kind or 'nameless'}' node; a flow node is "
-                f"{kind_list()}."
+                f"one of {kind_list()}."
             )
 
         nodes.append(
@@ -175,6 +182,7 @@ def read_graph(payload: dict) -> Graph:
                 connection_id=(str(raw.get("connection_id") or "").strip() or None),
                 query=str(raw.get("query") or ""),
                 request=raw.get("request") or {},
+                constants=read_constants(node_id, raw.get("constants")),
                 position=raw.get("position") or {},
             )
         )
@@ -200,6 +208,39 @@ def read_graph(payload: dict) -> Graph:
             f"first: {names}."
         )
     return graph
+
+
+def read_constants(node_id: str, rows: Any) -> list[dict]:
+    """Clean the key/value rows a constants node was drawn with.
+
+    The editor always leaves a blank row to type into, so blank keys are
+    dropped rather than stored as `{{Config.}}`. Two rows with one key is
+    refused instead of resolved last-wins, which is an hour of debugging for
+    no gain.
+    """
+    cleaned: list[dict] = []
+    seen: set[str] = set()
+
+    for raw in rows or []:
+        if not isinstance(raw, dict):
+            continue
+        key = str(raw.get("key") or "").strip()
+        if not key:
+            continue
+        if key in seen:
+            raise FlowError(
+                f"'{node_id}' has two values called '{key}'; a reference could "
+                f"only reach one of them."
+            )
+        seen.add(key)
+        cleaned.append(
+            {
+                "key": key,
+                "value": str(raw.get("value") or ""),
+                "enabled": raw.get("enabled", True) is not False,
+            }
+        )
+    return cleaned
 
 
 def find_cycle(graph: Graph) -> list[str]:
@@ -293,10 +334,17 @@ def _request_output(result: Any) -> dict:
     }
 
 
+def _constants_output(result: Any) -> dict:
+    # flat, so it reads as `{{Config.api_key}}` rather than
+    # `{{Config.values.api_key}}`, which is a tax on every reader
+    return dict(result.get("values") or {})
+
+
 #: What each kind offers downstream, by kind.
 OUTPUTS: dict[str, Any] = {
     QUERY: _query_output,
     REQUEST: _request_output,
+    CONSTANTS: _constants_output,
 }
 
 
@@ -356,10 +404,15 @@ def _no_paths(_output: dict) -> list[str]:
     return []
 
 
+def _constants_paths(output: dict) -> list[str]:
+    return list(output)[:MAX_SUGGESTIONS]
+
+
 #: What each kind is worth offering as a reference, by kind.
 PATHS: dict[str, Any] = {
     QUERY: _query_paths,
     REQUEST: _request_paths,
+    CONSTANTS: _constants_paths,
 }
 
 
