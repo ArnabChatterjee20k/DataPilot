@@ -13,6 +13,7 @@ export type ShortcutAction =
   | "addRequest"
   | "duplicate"
   | "remove"
+  | "selectAll"
   | "save"
   | "run"
   | "deselect"
@@ -33,6 +34,7 @@ export const SHORTCUTS: Shortcut[] = [
   { action: "addRequest", keys: ["r"], label: "Add a request node" },
   { action: "duplicate", keys: ["d"], mod: true, label: "Duplicate the selection" },
   { action: "remove", keys: ["Delete", "Backspace"], label: "Delete the selection" },
+  { action: "selectAll", keys: ["a"], mod: true, label: "Select every node" },
   { action: "save", keys: ["s"], mod: true, label: "Save", whileTyping: true },
   { action: "run", keys: ["Enter"], mod: true, label: "Save and run", whileTyping: true },
   { action: "deselect", keys: ["Escape"], label: "Clear the selection", whileTyping: true },

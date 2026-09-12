@@ -61,7 +61,7 @@ export function NodeInspector({
 
   return (
     <aside
-      className="flex w-80 shrink-0 flex-col border-l bg-card"
+      className="flex h-full min-h-0 flex-col border-l bg-card"
       aria-label={`${node.name} settings`}
     >
       <div className="flex items-center gap-1.5 border-b px-3 py-2">

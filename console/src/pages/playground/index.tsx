@@ -143,7 +143,11 @@ export default function Playground() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full">
+      <ResizablePanelGroup
+        direction="horizontal"
+        autoSaveId="datapilot.sidebar"
+        className="h-full w-full"
+      >
         <ResizablePanel defaultSize={20} minSize={14} maxSize={34}>
           <DatabaseSidebar />
         </ResizablePanel>
@@ -369,7 +373,11 @@ function RequestWorkspace({
   const { result, isSending, isSaving, send, save } = useRequestRunner(tab);
 
   return (
-    <ResizablePanelGroup direction="vertical" className="min-h-0 flex-1">
+    <ResizablePanelGroup
+      direction="vertical"
+      autoSaveId="datapilot.request-split"
+      className="min-h-0 flex-1"
+    >
       <ResizablePanel defaultSize={46} minSize={20} maxSize={80}>
         <RequestBuilder
           tab={tab}
@@ -444,7 +452,11 @@ function QueryWorkspace({
   );
 
   return (
-    <ResizablePanelGroup direction="vertical" className="min-h-0 flex-1">
+    <ResizablePanelGroup
+      direction="vertical"
+      autoSaveId="datapilot.query-split"
+      className="min-h-0 flex-1"
+    >
       <ResizablePanel
         defaultSize={tab.type === "table" ? 18 : 30}
         minSize={8}
