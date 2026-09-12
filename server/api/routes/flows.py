@@ -190,9 +190,11 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
 
     async def execute(node: flows.Node, inputs: dict):
         runner = runner_ref["runner"]
-        connection = await load_connection_for(session, node.connection_id, node)
 
+        # the connection is loaded per branch rather than up front: not every
+        # kind needs one, and demanding it here would rule those out entirely
         if node.kind == flows.QUERY:
+            connection = await load_connection_for(session, node.connection_id, node)
             sql, missing = flows.interpolate(node.query, inputs, runner.names)
             if missing:
                 runner.warn(node.id, flows.describe_missing(missing))
@@ -202,6 +204,7 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
                 captured["query"] = sql
             return await run_query_node(connection, node, sql)
 
+        connection = await load_connection_for(session, node.connection_id, node)
         spec, missing = flows.interpolate_deep(node.request or {}, inputs, runner.names)
         if missing:
             runner.warn(node.id, flows.describe_missing(missing))
