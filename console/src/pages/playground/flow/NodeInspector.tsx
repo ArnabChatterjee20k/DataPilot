@@ -15,6 +15,7 @@ import type { DatabaseConnection } from "../store/store";
 import { CopyButton } from "../components/primitives";
 import { KeyValueEditor } from "../components/KeyValueEditor";
 import type { NodeTestModel } from "@/lib/sdk";
+import { ChecksEditor } from "./ChecksEditor";
 import { NodeTest } from "./NodeTest";
 import type { FlowNode, NodeRun } from "./types";
 
@@ -237,6 +238,27 @@ export function NodeInspector({
             </p>
             )}
 
+            <div className="space-y-1 border-t pt-3">
+              <span className="text-[11px] text-muted-foreground">Checks</span>
+              <ChecksEditor
+                checks={node.checks ?? []}
+                onChange={(checks) => onChange({ checks })}
+                outputHint={
+                  node.kind === "query"
+                    ? "row_count"
+                    : node.kind === "constants"
+                      ? "api_key"
+                      : "status"
+                }
+              />
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                {/* saying so up front, because a check that quietly did
+                    nothing would be worse than no check */}
+                A check that fails is reported on the node and in the run
+                summary. It never stops the flow.
+              </p>
+            </div>
+
             <NodeTest {...test} />
           </>
         ) : (
@@ -295,6 +317,30 @@ function ResultPanel({ run }: { run?: NodeRun }) {
           <CopyButton value={body} label="Copy result" className="h-6 w-6" />
         </span>
       </div>
+
+      {!!run.checks?.length && (
+        <ul className="space-y-1" aria-label="Check results">
+          {run.checks.map((item, index) => (
+            <li
+              key={index}
+              className={cn(
+                "rounded border p-1.5 text-[11px]",
+                item.passed
+                  ? "border-emerald-500/25 text-emerald-400"
+                  : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+              )}
+            >
+              <p className="font-mono">{item.description}</p>
+              {!item.passed && (
+                <p className="text-muted-foreground">
+                  got {item.actual || "nothing"}
+                  {item.detail && ` (${item.detail})`}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {!!run.warnings?.length && (
         <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-400">

@@ -105,6 +105,30 @@ function Outcome({ outcome }: { outcome: NodeTestModel }) {
         )}
       </p>
 
+      {!!run.checks?.length && (
+        <ul className="space-y-1" aria-label="Check results">
+          {run.checks.map((item, index) => (
+            <li
+              key={index}
+              className={cn(
+                "rounded border px-2 py-1 text-[11px]",
+                item.passed
+                  ? "border-emerald-500/25 text-emerald-400"
+                  : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+              )}
+            >
+              <p className="font-mono">{item.description}</p>
+              {!item.passed && (
+                <p className="text-muted-foreground">
+                  got {item.actual || "nothing"}
+                  {item.detail && ` (${item.detail})`}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {!!run.warnings?.length && (
         <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-400">
           {run.warnings.map((warning) => (

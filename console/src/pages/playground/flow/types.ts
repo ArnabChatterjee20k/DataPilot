@@ -24,6 +24,7 @@ export interface FlowNodeData {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  checks?: FlowCheck[];
   [key: string]: unknown;
 }
 
@@ -35,7 +36,33 @@ export interface FlowNode {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  checks?: FlowCheck[];
   position?: { x: number; y: number };
+}
+
+/** One assertion on a node's input or output. */
+export interface FlowCheck {
+  on: "input" | "output";
+  path: string;
+  op:
+    | "eq"
+    | "ne"
+    | "gt"
+    | "gte"
+    | "lt"
+    | "lte"
+    | "contains"
+    | "not_contains"
+    | "matches"
+    | "count_eq"
+    | "count_gt"
+    | "count_lt"
+    | "exists"
+    | "missing"
+    | "empty"
+    | "not_empty";
+  value: string;
+  enabled: boolean;
 }
 
 export interface FlowEdge {
@@ -61,12 +88,26 @@ export interface NodeRun {
   error: string;
   warnings: string[];
   blocked_by: string[];
+  checks?: NodeCheck[];
+}
+
+/** What one assertion saw. A failure here never changes the node's state. */
+export interface NodeCheck {
+  on: "input" | "output";
+  path: string;
+  op: string;
+  value: string;
+  passed: boolean;
+  actual: string;
+  detail: string;
+  description: string;
 }
 
 export interface RunSummary {
   succeeded: number;
   failed: string[];
   skipped: string[];
+  checks?: { passed: number; failed: string[] };
 }
 
 export const NEW_QUERY_NODE = (id: string): FlowNode => ({

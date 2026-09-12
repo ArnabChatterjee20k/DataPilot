@@ -51,6 +51,7 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  checks?: unknown[];
   /** Derived for the card: the line under the title. */
   subtitle: string;
   connectionName?: string;
@@ -120,6 +121,22 @@ export const FlowNodeCard = memo(function FlowNodeCard({
           needsConnection && (
             <p className="text-[10px] text-amber-500">no connection chosen</p>
           )
+        )}
+
+        {!!run?.checks?.length && (
+          <p
+            className={cn(
+              "text-[10px]",
+              run.checks.every((item) => item.passed)
+                ? "text-emerald-400"
+                : "text-amber-400"
+            )}
+          >
+            {/* amber, not red: a failed check is a finding about the data,
+                and this node still did what it was asked */}
+            {run.checks.filter((item) => item.passed).length}/{run.checks.length}{" "}
+            checks passed
+          </p>
         )}
 
         {(run?.summary || run?.elapsed_ms != null) && (
