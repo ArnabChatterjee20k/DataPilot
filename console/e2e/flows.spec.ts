@@ -775,3 +775,73 @@ test.describe("checks on a node", () => {
     await expect(page.getByLabel("Check results")).toContainText("first.id to be there");
   });
 });
+
+test.describe("a websocket source", () => {
+  async function addSocket(page: Page, name: string, path: string) {
+    await page.getByRole("button", { name: "Websocket" }).click();
+    await page.getByLabel("Node name").fill(name);
+    await page.getByLabel("Node connection").click();
+    await page.getByRole("option", { name: "Echo API" }).click();
+    await page.getByLabel("Socket path").fill(path);
+  }
+
+  const feed = (page: Page) => page.getByLabel("Feed", { exact: true });
+
+  test("subscribes from the browser and collects what arrives", async ({ page }) => {
+    await newFlow(page);
+    await addSocket(page, "Stream", "/stream");
+
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+
+    await expect(feed(page)).toContainText('"value"', { timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
+    await expect(page.getByText(/\d+ received/)).toBeVisible();
+  });
+
+  test("disconnecting stops it", async ({ page }) => {
+    await newFlow(page);
+    await addSocket(page, "Stream", "/stream");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(feed(page)).toContainText('"value"', { timeout: 20_000 });
+
+    await page.getByRole("button", { name: "Disconnect" }).click();
+    await expect(page.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+
+    // whatever arrived is still there to look at after stopping
+    await expect(feed(page)).toBeVisible();
+  });
+
+  test("running the flow reports it as the browser's job", async ({ page }) => {
+    await newFlow(page);
+    await addSocket(page, "Stream", "/stream");
+
+    await page.getByRole("button", { name: "Run" }).click();
+
+    await expect(node(page, "Stream")).toHaveAttribute("data-state", "live", {
+      timeout: 20_000,
+    });
+    await expect(node(page, "Stream")).toContainText("runs in your browser");
+  });
+
+  test("a request node cannot be fed from it", async ({ page }) => {
+    await newFlow(page);
+    await addSocket(page, "Stream", "/stream");
+    await addRequestNode(page, "Notify", "/echo");
+    await connect(page, "Stream", "Notify");
+
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // the server could never resolve a reference to a value living in a tab
+    await expect(page.getByRole("alert")).toContainText("runs in your browser");
+    await expect(page.getByRole("alert")).toContainText("'Notify' cannot read it");
+  });
+
+  test("it is not offered controls that would do nothing", async ({ page }) => {
+    await newFlow(page);
+    await addSocket(page, "Stream", "/stream");
+
+    // the server never executes it, so a check on it could never run
+    await expect(page.getByRole("group", { name: "Checks" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Test this node" })).toHaveCount(0);
+  });
+});
