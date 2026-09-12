@@ -3308,6 +3308,11 @@
             "items": {},
             "type": "array",
             "title": "Plan"
+          },
+          "plan_text": {
+            "type": "string",
+            "title": "Plan Text",
+            "default": ""
           }
         },
         "type": "object",
