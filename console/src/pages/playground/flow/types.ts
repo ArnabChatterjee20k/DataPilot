@@ -42,13 +42,28 @@ export interface SocketConfig {
   path?: string;
 }
 
+/** One line on a graph: a field, and the node it comes from. */
+export interface ChartSeries {
+  /** The id of the node feeding it. */
+  from: string;
+  field: string;
+}
+
 /** What a graph node draws, and out of which fields. */
 export interface ChartConfig {
   type?: "line" | "step" | "area" | "bar" | "bars-across" | "scatter";
   /** The field along the bottom. Blank means the order things arrived in. */
   x?: string;
-  /** One line each. */
+  /** One line each, named by field only: kept for flows drawn before sources. */
   y?: string[];
+  /**
+   * One line each, each naming the node it comes from.
+   *
+   * A graph can be fed by several nodes at once - a table that was queried
+   * once and a socket that keeps arriving - so a series has to say which one
+   * it belongs to, or the two would be indistinguishable once merged.
+   */
+  series?: ChartSeries[];
   /** How many points to keep on screen. */
   window?: number;
   /**
@@ -127,6 +142,8 @@ export interface NodeRun {
   warnings: string[];
   blocked_by: string[];
   checks?: NodeCheck[];
+  /** What the node was sent, once its references were replaced. */
+  sent?: unknown;
 }
 
 /** What one assertion saw. A failure here never changes the node's state. */

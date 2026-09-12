@@ -19,7 +19,8 @@ import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { KeyValueRow } from "../store/store";
 import { FlowChart } from "./Chart";
-import { toPoints } from "./chartData";
+import { pointsFromSources, seriesKey, type Source } from "./chartData";
+import { seriesOf } from "./GraphPanel";
 import type {
   ChartConfig,
   NodeKind,
@@ -71,8 +72,8 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   subtitle: string;
   connectionName?: string;
   run?: NodeRun;
-  /** For a graph node: what its upstream has produced so far. */
-  rows?: Record<string, unknown>[];
+  /** For a graph node: every node feeding it, and what each has produced. */
+  sources?: Source[];
 }
 
 /**
@@ -106,7 +107,11 @@ export const FlowNodeCard = memo(function FlowNodeCard({
   // a chart in a 256px box is a thumbnail of a chart; a graph node is given
   // room by default and can be dragged bigger from there
   const isGraph = card.kind === "graph";
-  const series = (card.chart?.y ?? []).filter(Boolean);
+  const sources = card.sources ?? [];
+  const series = isGraph ? seriesOf(card.chart ?? {}, sources) : [];
+  // named before anything fed the graph: the axes are drawn empty, waiting,
+  // which is the whole point of setting a chart up before the data exists
+  const waiting = isGraph && !sources.length ? (card.chart?.y ?? []) : [];
   const width = isGraph ? (card.chart?.w ?? 340) : undefined;
   const height = isGraph ? (card.chart?.h ?? 210) : undefined;
 
@@ -146,18 +151,25 @@ export const FlowNodeCard = memo(function FlowNodeCard({
 
       {isGraph ? (
         <div className="min-h-0 flex-1 px-2.5 py-1.5">
-          {series.length ? (
+          {series.length || waiting.length ? (
             <FlowChart
-              points={toPoints(
-                card.rows ?? [],
-                card.chart?.x ?? "",
+              points={pointsFromSources(
+                sources,
                 series,
+                card.chart?.x ?? "",
                 card.chart?.window ?? 100
               )}
-              series={series}
+              series={
+                series.length
+                  ? series.map((item) => seriesKey(item, sources))
+                  : waiting
+              }
               type={card.chart?.type ?? "line"}
               height={Math.max((height ?? 210) - 74, 90)}
-              label={`${series.join(", ")} by ${card.chart?.x || "arrival"}`}
+              label={`${(series.length
+                ? series.map((item) => item.field)
+                : waiting
+              ).join(", ")} by ${card.chart?.x || "arrival"}`}
             />
           ) : (
             <p className="py-6 text-center text-[11px] text-muted-foreground">

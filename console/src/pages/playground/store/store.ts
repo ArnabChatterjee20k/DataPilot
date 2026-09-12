@@ -67,6 +67,12 @@ export interface RequestDraft {
 
 export const emptyRow = (): KeyValueRow => ({ key: "", value: "", enabled: true });
 
+/** One flow's last run: every node's report, and the summary that closed it. */
+export interface FlowRunState {
+  runs: Record<string, unknown>;
+  summary: unknown;
+}
+
 export const newRequestDraft = (): RequestDraft => ({
   name: "Untitled request",
   method: "GET",
@@ -230,6 +236,15 @@ interface TabStore {
   requestResults: Record<string, RequestResultState>;
   requestHistory: RequestRun[];
   socketLogs: Record<string, SocketMessage[]>;
+  /**
+   * What each flow's last run reported, and what each node's last test did.
+   *
+   * These lived inside the canvas, which is remounted whenever a tab changes,
+   * so looking at anything else threw away the result you were reading. They
+   * are not persisted: a result is only true of the run that made it.
+   */
+  flowRuns: Record<string, FlowRunState>;
+  nodeTests: Record<string, unknown>;
   views: SavedView[];
   setActiveTabId: (id: string) => void;
   addQueryTab: (connectionId?: string) => string;
@@ -249,6 +264,8 @@ interface TabStore {
   clearRequestHistory: () => void;
   appendSocketMessage: (tabId: string, message: SocketMessage) => void;
   clearSocketLog: (tabId: string) => void;
+  setFlowRun: (flowUid: string, run: FlowRunState) => void;
+  setNodeTest: (nodeId: string, outcome: unknown) => void;
   openTableTab: (table: Table, connection: DatabaseConnection) => string;
   closeTab: (tabId: string) => void;
   updateTab: (tabId: string, patch: Partial<Tab>) => void;
@@ -275,6 +292,8 @@ export const useTabsStore = create<TabStore>()(
       requestResults: {},
       requestHistory: [],
       socketLogs: {},
+      flowRuns: {},
+      nodeTests: {},
       views: [],
 
       setActiveTabId: (id) => set({ activeTabId: id }),
@@ -425,6 +444,12 @@ export const useTabsStore = create<TabStore>()(
 
       clearSocketLog: (tabId) =>
         set((state) => ({ socketLogs: { ...state.socketLogs, [tabId]: [] } })),
+
+      setFlowRun: (flowUid, run) =>
+        set((state) => ({ flowRuns: { ...state.flowRuns, [flowUid]: run } })),
+
+      setNodeTest: (nodeId, outcome) =>
+        set((state) => ({ nodeTests: { ...state.nodeTests, [nodeId]: outcome } })),
 
       openTableTab: (table, connection) => {
         const tabId = getTableTabId(connection.id, table.schemaId, table.name);

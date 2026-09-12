@@ -262,7 +262,7 @@ function ReferenceTable({
  * Dumping the whole spec buries the two lines that were interpolated under
  * the ten that were not.
  */
-function describeRequest(request: Record<string, unknown>): string {
+export function describeRequest(request: Record<string, unknown>): string {
   const method = String(request.method ?? "GET");
   const line = `${method} ${String(request.path ?? "")}`.trim();
   const headers = (request.headers as { key?: string; value?: string }[]) ?? [];

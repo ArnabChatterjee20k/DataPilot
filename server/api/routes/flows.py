@@ -183,9 +183,12 @@ async def run_request_node(connection, node, spec: dict) -> tuple[str, dict]:
 def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
     """How a node runs, shared by the live flow and by testing one node.
 
-    `captured` collects what a node was actually sent, which is the thing
-    worth looking at when a flow does something unexpected: the reference was
-    probably fine and the value behind it was not.
+    What a node was actually sent is recorded on its own run, because that is
+    the thing worth looking at when a flow does something unexpected: the
+    reference was probably fine and the value behind it was not.
+
+    `captured` additionally collects it for one node, which the single-node
+    test endpoint reports separately.
     """
 
     async def execute(node: flows.Node, inputs: dict):
@@ -203,6 +206,7 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
                 runner.warn(node.id, flows.describe_missing(missing))
             if not str(sql).strip():
                 raise flows.FlowError(f"{node.label} has no query to run.")
+            runner.runs[node.id].sent = sql
             if captured is not None and captured.get("id") == node.id:
                 captured["query"] = sql
             return await run_query_node(connection, node, sql)
@@ -211,6 +215,7 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
         spec, missing = flows.interpolate_deep(node.request or {}, inputs, runner.names)
         if missing:
             runner.warn(node.id, flows.describe_missing(missing))
+        runner.runs[node.id].sent = spec
         if captured is not None and captured.get("id") == node.id:
             captured["request"] = spec
         return await run_request_node(connection, node, spec)
@@ -234,6 +239,7 @@ def run_constants_node(node: flows.Node, inputs: dict, runner) -> tuple[str, dic
             runner.warn(node.id, flows.describe_missing(missing))
         values[row["key"]] = text
 
+    runner.runs[node.id].sent = values
     count = len(values)
     return f"{count} value{'' if count == 1 else 's'}", {"values": values}
 

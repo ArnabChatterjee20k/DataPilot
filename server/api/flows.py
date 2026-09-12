@@ -530,6 +530,34 @@ def suggest_references(node_name: str, kind: str, output: dict) -> list[dict]:
     return suggestions
 
 
+#: Stands for "each of them" in a path: `rows.*.total`.
+EACH = "*"
+
+
+def resolve_each(source: Any, path: list[str]) -> tuple[list[Any], bool]:
+    """Walk a path that may fan out, and say whether it did.
+
+    `rows.*.total` is every row's total rather than one of them, which is the
+    difference between checking that a table is not empty and checking that
+    every row in it makes sense.
+    """
+    if EACH not in path:
+        return [resolve_path(source, path)], False
+
+    split = path.index(EACH)
+    before, after = path[:split], path[split + 1 :]
+    branch = resolve_path(source, before)
+
+    items = (
+        list(branch)
+        if isinstance(branch, list)
+        else list(branch.values())
+        if isinstance(branch, dict)
+        else []
+    )
+    return [resolve_path(item, after) for item in items], True
+
+
 def resolve_path(source: Any, path: list[str]) -> Any:
     """Walk `a.b.0.c` through dictionaries and lists."""
     current = source
@@ -750,9 +778,13 @@ def _compare(operator: str, actual: Any, expected: str) -> tuple[bool, str]:
 def describe_check(check: dict) -> str:
     """`status to be 200`, so a result reads without the operator table."""
     reading = OPERATORS.get(check["op"], check["op"])
+    subject = check["path"]
+    if EACH in subject.split("."):
+        # `every rows.total`, because the quantifier is the surprising part
+        subject = f"every {subject.replace('.' + EACH, '')}"
     if check["op"] in LONE_OPERATORS:
-        return f"{check['path']} {reading}"
-    return f"{check['path']} {reading} {check['value']}"
+        return f"{subject} {reading}"
+    return f"{subject} {reading} {check['value']}"
 
 
 def check(
@@ -770,16 +802,50 @@ def check(
         if item["on"] != on or not item.get("enabled", True):
             continue
 
-        if on == ON_INPUT:
-            actual, absent = resolve_reference(item["path"], scope, names)
-            detail = absent.reason if absent else ""
-        else:
-            actual = resolve_path(
-                scope, item["path"].replace("[", ".").replace("]", "").split(".")
-            )
-            detail = ""
+        path = [
+            part
+            for part in item["path"].replace("[", ".").replace("]", "").split(".")
+            if part
+        ]
+        detail = ""
 
-        passed, problem = _compare(item["op"], actual, item["value"])
+        if on == ON_INPUT:
+            # an input path starts with a node name, which the reference
+            # machinery resolves; the rest may still fan out
+            head, rest = (path[0] if path else ""), path[1:]
+            branch, absent = resolve_reference(head, scope, names)
+            detail = absent.reason if absent else ""
+            values, fanned = resolve_each(branch, rest)
+        else:
+            values, fanned = resolve_each(scope, path)
+
+        if fanned and not values:
+            # nothing to check is not the same as a check that passed
+            passed, problem = False, "there was nothing there to check"
+            actual: Any = None
+        elif fanned:
+            outcomes = [_compare(item["op"], value, item["value"]) for value in values]
+            passed = all(result for result, _ in outcomes)
+            problem = next((why for result, why in outcomes if not result and why), "")
+            # the first one that failed is the useful one to show
+            actual = next(
+                (
+                    value
+                    for value, (result, _) in zip(values, outcomes)
+                    if not result
+                ),
+                values[0],
+            )
+            if not passed:
+                failures = sum(1 for result, _ in outcomes if not result)
+                problem = (
+                    f"{failures} of {len(values)} did not"
+                    + (f": {problem}" if problem else "")
+                )
+        else:
+            actual = values[0]
+            passed, problem = _compare(item["op"], actual, item["value"])
+
         preview = as_text(actual)
         results.append(
             {

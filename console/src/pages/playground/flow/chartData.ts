@@ -1,6 +1,6 @@
 import type { ChartPoint } from "./Chart";
 import type { LiveFeed } from "./useLiveNodes";
-import type { FlowNode, NodeRun } from "./types";
+import type { ChartSeries, FlowNode, NodeRun } from "./types";
 
 /**
  * Turning whatever fed a graph node into points it can draw.
@@ -143,4 +143,67 @@ export function suggestedFields(
   const real = numericFields(rows);
   const seen = new Set(real);
   return [...real, ...fieldsFromSample(sample).filter((field) => !seen.has(field))];
+}
+
+
+/** One feeding node: what it is called, and the rows it has produced. */
+export interface Source {
+  id: string;
+  name: string;
+  kind: FlowNode["kind"];
+  rows: Record<string, unknown>[];
+  /** True while it keeps arriving, which is why the chart has to redraw. */
+  live: boolean;
+}
+
+/**
+ * Merge several sources into one set of points.
+ *
+ * A graph can be fed by a table that was queried once and a socket that is
+ * still arriving. The static one holds its shape while the live one grows, so
+ * they are laid alongside each other by position rather than zipped: pairing
+ * row 400 of a feed with row 400 of a six row table would invent data.
+ */
+export function pointsFromSources(
+  sources: Source[],
+  series: ChartSeries[],
+  x: string,
+  window = 100
+): ChartPoint[] {
+  const byId = new Map(sources.map((source) => [source.id, source]));
+  const longest = Math.max(
+    0,
+    ...series.map((item) => byId.get(item.from)?.rows.length ?? 0)
+  );
+  if (!longest) return [];
+
+  const from = Math.max(longest - Math.max(window, 1), 0);
+  const points: ChartPoint[] = [];
+
+  for (let index = from; index < longest; index += 1) {
+    const point: ChartPoint = { x: index };
+
+    for (const item of series) {
+      const source = byId.get(item.from);
+      if (!source) continue;
+      // a shorter source simply stops: its line ends where its data does
+      const offset = index - (longest - source.rows.length);
+      const row = offset >= 0 ? source.rows[offset] : undefined;
+      if (!row) continue;
+
+      if (x) {
+        const along = asNumber(at(row, x));
+        if (along !== null) point.x = along;
+      }
+      point[seriesKey(item, sources)] = asNumber(at(row, item.field));
+    }
+    points.push(point);
+  }
+  return points;
+}
+
+/** How a series is labelled: the field alone unless two nodes feed the graph. */
+export function seriesKey(item: ChartSeries, sources: Source[]): string {
+  const source = sources.find((entry) => entry.id === item.from);
+  return sources.length > 1 && source ? `${source.name}.${item.field}` : item.field;
 }

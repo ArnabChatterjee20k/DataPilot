@@ -1034,3 +1034,208 @@ test.describe("a graph node", () => {
     await expect(node(page, "Chart 1")).not.toContainText("no connection chosen");
   });
 });
+
+
+test.describe("what a run leaves behind", () => {
+  test("a node's test result survives clicking somewhere else", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 2");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+    await expect(page.getByLabel("What came back")).toBeVisible();
+
+    // click the empty canvas, then back: losing it meant running it again
+    await page.getByTestId("flow-canvas").click({ position: { x: 600, y: 450 } });
+    await node(page, "Rows").click();
+
+    await expect(page.getByLabel("What came back")).toBeVisible();
+  });
+
+  test("a run reports what each node was sent, not only what came back", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users limit 2");
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Rows").click();
+    await page.getByRole("tab", { name: "result" }).click();
+
+    // half of "where did the data stop being what I expected" is the input
+    await expect(page.getByLabel("What this node was sent")).toContainText(
+      "select id from users limit 2"
+    );
+    await expect(page.getByLabel("Node result")).toContainText("row_count");
+  });
+
+  test("a reference is reported as the value it became", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Users", "select id from users order by id limit 1");
+    await addRequestNode(page, "Notify", "/echo", '{"id": {{Users.first.id}}}');
+    await connect(page, "Users", "Notify");
+
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Notify")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Notify").click();
+    await page.getByRole("tab", { name: "result" }).click();
+
+    const sent = page.getByLabel("What this node was sent");
+    await expect(sent).toContainText('{"id": 1}');
+    await expect(sent).not.toContainText("{{Users");
+  });
+});
+
+test.describe("renaming a flow", () => {
+  test("the name follows into the tab and the sidebar", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+
+    await page.getByLabel("Flow name").fill("Nightly check");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("unsaved")).toHaveCount(0);
+
+    await expect(
+      page.getByRole("button", { name: "Nightly check" }).first()
+    ).toBeVisible();
+    await expect(page.getByLabel("Flow name")).toHaveValue("Nightly check");
+  });
+});
+
+test.describe("a curl in a request node", () => {
+  test("pasting one fills the whole request", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await newFlow(page);
+    await page.getByRole("button", { name: "Request node" }).click();
+    await page.getByLabel("Node connection").click();
+    await page.getByRole("option", { name: "Echo API" }).click();
+
+    const curl =
+      "curl -X POST https://api.example.com/v1/orders " +
+      "-H 'content-type: application/json' -d '{\"id\": 7}'";
+    await page.evaluate((text) => navigator.clipboard.writeText(text), curl);
+    await page.getByLabel("Node path").click();
+    await page.keyboard.press("ControlOrMeta+v");
+
+    await expect(page.getByLabel("Node path")).toHaveValue(
+      "https://api.example.com/v1/orders"
+    );
+    await expect(page.getByLabel("Node method")).toContainText("POST");
+    await expect(page.getByLabel("Node body")).toHaveValue('{"id": 7}');
+    // a paste that rewrites four fields at once should say what it took
+    await expect(page.getByRole("status")).toContainText("Parsed curl");
+  });
+});
+
+test.describe("checking the data, not its length", () => {
+  test("every row is checked, and the one that broke it is named", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id, status from users order by id");
+
+    const checks = page.getByRole("group", { name: "Checks" });
+    await checks.getByLabel("Comparison").last().click();
+    await page.getByRole("option", { name: "is", exact: true }).click();
+    await checks.getByLabel("Expected value").last().fill("active");
+    await checks.getByLabel("Path to check").last().fill("rows.*.status");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    const results = page.getByLabel("Check results");
+    await expect(results).toContainText("every rows.status to be active");
+    // one user is suspended, so this is a finding about the data
+    await expect(results).toContainText("did not");
+  });
+
+  test("an empty result does not quietly pass every check", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users where id < 0");
+
+    const checks = page.getByRole("group", { name: "Checks" });
+    await checks.getByLabel("Comparison").last().click();
+    await page.getByRole("option", { name: "more than", exact: true }).click();
+    await checks.getByLabel("Expected value").last().fill("0");
+    await checks.getByLabel("Path to check").last().fill("rows.*.id");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByLabel("Check results")).toContainText(
+      "nothing there to check"
+    );
+  });
+});
+
+test.describe("a graph fed by more than one node", () => {
+  test("a static source and a live one draw together", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Orders", "select id, total from orders order by id limit 20");
+
+    await page.getByRole("button", { name: "Websocket" }).click();
+    await page.getByLabel("Node name").fill("Stream");
+    await page.getByLabel("Node connection").click();
+    await page.getByRole("option", { name: "Echo API" }).click();
+    await page.getByLabel("Socket path").fill("/stream");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await connect(page, "Orders", "Chart 1");
+    await connect(page, "Stream", "Chart 1");
+
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Orders")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Chart 1").click();
+
+    // the field is taken out of a named node rather than guessed at
+    await page.getByLabel("From node").click();
+    await page.getByRole("option", { name: "Orders" }).click();
+    await page.getByRole("button", { name: "total", exact: true }).click();
+
+    await page.getByLabel("From node").click();
+    await page.getByRole("option", { name: "Stream" }).click();
+    await page.getByRole("button", { name: "value", exact: true }).click();
+
+    const chips = page.getByRole("complementary").getByRole("list", { name: "Series" });
+    await expect(chips).toContainText("Orders.total");
+    await expect(chips).toContainText("Stream.value");
+
+    // and the live one keeps redrawing while the static one holds
+    const chart = node(page, "Chart 1").getByLabel(/by /);
+    const before = await chart.locator("path").first().getAttribute("d");
+    await expect
+      .poll(async () => chart.locator("path").first().getAttribute("d"), {
+        timeout: 15_000,
+      })
+      .not.toBe(before);
+  });
+
+  test("it says so when two series are on wildly different scales", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(
+      page,
+      "Rows",
+      "select id, total * 100000 as big, id as small from orders order by id limit 10"
+    );
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await connect(page, "Rows", "Chart 1");
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Chart 1").click();
+    await page.getByRole("button", { name: "big", exact: true }).click();
+    await page.getByRole("button", { name: "small", exact: true }).click();
+
+    // the answer is two charts, never a second y axis
+    await expect(page.getByText(/very different scales/)).toBeVisible();
+  });
+});

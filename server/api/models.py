@@ -398,6 +398,8 @@ class NodeRunModel(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     blocked_by: list[str] = Field(default_factory=list)
     checks: list[NodeCheckModel] = Field(default_factory=list)
+    #: What the node was sent once its references were replaced.
+    sent: Any = None
 
 
 class NodeReferenceModel(BaseModel):
