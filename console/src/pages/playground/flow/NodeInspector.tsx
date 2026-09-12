@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { looksLikeCurl, parseCurl } from "@/lib/curl";
 import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { DatabaseConnection } from "../store/store";
@@ -17,8 +18,9 @@ import { KeyValueEditor } from "../components/KeyValueEditor";
 import type { NodeTestModel } from "@/lib/sdk";
 import { ChecksEditor } from "./ChecksEditor";
 import { GraphPanel } from "./GraphPanel";
+import type { Source } from "./chartData";
 import { LivePanel, type LiveControls } from "./LivePanel";
-import { NodeTest } from "./NodeTest";
+import { NodeTest, describeRequest } from "./NodeTest";
 import type { FlowNode, NodeRun } from "./types";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
@@ -37,7 +39,8 @@ export function NodeInspector({
   connections,
   test,
   live,
-  rows,
+  sources,
+  upstream,
   onChange,
   onDelete,
   onClose,
@@ -53,13 +56,16 @@ export function NodeInspector({
     onRun: () => void;
   };
   live?: LiveControls;
-  /** What feeds a graph node, already flattened into rows. */
-  rows?: Record<string, unknown>[];
+  /** What the nodes before this one produced, keyed by their names. */
+  upstream?: Record<string, unknown>;
+  /** Every node feeding a graph node, each with what it has produced. */
+  sources?: Source[];
   onChange: (patch: Partial<FlowNode>) => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
   const [panel, setPanel] = useState<"setup" | "result">("setup");
+  const [pastedCurl, setPastedCurl] = useState<string | null>(null);
 
   const usable = connections.filter((item) =>
     node.kind === "query" ? item.type !== "api" : item.type === "api"
@@ -67,6 +73,25 @@ export function NodeInspector({
 
   const patchRequest = (patch: Partial<RequestSpecModel>) =>
     onChange({ request: { ...(node.request ?? {}), ...patch } as RequestSpecModel });
+
+  /**
+   * A curl command pasted into the path becomes the whole request.
+   *
+   * The API client has taken curl since the start, and a request node is the
+   * same request: having to retype one here, by hand, into a narrower form,
+   * is the kind of gap that makes a feature feel half-built.
+   */
+  const acceptCurl = (text: string): boolean => {
+    if (!looksLikeCurl(text)) return false;
+    const base = connections.find((item) => item.id === node.connection_id)?.baseUrl;
+    const parsed = parseCurl(text, base);
+    if (!parsed) return false;
+
+    const { summary, ...values } = parsed;
+    patchRequest(values as Partial<RequestSpecModel>);
+    setPastedCurl(summary);
+    return true;
+  };
 
   return (
     <aside
@@ -226,11 +251,25 @@ export function NodeInspector({
                   <input
                     value={node.request?.path ?? ""}
                     onChange={(event) => patchRequest({ path: event.target.value })}
+                    onPaste={(event) => {
+                      const text = event.clipboardData.getData("text");
+                      if (acceptCurl(text)) event.preventDefault();
+                    }}
                     aria-label="Node path"
-                    placeholder="/users/{{Users.first.id}}"
+                    placeholder="/users/{{Users.first.id}} or paste a curl"
                     className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
                   />
                 </div>
+
+                {pastedCurl && (
+                  <p
+                    role="status"
+                    className="rounded border border-emerald-500/25 bg-emerald-500/5 px-2 py-1 text-[11px] text-emerald-400"
+                  >
+                    {/* a paste that rewrites four fields at once should say so */}
+                    {pastedCurl}
+                  </p>
+                )}
 
                 <label className="block space-y-1">
                   <span className="text-[11px] text-muted-foreground">
@@ -274,6 +313,8 @@ export function NodeInspector({
               <ChecksEditor
                 checks={node.checks ?? []}
                 onChange={(checks) => onChange({ checks })}
+                lastResult={run?.result}
+                upstream={upstream}
                 outputHint={
                   node.kind === "query"
                     ? "row_count"
@@ -294,7 +335,7 @@ export function NodeInspector({
             {node.kind === "graph" ? (
               <GraphPanel
                 chart={node.chart ?? {}}
-                rows={rows ?? []}
+                sources={sources ?? []}
                 onChange={(chart) => onChange({ chart })}
               />
             ) : live ? (
@@ -394,12 +435,39 @@ function ResultPanel({ run }: { run?: NodeRun }) {
         </div>
       )}
 
-      <pre
-        aria-label="Node result"
-        className="max-h-96 overflow-auto rounded border bg-background p-2 font-mono text-[11px] leading-5"
-      >
-        {body}
-      </pre>
+      {run.sent != null && (
+        <details className="rounded border bg-background" open>
+          <summary className="cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            What went in
+          </summary>
+          <pre
+            aria-label="What this node was sent"
+            className="max-h-40 overflow-auto px-2 pb-2 font-mono text-[11px] leading-5"
+          >
+            {/* the references are already replaced here, which is the half of
+                "where did the data stop being what I expected" that the panel
+                was missing */}
+            {/* a request reads as a request rather than as escaped JSON:
+                the body is the part being checked, and it should look like
+                the body */}
+            {typeof run.sent === "string"
+              ? run.sent
+              : describeRequest(run.sent as Record<string, unknown>)}
+          </pre>
+        </details>
+      )}
+
+      <details className="rounded border bg-background" open>
+        <summary className="cursor-pointer px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+          What came back
+        </summary>
+        <pre
+          aria-label="Node result"
+          className="max-h-80 overflow-auto px-2 pb-2 font-mono text-[11px] leading-5"
+        >
+          {body}
+        </pre>
+      </details>
     </div>
   );
 }

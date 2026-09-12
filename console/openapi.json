@@ -3229,6 +3229,9 @@
             },
             "type": "array",
             "title": "Checks"
+          },
+          "sent": {
+            "title": "Sent"
           }
         },
         "type": "object",

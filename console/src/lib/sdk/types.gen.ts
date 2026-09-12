@@ -550,6 +550,10 @@ export type NodeRunModel = {
      * Checks
      */
     checks?: Array<NodeCheckModel>;
+    /**
+     * Sent
+     */
+    sent?: unknown;
 };
 
 /**

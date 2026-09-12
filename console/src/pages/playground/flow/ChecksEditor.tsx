@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { checkablePaths } from "./paths";
 import type { FlowCheck } from "./types";
 
 /**
@@ -52,12 +53,25 @@ export function ChecksEditor({
   checks,
   onChange,
   outputHint,
+  lastResult,
+  upstream,
 }: {
   checks: FlowCheck[];
   onChange: (checks: FlowCheck[]) => void;
   outputHint: string;
+  /** What this node produced last time, so its paths can be offered. */
+  lastResult?: unknown;
+  /** What each node before it produced, keyed by the name a check would use. */
+  upstream?: Record<string, unknown>;
 }) {
   const rows = checks.length ? checks : [emptyCheck()];
+
+  // reading the shape off the result beats remembering it: `rows.*.total` is
+  // only obvious once you have seen what came back
+  const outputPaths = checkablePaths(lastResult);
+  const inputPaths = Object.entries(upstream ?? {}).flatMap(([name, result]) =>
+    checkablePaths(result).map((path) => `${name}.${path}`)
+  );
 
   const update = (index: number, patch: Partial<FlowCheck>) => {
     const next = rows.map((row, position) =>
@@ -95,8 +109,9 @@ export function ChecksEditor({
             <input
               value={row.path}
               onChange={(event) => update(index, { path: event.target.value })}
+              list={row.on === "input" ? "check-input-paths" : "check-output-paths"}
               aria-label="Path to check"
-              placeholder={row.on === "input" ? "Rows.first.id" : outputHint}
+              placeholder={row.on === "input" ? "Rows.rows.*.id" : outputHint}
               className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring"
             />
             <button
@@ -142,6 +157,17 @@ export function ChecksEditor({
         </div>
       ))}
 
+      <datalist id="check-output-paths">
+        {outputPaths.map((path) => (
+          <option key={path} value={path} />
+        ))}
+      </datalist>
+      <datalist id="check-input-paths">
+        {inputPaths.map((path) => (
+          <option key={path} value={path} />
+        ))}
+      </datalist>
+
       <button
         type="button"
         onClick={() => onChange([...rows, emptyCheck()])}
@@ -150,6 +176,12 @@ export function ChecksEditor({
         <Plus className="h-3 w-3" />
         Add check
       </button>
+
+      <p className="px-1 text-[10px] leading-relaxed text-muted-foreground">
+        {/* the quantifier is the part nobody guesses, so it is spelled out */}
+        A <code>*</code> checks every one of them: <code>rows.*.total</code> is
+        every row's total, not the first.
+      </p>
     </div>
   );
 }
