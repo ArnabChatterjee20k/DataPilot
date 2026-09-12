@@ -16,6 +16,7 @@ import { CopyButton } from "../components/primitives";
 import { KeyValueEditor } from "../components/KeyValueEditor";
 import type { NodeTestModel } from "@/lib/sdk";
 import { ChecksEditor } from "./ChecksEditor";
+import { GraphPanel } from "./GraphPanel";
 import { LivePanel, type LiveControls } from "./LivePanel";
 import { NodeTest } from "./NodeTest";
 import type { FlowNode, NodeRun } from "./types";
@@ -36,6 +37,7 @@ export function NodeInspector({
   connections,
   test,
   live,
+  rows,
   onChange,
   onDelete,
   onClose,
@@ -51,6 +53,8 @@ export function NodeInspector({
     onRun: () => void;
   };
   live?: LiveControls;
+  /** What feeds a graph node, already flattened into rows. */
+  rows?: Record<string, unknown>[];
   onChange: (patch: Partial<FlowNode>) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -117,7 +121,7 @@ export function NodeInspector({
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
         {panel === "setup" ? (
           <>
-            {node.kind !== "constants" && (
+            {node.kind !== "constants" && node.kind !== "graph" && (
             <label className="block space-y-1">
               <span className="text-[11px] text-muted-foreground">Connection</span>
               <Select
@@ -150,7 +154,9 @@ export function NodeInspector({
             </label>
             )}
 
-            {node.kind === "socket" ? (
+            {/* a graph node is configured entirely by the panel below, so the
+                request editor must not be what it falls through to */}
+            {node.kind === "graph" ? null : node.kind === "socket" ? (
               <label className="block space-y-1">
                 <span className="text-[11px] text-muted-foreground">Path</span>
                 <input
@@ -247,7 +253,9 @@ export function NodeInspector({
               </>
             )}
 
-            {node.kind !== "constants" && node.kind !== "socket" && (
+            {node.kind !== "constants" &&
+              node.kind !== "socket" &&
+              node.kind !== "graph" && (
             <p className="text-[11px] text-muted-foreground">
               Write <code>{"{{NodeName.first.id}}"}</code> to use what an
               upstream node produced. A query node offers{" "}
@@ -260,7 +268,7 @@ export function NodeInspector({
 
             {/* a live node is never executed by the server, so a check on it
                 would be a control that quietly does nothing */}
-            {node.kind !== "socket" && (
+            {node.kind !== "socket" && node.kind !== "graph" && (
             <div className="space-y-1 border-t pt-3">
               <span className="text-[11px] text-muted-foreground">Checks</span>
               <ChecksEditor
@@ -283,7 +291,17 @@ export function NodeInspector({
             </div>
             )}
 
-            {live ? <LivePanel {...live} /> : <NodeTest {...test} />}
+            {node.kind === "graph" ? (
+              <GraphPanel
+                chart={node.chart ?? {}}
+                rows={rows ?? []}
+                onChange={(chart) => onChange({ chart })}
+              />
+            ) : live ? (
+              <LivePanel {...live} />
+            ) : (
+              <NodeTest {...test} />
+            )}
           </>
         ) : (
           <ResultPanel run={run} />

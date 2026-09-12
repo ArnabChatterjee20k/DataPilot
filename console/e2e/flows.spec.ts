@@ -845,3 +845,106 @@ test.describe("a websocket source", () => {
     await expect(page.getByRole("button", { name: "Test this node" })).toHaveCount(0);
   });
 });
+
+test.describe("a graph node", () => {
+  async function joinTo(page: Page, from: string, to: string) {
+    await connect(page, from, to);
+    await node(page, to).click();
+  }
+
+  test("draws a live websocket as it arrives", async ({ page }) => {
+    await newFlow(page);
+    await page.getByRole("button", { name: "Websocket" }).click();
+    await page.getByLabel("Node name").fill("Stream");
+    await page.getByLabel("Node connection").click();
+    await page.getByRole("option", { name: "Echo API" }).click();
+    await page.getByLabel("Socket path").fill("/stream");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(page.getByLabel("Feed", { exact: true })).toBeVisible({ timeout: 20_000 });
+
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await joinTo(page, "Stream", "Chart 1");
+
+    // the fields come from what actually arrived, not from a schema
+    const series = page.getByRole("group", { name: "Series" });
+    await expect(series.getByLabel("value")).toBeVisible();
+    await series.getByLabel("value").check();
+
+    await expect(page.getByLabel(/value by/)).toBeVisible();
+    await expect(page.getByText(/\d+ of \d+ points/)).toBeVisible();
+
+    // and it keeps growing while the feed runs
+    const first = await page.getByText(/\d+ of \d+ points/).textContent();
+    await expect
+      .poll(async () => page.getByText(/\d+ of \d+ points/).textContent(), {
+        timeout: 15_000,
+      })
+      .not.toBe(first);
+  });
+
+  test("draws the rows a query returned", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id, total from orders order by id");
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await joinTo(page, "Rows", "Chart 1");
+
+    // nothing has run yet, so there is nothing to draw and it says so
+    await expect(page.getByText("Nothing to draw yet")).toBeVisible();
+
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Chart 1").click();
+    await page.getByRole("group", { name: "Series" }).getByLabel("total").check();
+    await expect(page.getByLabel(/total by/)).toBeVisible();
+  });
+
+  test("only offers fields that hold numbers", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id, name from users order by id");
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await joinTo(page, "Rows", "Chart 1");
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+    await node(page, "Chart 1").click();
+
+    const series = page.getByRole("group", { name: "Series" });
+    await expect(series.getByLabel("id")).toBeVisible();
+    // a line through people's names would draw nothing
+    await expect(series.getByLabel("name")).toHaveCount(0);
+  });
+
+  test("two series get a legend, so identity is never colour alone", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id, total, user_id from orders order by id");
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await joinTo(page, "Rows", "Chart 1");
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(node(page, "Rows")).toHaveAttribute("data-state", "succeeded", {
+      timeout: 20_000,
+    });
+
+    await node(page, "Chart 1").click();
+    const series = page.getByRole("group", { name: "Series" });
+    await series.getByLabel("total").check();
+    await expect(page.getByRole("list", { name: "Series" })).toHaveCount(0);
+
+    await series.getByLabel("user_id").check();
+    const legend = page.getByRole("list", { name: "Series" });
+    await expect(legend).toContainText("total");
+    await expect(legend).toContainText("user_id");
+  });
+
+  test("it needs no connection and is offered no checks", async ({ page }) => {
+    await newFlow(page);
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+
+    await expect(page.getByLabel("Node connection")).toHaveCount(0);
+    await expect(page.getByRole("group", { name: "Checks" })).toHaveCount(0);
+    await expect(node(page, "Chart 1")).not.toContainText("no connection chosen");
+  });
+});
