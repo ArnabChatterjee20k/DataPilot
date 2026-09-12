@@ -32,12 +32,13 @@ QUERY = "query"
 REQUEST = "request"
 CONSTANTS = "constants"
 SOCKET = "socket"
+GRAPH = "graph"
 
 #: Kinds the server runs, once, when the flow runs.
 SERVER_KINDS = (QUERY, REQUEST, CONSTANTS)
 
 #: Kinds that run in the browser instead, for as long as the tab is open.
-LIVE_KINDS: tuple[str, ...] = (SOCKET,)
+LIVE_KINDS: tuple[str, ...] = (SOCKET, GRAPH)
 
 KINDS = SERVER_KINDS + LIVE_KINDS
 
@@ -49,6 +50,7 @@ KIND_FIELDS: dict[str, tuple[str, ...]] = {
     REQUEST: ("request",),
     CONSTANTS: ("constants",),
     SOCKET: ("socket",),
+    GRAPH: ("chart",),
 }
 
 
@@ -93,6 +95,7 @@ class Node:
     request: dict = field(default_factory=dict)
     constants: list[dict] = field(default_factory=list)
     socket: dict = field(default_factory=dict)
+    chart: dict = field(default_factory=dict)
     checks: list[dict] = field(default_factory=list)
     position: dict = field(default_factory=dict)
 
@@ -190,6 +193,7 @@ def read_graph(payload: dict) -> Graph:
                 request=raw.get("request") or {},
                 constants=read_constants(node_id, raw.get("constants")),
                 socket=raw.get("socket") or {},
+                chart=raw.get("chart") or {},
                 checks=read_checks(node_id, raw.get("checks")),
                 position=raw.get("position") or {},
             )

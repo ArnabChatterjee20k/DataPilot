@@ -1447,3 +1447,93 @@ class TestLiveNodes:
 
         assert stored["socket"] == {"path": "/feed"}
         assert "query" not in stored
+
+
+def graph_node(node_id, name, chart=None, **extra):
+    return {
+        "id": node_id,
+        "name": name,
+        "kind": "graph",
+        "chart": chart or {"type": "line", "x": "t", "y": ["value"]},
+        **extra,
+    }
+
+
+class TestGraphNode:
+    """A node that draws, which is the browser's job like any live kind."""
+
+    def test_a_query_can_feed_it(self, client, api_connection):
+        """The useful direction: the server runs, the browser draws."""
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Drawn",
+                "graph": {
+                    "nodes": [
+                        request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                        graph_node("g1", "Chart"),
+                    ],
+                    "edges": [edge("r1", "g1")],
+                },
+            },
+        )
+
+        assert response.status_code == 200
+
+    def test_a_socket_can_feed_it(self, client, socket_connection):
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Live chart",
+                "graph": {
+                    "nodes": [
+                        socket_node("s1", "Stream", socket_connection["uid"], "/stream"),
+                        graph_node("g1", "Chart"),
+                    ],
+                    "edges": [edge("s1", "g1")],
+                },
+            },
+        )
+
+        assert response.status_code == 200
+
+    def test_it_cannot_feed_a_request(self, client, api_connection):
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Backwards",
+                "graph": {
+                    "nodes": [
+                        graph_node("g1", "Chart"),
+                        request_node("r1", "Notify", api_connection["uid"], {"path": "/echo"}),
+                    ],
+                    "edges": [edge("g1", "r1")],
+                },
+            },
+        )
+
+        assert response.status_code == 400
+        assert "runs in your browser" in response.json()["detail"]
+
+    def test_the_server_reports_it_without_running_it(self, client):
+        uid = create_flow(client, "Drawn", [graph_node("g1", "Chart")], [])
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        assert states["g1"]["state"] == flows.LIVE
+        assert summary["live"] == ["Chart"]
+
+    def test_its_settings_survive_the_round_trip(self, client):
+        uid = create_flow(
+            client,
+            "Drawn",
+            [graph_node("g1", "Chart", {"type": "bar", "x": "day", "y": ["a", "b"]})],
+            [],
+        )
+
+        stored = client.get(f"/flows/{uid}").json()["graph"]["nodes"][0]
+
+        assert stored["chart"] == {"type": "bar", "x": "day", "y": ["a", "b"]}
+        assert "socket" not in stored
