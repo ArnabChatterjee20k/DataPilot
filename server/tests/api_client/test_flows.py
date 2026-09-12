@@ -1104,3 +1104,240 @@ class TestConstantsNode:
         # switched off rather than deleted, so it survives the round trip
         stored = client.get(f"/flows/{uid}").json()["graph"]["nodes"][0]["constants"]
         assert [row["key"] for row in stored] == ["on", "off"]
+
+
+def with_checks(node, *checks):
+    """Attach assertions to any node, whatever kind it is."""
+    return {**node, "checks": [{"enabled": True, **check} for check in checks]}
+
+
+class TestChecks:
+    """Assertions on what went into a node and what came out of it.
+
+    They report and never decide: a failed check is a finding about the data,
+    and the node it hangs off still succeeded or failed on its own merits.
+    """
+
+    def test_a_passing_check_is_reported(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Checked",
+            [
+                with_checks(
+                    request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "output", "path": "status", "op": "eq", "value": "200"},
+                )
+            ],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/r1/test").json()
+
+        checks = body["node"]["checks"]
+        assert len(checks) == 1
+        assert checks[0]["passed"] is True
+        assert checks[0]["description"] == "status to be 200"
+        assert checks[0]["actual"] == "200"
+
+    def test_a_failing_check_does_not_fail_the_node(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Checked",
+            [
+                with_checks(
+                    request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "output", "path": "status", "op": "eq", "value": "500"},
+                )
+            ],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/r1/test").json()
+
+        # the finding is loud, the verdict is unchanged
+        assert body["node"]["checks"][0]["passed"] is False
+        assert body["node"]["state"] == flows.SUCCEEDED
+        assert body["node"]["error"] == ""
+
+    def test_a_failing_check_does_not_stop_what_comes_after(
+        self, client, api_connection
+    ):
+        uid = create_flow(
+            client,
+            "Two",
+            [
+                with_checks(
+                    request_node("r1", "One", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "output", "path": "status", "op": "eq", "value": "500"},
+                ),
+                request_node("r2", "Two", api_connection["uid"], {"path": "/ping"}),
+            ],
+            [edge("r1", "r2")],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        assert states["r2"]["state"] == flows.SUCCEEDED
+        assert summary["failed"] == []
+        assert summary["skipped"] == []
+        assert summary["checks"]["failed"] == ["One: status to be 500"]
+
+    def test_the_summary_counts_both_ways(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Counted",
+            [
+                with_checks(
+                    request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "output", "path": "status", "op": "eq", "value": "200"},
+                    {"on": "output", "path": "ok", "op": "eq", "value": "true"},
+                    {"on": "output", "path": "status", "op": "eq", "value": "404"},
+                )
+            ],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            _states, summary = drain(socket)
+
+        assert summary["checks"]["passed"] == 2
+        assert summary["checks"]["failed"] == ["Ping: status to be 404"]
+
+    def test_an_input_check_reads_what_an_upstream_node_produced(
+        self, client, api_connection
+    ):
+        uid = create_flow(
+            client,
+            "Upstream",
+            [
+                request_node("r1", "First", api_connection["uid"], {"path": "/ping"}),
+                with_checks(
+                    request_node("r2", "Second", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "input", "path": "First.status", "op": "eq", "value": "200"},
+                ),
+            ],
+            [edge("r1", "r2")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/r2/test").json()
+
+        assert body["node"]["checks"][0]["passed"] is True
+        assert body["node"]["checks"][0]["actual"] == "200"
+
+    def test_an_input_check_is_reported_even_when_the_node_fails(self, client):
+        uid = create_flow(
+            client,
+            "Broken",
+            [
+                with_checks(
+                    query_node("q1", "Rows", None, "select 1"),
+                    {"on": "input", "path": "Nope.id", "op": "exists", "value": ""},
+                )
+            ],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/q1/test").json()
+
+        # the node could not run at all, and what went in is still on record
+        assert body["node"]["state"] == flows.FAILED
+        assert body["node"]["checks"][0]["passed"] is False
+        assert "no node called" in body["node"]["checks"][0]["detail"]
+
+    def test_a_check_survives_the_round_trip(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Saved",
+            [
+                with_checks(
+                    request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "output", "path": "status", "op": "eq", "value": "200"},
+                )
+            ],
+            [],
+        )
+
+        stored = client.get(f"/flows/{uid}").json()["graph"]["nodes"][0]["checks"]
+
+        assert stored == [
+            {
+                "on": "output",
+                "path": "status",
+                "op": "eq",
+                "value": "200",
+                "enabled": True,
+            }
+        ]
+
+    def test_an_operator_nobody_has_is_refused(self, client, api_connection):
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Bad",
+                "graph": {
+                    "nodes": [
+                        with_checks(
+                            request_node("r1", "Ping", api_connection["uid"], {}),
+                            {"on": "output", "path": "status", "op": "rhymes_with"},
+                        )
+                    ],
+                    "edges": [],
+                },
+            },
+        )
+
+        assert response.status_code == 400
+        assert "rhymes_with" in response.json()["detail"]
+
+
+class TestComparing:
+    """The comparisons themselves, without a flow around them."""
+
+    def _run(self, op, actual, expected=""):
+        scope = {"value": actual}
+        results = flows.check(
+            [
+                {
+                    "on": "output",
+                    "path": "value",
+                    "op": op,
+                    "value": expected,
+                    "enabled": True,
+                }
+            ],
+            scope,
+            {},
+            "output",
+        )
+        return results[0]
+
+    def test_a_number_and_its_text_are_the_same_answer(self):
+        assert self._run("eq", 200, "200")["passed"] is True
+
+    def test_ordering_needs_numbers_and_says_when_it_does_not_have_them(self):
+        result = self._run("lt", "later", "5")
+
+        assert result["passed"] is False
+        assert "not a number" in result["detail"]
+
+    def test_counting_works_on_a_list(self):
+        assert self._run("count_gt", [1, 2, 3], "2")["passed"] is True
+
+    def test_counting_says_when_there_is_nothing_to_count(self):
+        result = self._run("count_gt", 7, "2")
+
+        assert result["passed"] is False
+        assert "no length to count" in result["detail"]
+
+    def test_a_broken_pattern_reports_itself(self):
+        result = self._run("matches", "anything", "[")
+
+        assert result["passed"] is False
+        assert "not a valid pattern" in result["detail"]
+
+    def test_emptiness(self):
+        assert self._run("empty", [])["passed"] is True
+        assert self._run("not_empty", [1])["passed"] is True
