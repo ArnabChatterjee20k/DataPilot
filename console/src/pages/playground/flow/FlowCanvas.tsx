@@ -37,13 +37,14 @@ import {
 } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
-import type { DatabaseConnection } from "../store/store";
+import { useTabsStore, type DatabaseConnection } from "../store/store";
+import type { NodeTestModel } from "@/lib/sdk";
 import { useSaveFlow, useTestNode } from "../hooks/useFlows";
 import { FlowNodeCard, type FlowNodeCardData } from "./FlowNodeCard";
 import { NodeInspector } from "./NodeInspector";
 import { SelectionPanel } from "./SelectionPanel";
 import { useLiveNodes } from "./useLiveNodes";
-import { rowsFrom } from "./chartData";
+import { rowsFrom, type Source } from "./chartData";
 import { useFlowRun } from "./useFlowRun";
 import {
   isMacPlatform,
@@ -84,7 +85,10 @@ const nextPosition = (count: number) => ({
 function subtitleOf(data: FlowNodeCardData): string {
   if (data.kind === "socket") return (data.socket?.path ?? "").trim() || "/";
   if (data.kind === "graph") {
-    const drawn = data.chart?.y ?? [];
+    const drawn = [
+      ...(data.chart?.series ?? []).map((item) => item.field),
+      ...(data.chart?.series?.length ? [] : (data.chart?.y ?? [])),
+    ];
     return drawn.length ? drawn.join(", ") : "nothing chosen yet";
   }
   if (data.kind === "constants") {
@@ -143,6 +147,12 @@ export function FlowCanvas({
 }) {
   const save = useSaveFlow(flowUid);
   const test = useTestNode(flowUid);
+
+  // a result belongs to the node that produced it, so it survives clicking
+  // somewhere else: losing it meant running the node again to read it again
+  const renameTab = useTabsStore((state) => state.updateTab);
+  const nodeTests = useTabsStore((state) => state.nodeTests);
+  const setNodeTest = useTabsStore((state) => state.setNodeTest);
   const { runs, isRunning, summary, failure, run, reset } = useFlowRun(flowUid);
 
   // React Flow owns the array: it stores the measurements a node needs before
@@ -158,11 +168,9 @@ export function FlowCanvas({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [flowName, setFlowName] = useState(name);
   const [help, setHelp] = useState(false);
 
-  useEffect(() => {
-    test.reset();
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setNodes(graph.nodes.map(toCanvas));
@@ -181,12 +189,41 @@ export function FlowCanvas({
   const domain = nodes.map(toDomain);
   const live = useLiveNodes(domain);
 
-  /** The rows a graph node has to draw, from whichever node feeds it. */
-  const rowsFor = (id: string) => {
-    const parent = edges.find((edge) => edge.target === id)?.source;
-    const upstream = domain.find((node) => node.id === parent);
-    return rowsFrom(upstream, parent ? runs[parent] : undefined, live.feed(parent ?? ""));
+  /** What every node before this one produced, keyed by the name a check uses. */
+  const upstreamFor = (id: string) => {
+    const seen: Record<string, unknown> = {};
+    const walk = (nodeId: string) => {
+      for (const edge of edges.filter((item) => item.target === nodeId)) {
+        const parent = domain.find((node) => node.id === edge.source);
+        if (!parent || seen[parent.name]) continue;
+        const result = runs[parent.id]?.result;
+        if (result !== undefined) seen[parent.name.replace(/ /g, "_")] = result;
+        walk(parent.id);
+      }
+    };
+    walk(id);
+    return seen;
   };
+
+  /**
+   * Everything feeding a graph node, one entry per node joined to it.
+   *
+   * A graph can be fed by a table queried once and a socket still arriving at
+   * the same time, so they are kept apart rather than merged into one bag of
+   * rows: the live one has to keep moving while the static one holds.
+   */
+  const sourcesFor = (id: string): Source[] =>
+    edges
+      .filter((edge) => edge.target === id)
+      .map((edge) => domain.find((node) => node.id === edge.source))
+      .filter((node): node is FlowNode => !!node)
+      .map((node) => ({
+        id: node.id,
+        name: node.name,
+        kind: node.kind,
+        rows: rowsFrom(node, runs[node.id], live.feed(node.id)),
+        live: node.kind === "socket" && live.feed(node.id).state === "open",
+      }));
 
   const rendered = useMemo<CanvasNode[]>(
     () =>
@@ -199,7 +236,7 @@ export function FlowCanvas({
           run: runs[node.id],
           // the chart is drawn on the canvas, so what it draws has to get
           // there; feeds is in the dependencies so a live one keeps moving
-          rows: node.data.kind === "graph" ? rowsFor(node.id) : undefined,
+          sources: node.data.kind === "graph" ? sourcesFor(node.id) : undefined,
         },
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -441,7 +478,7 @@ export function FlowCanvas({
     try {
       setSaveError(null);
       await save.mutateAsync({
-        name,
+        name: flowName.trim() || name,
         graph: {
           nodes: nodes.map(toDomain),
           edges: edges.map((edge) => ({
@@ -452,6 +489,8 @@ export function FlowCanvas({
         },
       });
       setDirty(false);
+      const saved = flowName.trim() || name;
+      if (saved !== name) renameTab(`flow:${flowUid}`, { name: saved });
       return true;
     } catch (problem) {
       // the server refuses a graph it cannot run; that is worth reading
@@ -464,7 +503,8 @@ export function FlowCanvas({
     // the server reads the stored graph, so an unsaved edit would be tested
     // as it was before the edit, which is worse than not testing at all
     if (dirty && !(await persist())) return;
-    test.mutate(id);
+    const outcome = await test.mutateAsync(id).catch(() => undefined);
+    if (outcome) setNodeTest(id, outcome);
   };
 
   const start = async () => {
@@ -500,6 +540,17 @@ export function FlowCanvas({
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2">
+        <input
+          value={flowName}
+          onChange={(event) => {
+            setFlowName(event.target.value);
+            setDirty(true);
+          }}
+          aria-label="Flow name"
+          placeholder="Untitled flow"
+          className="h-8 w-40 rounded-md border bg-background px-2 text-xs font-medium outline-none focus:ring-1 focus:ring-ring"
+        />
+
         <Button
           size="sm"
           variant="outline"
@@ -665,6 +716,9 @@ export function FlowCanvas({
             // fitting an empty graph leaves the viewport somewhere arbitrary,
             // and the first node added then lands outside it
             fitView={graph.nodes.length > 0}
+            // without a ceiling, a flow with one node opens zoomed so far in
+            // that the node fills the screen
+            fitViewOptions={{ maxZoom: 1, padding: 0.2 }}
             proOptions={{ hideAttribution: true }}
           >
             <Background />
@@ -763,9 +817,10 @@ export function FlowCanvas({
                 selected && (
                   <NodeInspector
                     node={toDomain(selected)}
-                    rows={
+                    upstream={upstreamFor(selected.id)}
+                    sources={
                       selected.data.kind === "graph"
-                        ? rowsFor(selected.id)
+                        ? sourcesFor(selected.id)
                         : undefined
                     }
                     live={
@@ -781,7 +836,8 @@ export function FlowCanvas({
                     run={runs[selected.id]}
                     connections={connections}
                     test={{
-                      outcome: test.data,
+                      outcome: (nodeTests[selected.id] ??
+                        undefined) as NodeTestModel | undefined,
                       isPending: test.isPending,
                       error: test.error,
                       dirty,

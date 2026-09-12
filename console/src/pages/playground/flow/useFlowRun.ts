@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { client } from "@/lib/sdk/client.gen";
+import { useTabsStore, type FlowRunState } from "../store/store";
 import type { NodeRun, RunSummary } from "./types";
 
 const CONTROL_KEY = "__datapilot";
@@ -22,9 +23,32 @@ function runUrl(flowUid: string): string {
  * answers nothing.
  */
 export function useFlowRun(flowUid: string | undefined) {
-  const [runs, setRuns] = useState<Record<string, NodeRun>>({});
+  // the canvas is remounted on every tab change, so what a run reported lives
+  // in the store rather than here; reading it back is the whole point
+  const stored = useTabsStore((state) => state.flowRuns[flowUid ?? ""]);
+  const setFlowRun = useTabsStore((state) => state.setFlowRun);
+
+  const runs = (stored?.runs ?? {}) as Record<string, NodeRun>;
+  const summary = (stored?.summary ?? null) as RunSummary | null;
+
+  const keep = useCallback(
+    (next: Partial<FlowRunState>) => {
+      if (!flowUid) return;
+      setFlowRun(flowUid, {
+        runs: next.runs ?? runsRef.current,
+        summary: next.summary !== undefined ? next.summary : summaryRef.current,
+      });
+    },
+    [flowUid, setFlowRun]
+  );
+
+  // the socket callbacks are built once, so they read the latest through refs
+  const runsRef = useRef<Record<string, NodeRun>>({});
+  const summaryRef = useRef<RunSummary | null>(null);
+  runsRef.current = runs;
+  summaryRef.current = summary;
+
   const [isRunning, setIsRunning] = useState(false);
-  const [summary, setSummary] = useState<RunSummary | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -45,8 +69,7 @@ export function useFlowRun(flowUid: string | undefined) {
   const run = useCallback(() => {
     if (!flowUid || socketRef.current) return;
 
-    setRuns({});
-    setSummary(null);
+    keep({ runs: {}, summary: null });
     setFailure(null);
     setIsRunning(true);
 
@@ -66,7 +89,7 @@ export function useFlowRun(flowUid: string | undefined) {
         if (state === "error") setFailure(String(frame.detail ?? "The flow could not run"));
         if (state === "finished") {
           try {
-            setSummary(JSON.parse(String(frame.detail)));
+            keep({ summary: JSON.parse(String(frame.detail)) });
           } catch {
             /* the run still finished, only the tally is missing */
           }
@@ -75,21 +98,20 @@ export function useFlowRun(flowUid: string | undefined) {
       }
 
       const node = frame.node as NodeRun | undefined;
-      if (node?.id) setRuns((current) => ({ ...current, [node.id]: node }));
+      if (node?.id) keep({ runs: { ...runsRef.current, [node.id]: node } });
     };
 
     socket.onclose = () => {
       socketRef.current = null;
       setIsRunning(false);
     };
-  }, [flowUid]);
+  }, [flowUid, keep]);
 
   /** A saved flow that has never run shows nothing, which is correct. */
   const reset = useCallback(() => {
-    setRuns({});
-    setSummary(null);
+    keep({ runs: {}, summary: null });
     setFailure(null);
-  }, []);
+  }, [keep]);
 
   return { runs, isRunning, summary, failure, run, stop, reset };
 }
