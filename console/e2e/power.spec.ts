@@ -1,8 +1,9 @@
-import { expect, test } from "./fixtures";
+import { expect, test, type Page } from "./fixtures";
 
 import {
   createSqliteConnection,
   deleteAllConnections,
+  expandConnection,
   openPlayground,
   openTable,
   startQuery,
@@ -245,5 +246,50 @@ test.describe("column controls", () => {
     await page.reload();
     await waitForRows(page);
     await expect.poll(async () => (await headers())[1]).toContain("name");
+  });
+});
+
+test.describe("a table's indexes", () => {
+  async function showIndexes(page: Page, table: string) {
+    await openPlayground(page);
+    await expandConnection(page, connection.name);
+    await page.getByRole("button", { name: `Actions for ${table}` }).click();
+    await page.getByRole("menuitem", { name: "Show indexes" }).click();
+  }
+
+  test("lists what the table is indexed on", async ({ page, pageErrors: _errors }) => {
+    await showIndexes(page, "users");
+
+    const indexes = page.getByRole("table", { name: "Indexes on users" });
+    await expect(indexes).toBeVisible();
+    await expect(indexes).toContainText("users_email_idx");
+    await expect(indexes).toContainText("email");
+    await expect(indexes).toContainText("unique");
+  });
+
+  test("says plainly when a table has none", async ({ page, pageErrors: _errors }) => {
+    await showIndexes(page, "orders");
+
+    // no index is a finding rather than an empty state
+    await expect(page.getByText(/no indexes, so every filter/)).toBeVisible();
+    await expect(page.getByRole("table", { name: /Indexes on/ })).toHaveCount(0);
+  });
+
+  test("choosing from the menu does not open the table behind it", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await expandConnection(page, connection.name);
+    await expect(page.locator("table tbody tr")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Actions for users" }).click();
+    await page.getByRole("menuitem", { name: "Show indexes" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+
+    // the menu is portaled, but React bubbles through the component tree, so
+    // the row used to see the click too - and Drop table opened the table it
+    // was about to drop
+    await expect(page.locator("table tbody tr")).toHaveCount(1);
   });
 });
