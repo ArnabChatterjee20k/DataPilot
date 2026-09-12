@@ -791,3 +791,65 @@ class TestTestingOneNode:
         assert offered["{{One.status}}"] == "200"
         assert "{{One.json.pong}}" in offered
 
+class TestValuesThatAreNotJson:
+    """A database value the browser cannot be handed directly.
+
+    Adapters return native Python objects - UUID, datetime, Decimal, bytes -
+    and a flow that hands one to json.dumps unaided takes the whole run down
+    with it, not just the node that produced it.
+    """
+
+    @pytest.fixture()
+    def sqlite_connection(self, client, sqlite_connection_uri):
+        response = client.post(
+            "/connections",
+            json={
+                "source": "sqlite",
+                "name": "Files",
+                "connection_uri": sqlite_connection_uri,
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_a_blob_does_not_take_the_run_down(self, client, sqlite_connection):
+        uid = create_flow(
+            client,
+            "Binary",
+            [
+                query_node(
+                    "one",
+                    "Blobby",
+                    sqlite_connection["uid"],
+                    "select x'0102' as payload",
+                )
+            ],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        assert summary["failed"] == []
+        assert states["one"]["state"] == flows.SUCCEEDED
+
+    def test_testing_one_node_survives_it_too(self, client, sqlite_connection):
+        uid = create_flow(
+            client,
+            "Binary",
+            [
+                query_node(
+                    "one",
+                    "Blobby",
+                    sqlite_connection["uid"],
+                    "select x'0102' as payload",
+                )
+            ],
+            [],
+        )
+
+        response = client.post(f"/flows/{uid}/nodes/one/test")
+
+        assert response.status_code == 200, response.text
+        assert response.json()["node"]["state"] == flows.SUCCEEDED

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 
-from .. import flow_runner, flows, http_client, sql as sql_analysis
+from .. import flow_runner, flows, http_client, serialization, sql as sql_analysis
 from ..config import AppConfig, SourceConfig
 from ..models import (
     FlowListModel,
@@ -132,7 +132,9 @@ async def run_query_node(connection, node, sql: str) -> tuple[str, dict]:
     except Exception as error:
         raise flows.FlowError(str(to_http_error(error, connection.connection_uri).detail)) from error
 
-    rows = [dict(row) for row in (result.rows or [])][: AppConfig.MAX_ROWS]
+    # an adapter hands back UUID, datetime, Decimal and bytes as themselves,
+    # and none of those survive json.dumps on the way to the browser
+    rows = serialization.jsonable_rows(result.rows or [])[: AppConfig.MAX_ROWS]
     payload = {
         "rows": rows,
         "row_count": len(rows),
@@ -302,7 +304,11 @@ async def run_flow(websocket: WebSocket, flow_uid: str):
         await websocket.send_text(json.dumps({CONTROL_KEY: state, "detail": detail}))
 
     async def report(run: flow_runner.NodeRun):
-        await websocket.send_text(json.dumps({"node": run.as_dict()}))
+        # a value that cannot be encoded is a bad cell, not a broken flow, so
+        # it degrades to text here rather than killing the socket
+        await websocket.send_text(
+            json.dumps({"node": run.as_dict()}, default=serialization.to_jsonable)
+        )
 
     try:
         async with storage.session() as session:
