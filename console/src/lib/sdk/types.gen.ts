@@ -582,6 +582,10 @@ export type QueryInsightModel = {
      * Plan
      */
     plan?: Array<unknown>;
+    /**
+     * Plan Text
+     */
+    plan_text?: string;
 };
 
 /**

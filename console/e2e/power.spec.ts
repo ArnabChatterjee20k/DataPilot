@@ -167,6 +167,27 @@ test.describe("query plan", () => {
       page.getByRole("region", { name: "Query plan" }).getByText("uses an index")
     ).toBeVisible();
   });
+
+  test("the plan itself is readable, in the database's own words", async ({
+    page,
+    pageErrors: _errors,
+  }) => {
+    await openPlayground(page);
+    await startQuery(page, connection.name);
+
+    await page.getByLabel("SQL editor").fill("SELECT * FROM users WHERE name = 'Bob'");
+    await page.getByRole("button", { name: "Run" }).click();
+    await waitForRows(page);
+    await page.getByRole("button", { name: "Plan" }).click();
+
+    // everything above the plan is an opinion about it; this is the plan
+    const source = page.getByLabel("Query plan source");
+    await expect(source).toContainText("SCAN users");
+    await expect(source).not.toContainText("{");
+
+    await page.getByRole("button", { name: "JSON", exact: true }).click();
+    await expect(source).toContainText("{");
+  });
 });
 
 test.describe("column controls", () => {
