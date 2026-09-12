@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { areaY, barY, defineChart, lineY } from "@tanstack/charts";
+import { areaY, barX, barY, defineChart, dot, lineY } from "@tanstack/charts";
 import { scaleBand } from "@tanstack/charts/scales/band";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { Chart as TanStackChart } from "@tanstack/charts/react";
@@ -14,7 +14,43 @@ import { cn } from "@/lib/utils";
  * happens to draw something.
  */
 
-export type ChartType = "line" | "bar" | "area";
+export type ChartType = "line" | "step" | "area" | "bar" | "bars-across" | "scatter";
+
+/** The types on offer, and the shape of data each one is for. */
+export const CHART_TYPES: { value: ChartType; label: string; hint: string }[] = [
+  { value: "line", label: "Line", hint: "a number over time" },
+  { value: "step", label: "Step", hint: "a value that holds, then jumps" },
+  { value: "area", label: "Area", hint: "a number over time, filled" },
+  { value: "bar", label: "Bar", hint: "one bar per row" },
+  { value: "bars-across", label: "Bars across", hint: "bars with room for labels" },
+  { value: "scatter", label: "Scatter", hint: "one point per row" },
+];
+
+/**
+ * A line that holds its value and then jumps, rather than sloping between
+ * readings.
+ *
+ * Written here rather than pulled from d3-shape: a curve is two functions
+ * returning path strings, which is cheaper than another dependency.
+ */
+const STEP_CURVE = {
+  line: (points: readonly (readonly [number, number])[]) =>
+    points
+      .map(([x, y], index) =>
+        index === 0 ? `M${x},${y}` : `H${x}V${y}`
+      )
+      .join(""),
+  area: (
+    top: readonly (readonly [number, number])[],
+    bottom: readonly (readonly [number, number])[]
+  ) => {
+    const up = top.map(([x, y], index) => (index === 0 ? `M${x},${y}` : `H${x}V${y}`));
+    const down = [...bottom]
+      .reverse()
+      .map(([x, y], index) => (index === 0 ? `L${x},${y}` : `H${x}V${y}`));
+    return `${up.join("")}${down.join("")}Z`;
+  },
+};
 
 export interface ChartPoint {
   x: string | number;
@@ -77,26 +113,52 @@ export function FlowChart({
   label: string;
 }) {
   const definition = useMemo(() => {
-    const mark = type === "bar" ? barY : type === "area" ? areaY : lineY;
+    const across = type === "bars-across";
+    const chosen = series.slice(0, MAX_SERIES);
+
+    const value = (name: string) => (point: ChartPoint) => {
+      const number = Number(point[name]);
+      return Number.isFinite(number) ? number : null;
+    };
+    const along = (point: ChartPoint) => point.x;
+
+    const marks = chosen.map((name, index) => {
+      const colour = seriesColour(index);
+
+      if (across) {
+        // the categories run down the side, which is where a long label fits
+        return barX(points, { x: value(name), y: along, fill: colour });
+      }
+      if (type === "bar") {
+        return barY(points, { x: along, y: value(name), fill: colour });
+      }
+      if (type === "area") {
+        return areaY(points, { x: along, y: value(name), fill: colour });
+      }
+      if (type === "scatter") {
+        // >= 8px across, so a point is a mark rather than a speck
+        return dot(points, { x: along, y: value(name), fill: colour, r: 4 });
+      }
+      return lineY(points, {
+        x: along,
+        y: value(name),
+        // 2px: a data line is the subject, not a hairline and not a slab
+        stroke: colour,
+        strokeWidth: 2,
+        ...(type === "step" ? { curve: STEP_CURVE } : {}),
+      });
+    });
 
     return defineChart({
-      marks: series.slice(0, MAX_SERIES).map((name, index) =>
-        mark(points, {
-          x: (point: ChartPoint) => point.x,
-          y: (point: ChartPoint) => {
-            const value = Number(point[name]);
-            return Number.isFinite(value) ? value : null;
-          },
-          // 2px: a data line is the subject, not a hairline and not a slab
-          ...(type === "line"
-            ? { stroke: seriesColour(index), strokeWidth: 2 }
-            : { fill: seriesColour(index) }),
-        })
-      ),
+      marks,
       scales: {
-        // bars sit in bands; a line over time reads on a continuous axis
-        x: type === "bar" ? { scale: scaleBand } : { scale: scaleLinear },
-        y: { scale: scaleLinear, nice: true },
+        // bars sit in bands; everything else reads on a continuous axis
+        x: across
+          ? { scale: scaleLinear, nice: true }
+          : type === "bar"
+            ? { scale: scaleBand }
+            : { scale: scaleLinear },
+        y: across ? { scale: scaleBand } : { scale: scaleLinear, nice: true },
       },
     });
   }, [points, series, type]);

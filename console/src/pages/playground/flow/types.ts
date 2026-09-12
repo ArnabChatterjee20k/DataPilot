@@ -44,13 +44,24 @@ export interface SocketConfig {
 
 /** What a graph node draws, and out of which fields. */
 export interface ChartConfig {
-  type?: "line" | "bar" | "area";
+  type?: "line" | "step" | "area" | "bar" | "bars-across" | "scatter";
   /** The field along the bottom. Blank means the order things arrived in. */
   x?: string;
   /** One line each. */
   y?: string[];
   /** How many points to keep on screen. */
   window?: number;
+  /**
+   * A sample of what the data looks like, pasted before any has arrived.
+   *
+   * A flow is drawn before it is run, so the fields have to be choosable
+   * before anything has produced them. The keys in here become suggestions
+   * alongside the ones real data brings.
+   */
+  sample?: string;
+  /** How big the node was dragged, so the chart keeps the room it was given. */
+  w?: number;
+  h?: number;
 }
 
 export interface FlowNode {
