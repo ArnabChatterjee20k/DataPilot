@@ -15,7 +15,17 @@ import {
   type OnSelectionChangeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertCircle, Database, Globe, Keyboard, Loader2, Play, Save, X } from "lucide-react";
+import {
+  AlertCircle,
+  Braces,
+  Database,
+  Globe,
+  Keyboard,
+  Loader2,
+  Play,
+  Save,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +48,7 @@ import {
   useFlowShortcuts,
 } from "./shortcuts";
 import {
+  NEW_CONSTANTS_NODE,
   NEW_QUERY_NODE,
   NEW_REQUEST_NODE,
   newNodeId,
@@ -57,6 +68,12 @@ const nextPosition = (count: number) => ({
 });
 
 function subtitleOf(data: FlowNodeCardData): string {
+  if (data.kind === "constants") {
+    const rows = (data.constants ?? []).filter((row) => row.key.trim());
+    return rows.length
+      ? rows.map((row) => row.key).join(", ")
+      : "no values yet";
+  }
   if (data.kind === "query") return String(data.query ?? "").trim();
   const request = data.request;
   return request ? `${request.method ?? "GET"} ${request.path ?? ""}`.trim() : "";
@@ -72,6 +89,7 @@ const toCanvas = (node: FlowNode): CanvasNode => ({
     connection_id: node.connection_id ?? null,
     query: node.query ?? "",
     request: node.request,
+    constants: node.constants ?? [],
     subtitle: "",
   },
 });
@@ -83,6 +101,7 @@ const toDomain = (node: CanvasNode): FlowNode => ({
   connection_id: (node.data.connection_id as string | null) ?? null,
   query: String(node.data.query ?? ""),
   request: node.data.request,
+  constants: (node.data.constants as FlowNode["constants"]) ?? [],
   position: node.position,
 });
 
@@ -177,7 +196,12 @@ export function FlowCanvas({
 
   const addNode = (kind: NodeKind) => {
     const id = newNodeId();
-    const base = kind === "query" ? NEW_QUERY_NODE(id) : NEW_REQUEST_NODE(id);
+    const base =
+      kind === "query"
+        ? NEW_QUERY_NODE(id)
+        : kind === "constants"
+          ? NEW_CONSTANTS_NODE(id)
+          : NEW_REQUEST_NODE(id);
     setNodes((current) => {
       const sameKind = current.filter((node) => node.data.kind === kind).length;
       return [
@@ -396,6 +420,7 @@ export function FlowCanvas({
   useFlowShortcuts({
     addQuery: () => addNode("query"),
     addRequest: () => addNode("request"),
+    addConstants: () => addNode("constants"),
     duplicate: duplicateSelection,
     remove: removeSelection,
     selectAll,
@@ -432,6 +457,16 @@ export function FlowCanvas({
         >
           <Globe className="h-3.5 w-3.5" />
           Request node
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 px-2 text-xs"
+          onClick={() => addNode("constants")}
+          title="Add a constants node (C)"
+        >
+          <Braces className="h-3.5 w-3.5" />
+          Constants
         </Button>
 
         <div className="ml-auto flex items-center gap-1.5">

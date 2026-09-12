@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 export type ShortcutAction =
   | "addQuery"
   | "addRequest"
+  | "addConstants"
   | "duplicate"
   | "remove"
   | "selectAll"
@@ -32,6 +33,7 @@ interface Shortcut {
 export const SHORTCUTS: Shortcut[] = [
   { action: "addQuery", keys: ["q"], label: "Add a query node" },
   { action: "addRequest", keys: ["r"], label: "Add a request node" },
+  { action: "addConstants", keys: ["c"], label: "Add a constants node" },
   { action: "duplicate", keys: ["d"], mod: true, label: "Duplicate the selection" },
   { action: "remove", keys: ["Delete", "Backspace"], label: "Delete the selection" },
   { action: "selectAll", keys: ["a"], mod: true, label: "Select every node" },
