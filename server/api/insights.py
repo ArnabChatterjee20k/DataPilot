@@ -82,6 +82,73 @@ def explain_statement(source: str, query: str) -> str:
     return f"EXPLAIN QUERY PLAN {statement}"
 
 
+def explain_text_statement(source: str, query: str) -> Optional[str]:
+    """The same plan, asked for in the database's own words.
+
+    The parsed summary above is an opinion about the plan. Someone checking
+    whether that opinion is right needs the plan itself, in the form the
+    database's own client would print, not a rendering of our intermediate.
+    """
+    statement = (query or "").strip().rstrip(";")
+    if source == "postgres":
+        return f"EXPLAIN {statement}"
+    if source == "mysql":
+        # a tree, and much closer to readable than the tabular default; older
+        # servers do not have it, which the caller treats as "no text plan"
+        return f"EXPLAIN FORMAT=TREE {statement}"
+    if source == "sqlite":
+        return f"EXPLAIN QUERY PLAN {statement}"
+    return None
+
+
+def plan_text(source: str, rows: list[dict]) -> str:
+    """Turn the rows an EXPLAIN came back as into the text it is meant to be.
+
+    Every backend hands this over differently: PostgreSQL one line per row,
+    MySQL one cell holding the whole tree, SQLite a parent/child table that is
+    a tree only once it is indented.
+    """
+    if not rows:
+        return ""
+
+    if source == "sqlite":
+        return _sqlite_tree(rows)
+
+    lines: list[str] = []
+    for row in rows:
+        for value in row.values():
+            if value is None:
+                continue
+            # only the trailing end: PostgreSQL indents to show the tree, so
+            # stripping the front flattens the plan into a list of steps
+            text = str(value).rstrip()
+            if text.strip():
+                lines.append(text)
+    return "\n".join(lines)
+
+
+def _sqlite_tree(rows: list[dict]) -> str:
+    """Indent SQLite's flat parent/child rows back into the tree they describe."""
+    children: dict[int, list[dict]] = {}
+    for row in rows:
+        parent = int(row.get("parent") or 0)
+        children.setdefault(parent, []).append(row)
+
+    lines: list[str] = []
+
+    def walk(parent: int, depth: int):
+        for row in children.get(parent, []):
+            detail = str(row.get("detail") or "").strip()
+            if detail:
+                lines.append(f"{'  ' * depth}{detail}")
+            node_id = row.get("id")
+            if node_id is not None and int(node_id) != parent:
+                walk(int(node_id), depth + 1)
+
+    walk(0, 0)
+    return "\n".join(lines)
+
+
 def speed_from_cost(cost: Optional[float], rows: Optional[int]) -> Optional[str]:
     if cost is not None:
         if cost < PG_FAST_COST:

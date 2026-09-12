@@ -62,13 +62,26 @@ async def explain_query(
         )
 
     statement = plan_insights.explain_statement(connection.source, query)
+    text_statement = plan_insights.explain_text_statement(connection.source, query)
+
     async with open_session(connection) as session:
         result = await session.execute(statement)
+
+        text = ""
+        if text_statement:
+            try:
+                spelled = await session.execute(text_statement)
+                text = plan_insights.plan_text(connection.source, spelled.rows or [])
+            except Exception:
+                # EXPLAIN FORMAT=TREE is not on every MySQL, and a missing
+                # second opinion is not a reason to withhold the first
+                text = ""
 
     insight = plan_insights.parse(connection.source, result.rows or [])
     return QueryInsightModel(
         connection_id=connection_id,
         query=query,
+        plan_text=text,
         **insight.to_dict(),
     )
 

@@ -227,6 +227,9 @@ class QueryInsightModel(BaseModel):
     uses_index: bool = False
     warnings: list[str] = Field(default_factory=list)
     plan: list[Any] = Field(default_factory=list)
+    #: The plan as the database's own client would print it, for checking the
+    #: summary above rather than taking it on trust.
+    plan_text: str = ""
 
 
 class SlowQueryModel(BaseModel):

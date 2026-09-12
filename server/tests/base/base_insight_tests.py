@@ -45,6 +45,24 @@ class BaseInsightTestMixin:
         assert data["scans"]
         assert data["plan"]
 
+    def test_explain_also_gives_the_plan_in_the_database_own_words(
+        self, client: httpx.Client
+    ):
+        """The summary is an opinion; checking it needs the plan itself."""
+        connection_uid = self._create_connection(client)
+
+        response = client.get(
+            f"/connection/{connection_uid}/entities/users/explain",
+            params={"query": "SELECT * FROM users"},
+        )
+        assert response.status_code == 200, response.text
+        text = response.json()["plan_text"]
+
+        assert text.strip(), "no text plan came back"
+        assert "users" in text.lower()
+        # the whole point is that it reads like the database printed it
+        assert "{" not in text
+
     def test_explain_flags_a_sequential_scan(self, client: httpx.Client):
         connection_uid = self._create_connection(client)
 
