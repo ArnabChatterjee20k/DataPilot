@@ -341,3 +341,151 @@ test.describe("keyboard shortcuts", () => {
     expect(Math.abs(after.y - before.y)).toBeLessThan(2);
   });
 });
+
+test.describe("testing one node", () => {
+  test("a query node reports what it produced, without running the flow", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Parts", "select id, name from users limit 2");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByLabel("What was sent")).toContainText(
+      "select id, name from users limit 2"
+    );
+    await expect(page.getByLabel("What came back")).toContainText("Alice Johnson");
+  });
+
+  test("a request node shows the reference replaced by its value", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Parts", "select id, name from users limit 2");
+    await addRequestNode(page, "Send", "/echo", '{"id": {{Parts.first.id}}}');
+    await connect(page, "Parts", "Send");
+
+    await node(page, "Send").click();
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    // the reference is gone and the value is in its place
+    await expect(page.getByLabel("What was sent")).toContainText('{"id": 1}');
+    await expect(page.getByLabel("What was sent")).not.toContainText("{{Parts");
+  });
+
+  test("a tested node shows how the next one refers to what it produced", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Parts", "select id, name from users limit 2");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    const table = page.getByRole("table", { name: "How the next node uses this" });
+    await expect(table).toBeVisible();
+    await expect(table).toContainText("You write");
+    await expect(table).toContainText("You get");
+
+    // the reference and the value it holds, side by side, ready to copy
+    const row = (reference: string) =>
+      table.locator("tr").filter({ hasText: reference });
+    await expect(row("{{Parts.first.id}}")).toContainText("1");
+    await expect(row("{{Parts.first.name}}")).toContainText("Alice Johnson");
+    await expect(row("{{Parts.row_count}}")).toContainText("2");
+    await expect(table).toContainText("{{Parts.columns.0}}");
+    // indexing is shown on a row that exists
+    await expect(table).toContainText("{{Parts.rows.1.id}}");
+  });
+
+  test("a reference copies to the clipboard as written", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await newFlow(page);
+    await addQueryNode(page, "Get parts", "select id from users limit 1");
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+    await page
+      .getByRole("button", { name: "Copy {{Get_parts.first.id}}" })
+      .click();
+
+    // the underscore form is the one that resolves, so it is the one copied
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toBe("{{Get_parts.first.id}}");
+  });
+
+  test("what the node can refer to is listed with the values it holds", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Parts", "select id, name from users limit 2");
+    await addRequestNode(page, "Send", "/echo");
+    await connect(page, "Parts", "Send");
+
+    await node(page, "Send").click();
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    const offered = page.getByRole("table", { name: "From Parts" });
+    await expect(offered).toBeVisible();
+    await expect(offered).toContainText("{{Parts.first.id}}");
+    await expect(offered).toContainText("{{Parts.row_count}}");
+    // the value beside it is the point: it says what will actually be sent
+    await expect(offered.locator("tr").filter({ hasText: "first.name" })).toContainText(
+      "Alice Johnson"
+    );
+  });
+
+  test("a name with a space is offered in the form that actually resolves", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Get parts", "select id from users limit 1");
+    await addRequestNode(page, "Send", "/echo");
+    await connect(page, "Get parts", "Send");
+
+    await node(page, "Send").click();
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    const offered = page.getByRole("table", { name: "From Get parts" });
+    await expect(offered).toContainText("{{Get_parts.first.id}}");
+    await expect(offered).not.toContainText("{{Get parts.");
+  });
+
+  test("a node waiting on a broken one says it never ran", async ({ page }) => {
+    await newFlow(page);
+    // a query node with no connection cannot run at all
+    await page.getByRole("button", { name: "Query node" }).click();
+    await page.getByLabel("Node name").fill("Broken");
+    await page.getByLabel("Node query").fill("select 1");
+    await addRequestNode(page, "Send", "/echo");
+    await connect(page, "Broken", "Send");
+
+    await node(page, "Send").click();
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByText(/This node never ran/)).toBeVisible();
+    await expect(page.getByText(/waiting on Broken/)).toBeVisible();
+  });
+
+  test("an unsaved edit is saved before it is tested", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Parts", "select id from users limit 1");
+    await expect(page.getByText("unsaved")).toBeVisible();
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    // otherwise the server would test the graph as it was before the edit
+    await expect(page.getByLabel("What came back")).toBeVisible();
+    await expect(page.getByText("unsaved")).toHaveCount(0);
+  });
+
+  test("the result belongs to the node that is open", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Parts", "select id from users limit 1");
+    await page.getByRole("button", { name: "Test this node" }).click();
+    await expect(page.getByLabel("What came back")).toBeVisible();
+
+    await addRequestNode(page, "Send", "/echo");
+
+    // a result left over from another node is worse than no result
+    await expect(page.getByLabel("What came back")).toHaveCount(0);
+  });
+});
