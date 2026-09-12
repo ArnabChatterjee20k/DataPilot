@@ -238,6 +238,26 @@ A downstream node reads what an upstream one produced:
 | `{{Ping.json.token}}` | a field of a JSON response |
 | `{{Ping.status}}` | the status code |
 
+A name with a space in it is written with an underscore, so a node called
+`Get users` is `{{Get_users.first.id}}`.
+
+**Test this node** in the setup panel runs one node and whatever feeds it,
+leaving the branches beside it alone. It reports what the node was actually
+sent once the references were replaced, and what came back, followed by a table
+of every reference the next node can write against this one with the value each
+holds right now:
+
+| You write | You get |
+| --- | --- |
+| `{{Parts.first.id}}` | `1` |
+| `{{Parts.first.name}}` | `bolt` |
+| `{{Parts.rows.1.id}}` | `2` |
+| `{{Parts.row_count}}` | `2` |
+
+Each line copies. Working out the output shape, the node name and how the two
+combine is the slow part of wiring a flow, and this hands over the answer
+instead.
+
 Nodes run as soon as their own dependencies finish, so two branches off one node
 run at the same time. Each node shows its state on the canvas as it goes, with
 the row or status count and the timing, and the whole result is one click away.
@@ -358,6 +378,7 @@ Interactive docs are at `/docs`, and the schema at `/openapi.json`.
 | `WS` | `/connection/{id}/redis/subscribe` | watch messages arrive |
 | `GET POST PUT DELETE` | `/flows` | manage flows |
 | `WS` | `/flows/{uid}/run` | run one, reporting each node as it goes |
+| `POST` | `/flows/{uid}/nodes/{id}/test` | run one node and what feeds it |
 
 ## Built on
 

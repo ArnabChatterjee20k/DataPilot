@@ -8,12 +8,16 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 
-from .. import flow_runner, flows, http_client, sql as sql_analysis
+from .. import flow_runner, flows, http_client, serialization, sql as sql_analysis
 from ..config import AppConfig, SourceConfig
 from ..models import (
     FlowListModel,
     FlowModel,
     FlowSpecModel,
+    NodeReferenceGroupModel,
+    NodeReferenceModel,
+    NodeRunModel,
+    NodeTestModel,
 )
 from ..database.db import DBSession
 from ..database.models import Connections, Flows
@@ -128,7 +132,9 @@ async def run_query_node(connection, node, sql: str) -> tuple[str, dict]:
     except Exception as error:
         raise flows.FlowError(str(to_http_error(error, connection.connection_uri).detail)) from error
 
-    rows = [dict(row) for row in (result.rows or [])][: AppConfig.MAX_ROWS]
+    # an adapter hands back UUID, datetime, Decimal and bytes as themselves,
+    # and none of those survive json.dumps on the way to the browser
+    rows = serialization.jsonable_rows(result.rows or [])[: AppConfig.MAX_ROWS]
     payload = {
         "rows": rows,
         "row_count": len(rows),
@@ -174,6 +180,114 @@ async def run_request_node(connection, node, spec: dict) -> tuple[str, dict]:
     return f"{response.status} {response.reason}".strip(), payload
 
 
+def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
+    """How a node runs, shared by the live flow and by testing one node.
+
+    `captured` collects what a node was actually sent, which is the thing
+    worth looking at when a flow does something unexpected: the reference was
+    probably fine and the value behind it was not.
+    """
+
+    async def execute(node: flows.Node, inputs: dict):
+        runner = runner_ref["runner"]
+        connection = await load_connection_for(session, node.connection_id, node)
+
+        if node.kind == flows.QUERY:
+            sql, missing = flows.interpolate(node.query, inputs, runner.names)
+            if missing:
+                runner.warn(node.id, flows.describe_missing(missing))
+            if not str(sql).strip():
+                raise flows.FlowError(f"{node.label} has no query to run.")
+            if captured is not None and captured.get("id") == node.id:
+                captured["query"] = sql
+            return await run_query_node(connection, node, sql)
+
+        spec, missing = flows.interpolate_deep(node.request or {}, inputs, runner.names)
+        if missing:
+            runner.warn(node.id, flows.describe_missing(missing))
+        if captured is not None and captured.get("id") == node.id:
+            captured["request"] = spec
+        return await run_request_node(connection, node, spec)
+
+    return execute
+
+
+@router.post("/flows/{flow_uid}/nodes/{node_id}/test", response_model=NodeTestModel)
+async def test_node(flow_uid: str, node_id: str, db: DBSession):
+    """Run one node, along with whatever feeds it, and report what happened.
+
+    Running the whole flow to find out what one node does is a slow way to
+    ask, and the branches beside it fire on the way past. This runs the node
+    and its ancestors only.
+    """
+    record = await load_flow(db, flow_uid)
+    try:
+        graph = flows.read_graph(record.get_values().get("graph") or {})
+    except flows.FlowError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+
+    if node_id not in graph.by_id():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"This flow has no node '{node_id}'. Save the flow first.",
+        )
+
+    needed = graph.upto(node_id)
+    captured: dict = {"id": node_id}
+    runner_ref: dict = {}
+
+    async def report(_run: flow_runner.NodeRun):
+        return None
+
+    runner = flow_runner.FlowRun(
+        needed, node_executor(db, runner_ref, captured), report
+    )
+    runner_ref["runner"] = runner
+    runs = await runner.run()
+
+    target = runs[node_id]
+    upstream = [runs[other] for other in needed.by_id() if other != node_id]
+
+    # what the node could have referred to, with the values it would have got
+    available = []
+    for other_id, output in runner.outputs.items():
+        if other_id == node_id:
+            continue
+        other = needed.by_id()[other_id]
+        name = flows.reference_name(other.name, other.id)
+        available.append(
+            NodeReferenceGroupModel(
+                node=other.label,
+                kind=other.kind,
+                references=[
+                    NodeReferenceModel(**item)
+                    for item in flows.suggest_references(name, other.kind, output)
+                ],
+            )
+        )
+
+    # what a node after this one would write to use what it just produced,
+    # which is the question asked while looking at the result, not later
+    node = needed.by_id()[node_id]
+    offers = [
+        NodeReferenceModel(**item)
+        for item in flows.suggest_references(
+            flows.reference_name(node.name, node.id),
+            node.kind,
+            runner.outputs.get(node_id, {}),
+        )
+    ]
+
+    return NodeTestModel(
+        node=NodeRunModel(**target.as_dict()),
+        offers=offers,
+        resolved_query=captured.get("query", ""),
+        resolved_request=captured.get("request"),
+        upstream=[NodeRunModel(**run.as_dict()) for run in upstream],
+        available=available,
+    )
+
+
 @router.websocket("/flows/{flow_uid}/run")
 async def run_flow(websocket: WebSocket, flow_uid: str):
     """Run the flow once, reporting every node as its state changes.
@@ -190,7 +304,11 @@ async def run_flow(websocket: WebSocket, flow_uid: str):
         await websocket.send_text(json.dumps({CONTROL_KEY: state, "detail": detail}))
 
     async def report(run: flow_runner.NodeRun):
-        await websocket.send_text(json.dumps({"node": run.as_dict()}))
+        # a value that cannot be encoded is a bad cell, not a broken flow, so
+        # it degrades to text here rather than killing the socket
+        await websocket.send_text(
+            json.dumps({"node": run.as_dict()}, default=serialization.to_jsonable)
+        )
 
     try:
         async with storage.session() as session:
@@ -213,27 +331,11 @@ async def run_flow(websocket: WebSocket, flow_uid: str):
                 await websocket.close(code=1008)
                 return
 
-            runner: flow_runner.FlowRun
-
-            async def execute(node: flows.Node, inputs: dict):
-                connection = await load_connection_for(session, node.connection_id, node)
-
-                if node.kind == flows.QUERY:
-                    sql, missing = flows.interpolate(node.query, inputs, runner.names)
-                    if missing:
-                        runner.warn(node.id, flows.describe_missing(missing))
-                    if not str(sql).strip():
-                        raise flows.FlowError(f"{node.label} has no query to run.")
-                    return await run_query_node(connection, node, sql)
-
-                spec, missing = flows.interpolate_deep(
-                    node.request or {}, inputs, runner.names
-                )
-                if missing:
-                    runner.warn(node.id, flows.describe_missing(missing))
-                return await run_request_node(connection, node, spec)
-
-            runner = flow_runner.FlowRun(graph, execute, report)
+            runner_ref: dict = {}
+            runner = flow_runner.FlowRun(
+                graph, node_executor(session, runner_ref), report
+            )
+            runner_ref["runner"] = runner
 
             await control("ready", values.get("name") or flow_uid)
             runs = await runner.run()

@@ -627,3 +627,229 @@ class TestAcrossThePlanes:
 
         assert states["db"]["state"] == "failed"
         assert summary["failed"] == ["Typo"]
+
+
+class TestTestingOneNode:
+    """Running one node rather than the whole flow.
+
+    Running everything to find out what one node does is a slow way to ask,
+    and the branches beside it fire on the way past.
+    """
+
+    def test_a_node_runs_on_its_own(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Ping",
+            [request_node("one", "One", api_connection["uid"], {"path": "/ping"})],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/one/test").json()
+
+        assert body["node"]["state"] == flows.SUCCEEDED
+        assert body["node"]["result"]["status"] == 200
+        assert body["upstream"] == []
+
+    def test_what_feeds_it_runs_first(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Echo the echo",
+            [
+                request_node("first", "First", api_connection["uid"], {"path": "/ping"}),
+                request_node(
+                    "second",
+                    "Second",
+                    api_connection["uid"],
+                    {
+                        "path": "/echo",
+                        "method": "POST",
+                        "body_type": "json",
+                        "body": '{"sawPong": {{First.json.pong}}}',
+                    },
+                ),
+            ],
+            [edge("first", "second")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/second/test").json()
+
+        assert body["node"]["state"] == flows.SUCCEEDED
+        assert [run["name"] for run in body["upstream"]] == ["First"]
+        # the reference resolved, which is the thing being tested
+        assert body["resolved_request"]["body"] == '{"sawPong": true}'
+
+    def test_a_branch_beside_it_is_left_alone(self, client, api_connection):
+        """A request that fires on the way past is a surprise nobody asked for."""
+        uid = create_flow(
+            client,
+            "Two branches",
+            [
+                request_node("root", "Root", api_connection["uid"], {"path": "/ping"}),
+                request_node("left", "Left", api_connection["uid"], {"path": "/ping"}),
+                request_node("right", "Right", api_connection["uid"], {"path": "/ping"}),
+            ],
+            [edge("root", "left"), edge("root", "right")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/left/test").json()
+
+        names = [run["name"] for run in body["upstream"]]
+        assert names == ["Root"]
+        assert "Right" not in names
+
+    def test_the_references_it_could_use_come_back_with_their_values(
+        self, client, api_connection
+    ):
+        uid = create_flow(
+            client,
+            "What can I use",
+            [
+                request_node("first", "First", api_connection["uid"], {"path": "/ping"}),
+                request_node("second", "Second", api_connection["uid"], {"path": "/ping"}),
+            ],
+            [edge("first", "second")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/second/test").json()
+
+        assert len(body["available"]) == 1
+        group = body["available"][0]
+        assert group["node"] == "First"
+        offered = {item["reference"]: item["value"] for item in group["references"]}
+        assert offered["{{First.status}}"] == "200"
+        assert "{{First.json.pong}}" in offered
+
+    def test_a_name_with_a_space_is_offered_in_the_form_that_works(
+        self, client, api_connection
+    ):
+        """`{{Get ping.status}}` does not resolve, so it must not be suggested."""
+        uid = create_flow(
+            client,
+            "Spaced",
+            [
+                request_node("first", "Get ping", api_connection["uid"], {"path": "/ping"}),
+                request_node("second", "Second", api_connection["uid"], {"path": "/ping"}),
+            ],
+            [edge("first", "second")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/second/test").json()
+
+        offered = [
+            item["reference"] for item in body["available"][0]["references"]
+        ]
+        assert "{{Get_ping.status}}" in offered
+        assert "{{Get ping.status}}" not in offered
+
+    def test_a_failure_upstream_is_reported_rather_than_blamed_on_this_node(
+        self, client, api_connection
+    ):
+        uid = create_flow(
+            client,
+            "Broken upstream",
+            [
+                # no connection chosen, which is a failure of the node itself
+                # rather than a response nobody liked
+                request_node("first", "First", None, {"path": "/ping"}),
+                request_node("second", "Second", api_connection["uid"], {"path": "/ping"}),
+            ],
+            [edge("first", "second")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/second/test").json()
+
+        assert body["node"]["state"] == flows.SKIPPED
+        assert body["node"]["blocked_by"] == ["First"]
+
+    def test_a_node_that_is_not_in_the_flow_says_so(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Ping",
+            [request_node("one", "One", api_connection["uid"], {"path": "/ping"})],
+            [],
+        )
+
+        response = client.post(f"/flows/{uid}/nodes/nope/test")
+
+        assert response.status_code == 404
+        assert "Save the flow first" in response.json()["detail"]
+
+    def test_a_tested_node_says_how_to_refer_to_what_it_produced(
+        self, client, api_connection
+    ):
+        """The question is asked while looking at the result, not later."""
+        uid = create_flow(
+            client,
+            "Ping",
+            [request_node("one", "One", api_connection["uid"], {"path": "/ping"})],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/one/test").json()
+
+        offered = {item["reference"]: item["value"] for item in body["offers"]}
+        assert offered["{{One.status}}"] == "200"
+        assert "{{One.json.pong}}" in offered
+
+class TestValuesThatAreNotJson:
+    """A database value the browser cannot be handed directly.
+
+    Adapters return native Python objects - UUID, datetime, Decimal, bytes -
+    and a flow that hands one to json.dumps unaided takes the whole run down
+    with it, not just the node that produced it.
+    """
+
+    @pytest.fixture()
+    def sqlite_connection(self, client, sqlite_connection_uri):
+        response = client.post(
+            "/connections",
+            json={
+                "source": "sqlite",
+                "name": "Files",
+                "connection_uri": sqlite_connection_uri,
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def test_a_blob_does_not_take_the_run_down(self, client, sqlite_connection):
+        uid = create_flow(
+            client,
+            "Binary",
+            [
+                query_node(
+                    "one",
+                    "Blobby",
+                    sqlite_connection["uid"],
+                    "select x'0102' as payload",
+                )
+            ],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        assert summary["failed"] == []
+        assert states["one"]["state"] == flows.SUCCEEDED
+
+    def test_testing_one_node_survives_it_too(self, client, sqlite_connection):
+        uid = create_flow(
+            client,
+            "Binary",
+            [
+                query_node(
+                    "one",
+                    "Blobby",
+                    sqlite_connection["uid"],
+                    "select x'0102' as payload",
+                )
+            ],
+            [],
+        )
+
+        response = client.post(f"/flows/{uid}/nodes/one/test")
+
+        assert response.status_code == 200, response.text
+        assert response.json()["node"]["state"] == flows.SUCCEEDED
