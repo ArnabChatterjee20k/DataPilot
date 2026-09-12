@@ -57,7 +57,25 @@ export function startUpstream(): Promise<Upstream> {
   });
 
   const sockets = new WebSocketServer({ server });
-  sockets.on("connection", (socket) => {
+  const tickers = new Set<NodeJS.Timeout>();
+
+  sockets.on("connection", (socket, request) => {
+    // a stream path, because a live chart cannot be tested against a server
+    // that only answers when spoken to
+    if ((request.url ?? "").includes("/stream")) {
+      let reading = 0;
+      const ticker = setInterval(() => {
+        reading += 1;
+        socket.send(JSON.stringify({ t: reading, value: reading * 10 }));
+      }, 60);
+      tickers.add(ticker);
+      socket.on("close", () => {
+        clearInterval(ticker);
+        tickers.delete(ticker);
+      });
+      return;
+    }
+
     socket.send(JSON.stringify({ type: "welcome" }));
     socket.on("message", (data) => socket.send(`echo:${data}`));
   });
@@ -69,6 +87,8 @@ export function startUpstream(): Promise<Upstream> {
         stop: () =>
           new Promise<void>((done) => {
             // an open websocket keeps server.close() waiting forever
+            for (const ticker of tickers) clearInterval(ticker);
+            tickers.clear();
             for (const socket of sockets.clients) socket.terminate();
             server.closeAllConnections();
             server.close(() => done());

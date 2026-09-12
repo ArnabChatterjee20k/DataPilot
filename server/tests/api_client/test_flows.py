@@ -1341,3 +1341,109 @@ class TestComparing:
     def test_emptiness(self):
         assert self._run("empty", [])["passed"] is True
         assert self._run("not_empty", [1])["passed"] is True
+
+
+def socket_node(node_id, name, connection_id, path="", **extra):
+    return {
+        "id": node_id,
+        "name": name,
+        "kind": "socket",
+        "connection_id": connection_id,
+        "socket": {"path": path},
+        **extra,
+    }
+
+
+class TestLiveNodes:
+    """Nodes the browser runs, sitting in a graph the server validates."""
+
+    def test_the_server_reports_it_without_running_it(self, client, socket_connection):
+        uid = create_flow(
+            client,
+            "Live",
+            [socket_node("s1", "Stream", socket_connection["uid"], "/feed")],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        assert states["s1"]["state"] == flows.LIVE
+        assert states["s1"]["summary"] == "runs in your browser"
+        assert summary["live"] == ["Stream"]
+        assert summary["failed"] == []
+
+    def test_it_does_not_stall_what_comes_after(self, client, socket_connection):
+        """A live node never finishes, so anything waiting on it would hang."""
+        uid = create_flow(
+            client,
+            "Live",
+            [
+                socket_node("s1", "Stream", socket_connection["uid"]),
+                socket_node("s2", "Also", socket_connection["uid"]),
+            ],
+            [edge("s1", "s2")],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, _summary = drain(socket)
+
+        assert states["s2"]["state"] == flows.LIVE
+
+    def test_a_server_node_cannot_read_a_live_one(self, client, socket_connection, api_connection):
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Impossible",
+                "graph": {
+                    "nodes": [
+                        socket_node("s1", "Stream", socket_connection["uid"]),
+                        request_node("r1", "Notify", api_connection["uid"], {"path": "/echo"}),
+                    ],
+                    "edges": [edge("s1", "r1")],
+                },
+            },
+        )
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "runs in your browser" in detail
+        assert "'Notify' cannot read it" in detail
+
+    def test_a_live_node_can_read_a_server_one(self, client, socket_connection, api_connection):
+        """The useful direction: a query feeding something that draws it."""
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Fine",
+                "graph": {
+                    "nodes": [
+                        request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                        socket_node("s1", "Stream", socket_connection["uid"]),
+                    ],
+                    "edges": [edge("r1", "s1")],
+                },
+            },
+        )
+
+        assert response.status_code == 200
+
+    def test_it_offers_nothing_to_reference(self, client, socket_connection):
+        """Its values live in a tab, so suggesting them would be a lie."""
+        assert flows.suggest_references("Stream", flows.SOCKET, {}) == []
+        assert flows.node_output(flows.SOCKET, {"anything": 1}) == {}
+
+    def test_its_config_survives_the_round_trip(self, client, socket_connection):
+        uid = create_flow(
+            client,
+            "Live",
+            [socket_node("s1", "Stream", socket_connection["uid"], "/feed")],
+            [],
+        )
+
+        stored = client.get(f"/flows/{uid}").json()["graph"]["nodes"][0]
+
+        assert stored["socket"] == {"path": "/feed"}
+        assert "query" not in stored
