@@ -1,6 +1,7 @@
 import type { RequestSpecModel } from "@/lib/sdk";
+import { emptyRow, type KeyValueRow } from "../store/store";
 
-export type NodeKind = "query" | "request";
+export type NodeKind = "query" | "request" | "constants";
 
 /**
  * A node's state during a run.
@@ -22,6 +23,7 @@ export interface FlowNodeData {
   connection_id?: string | null;
   query?: string;
   request?: RequestSpecModel;
+  constants?: KeyValueRow[];
   [key: string]: unknown;
 }
 
@@ -32,6 +34,7 @@ export interface FlowNode {
   connection_id?: string | null;
   query?: string;
   request?: RequestSpecModel;
+  constants?: KeyValueRow[];
   position?: { x: number; y: number };
 }
 
@@ -88,6 +91,14 @@ export const NEW_REQUEST_NODE = (id: string): FlowNode => ({
     body: "",
     auth: null,
   },
+  position: { x: 0, y: 0 },
+});
+
+export const NEW_CONSTANTS_NODE = (id: string): FlowNode => ({
+  id,
+  name: "Config",
+  kind: "constants",
+  constants: [emptyRow()],
   position: { x: 0, y: 0 },
 });
 

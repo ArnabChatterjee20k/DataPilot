@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Circle,
+  Braces,
   Database,
   Globe,
   Loader2,
@@ -14,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
+import type { KeyValueRow } from "../store/store";
 import type { NodeKind, NodeRun, NodeState } from "./types";
 
 const STATE_STYLE: Record<NodeState, string> = {
@@ -48,6 +50,7 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   connection_id?: string | null;
   query?: string;
   request?: RequestSpecModel;
+  constants?: KeyValueRow[];
   /** Derived for the card: the line under the title. */
   subtitle: string;
   connectionName?: string;
@@ -68,7 +71,11 @@ export const FlowNodeCard = memo(function FlowNodeCard({
   const card = data as FlowNodeCardData;
   const run = card.run;
   const state: NodeState = run?.state ?? "idle";
-  const Icon = card.kind === "query" ? Database : Globe;
+  const Icon =
+    card.kind === "query" ? Database : card.kind === "constants" ? Braces : Globe;
+  // a constants node has nothing to connect to, so the amber warning below
+  // would make a correctly configured one look permanently broken
+  const needsConnection = card.kind !== "constants";
 
   return (
     <div
@@ -97,7 +104,12 @@ export const FlowNodeCard = memo(function FlowNodeCard({
           className="truncate font-mono text-[11px] text-muted-foreground"
           title={card.subtitle}
         >
-          {card.subtitle || (card.kind === "query" ? "no query yet" : "no path yet")}
+          {card.subtitle ||
+            (card.kind === "query"
+              ? "no query yet"
+              : card.kind === "constants"
+                ? "no values yet"
+                : "no path yet")}
         </p>
 
         {card.connectionName ? (
@@ -105,7 +117,9 @@ export const FlowNodeCard = memo(function FlowNodeCard({
             {card.connectionName}
           </p>
         ) : (
-          <p className="text-[10px] text-amber-500">no connection chosen</p>
+          needsConnection && (
+            <p className="text-[10px] text-amber-500">no connection chosen</p>
+          )
         )}
 
         {(run?.summary || run?.elapsed_ms != null) && (

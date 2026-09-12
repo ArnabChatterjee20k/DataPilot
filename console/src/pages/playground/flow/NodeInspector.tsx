@@ -13,6 +13,7 @@ import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { DatabaseConnection } from "../store/store";
 import { CopyButton } from "../components/primitives";
+import { KeyValueEditor } from "../components/KeyValueEditor";
 import type { NodeTestModel } from "@/lib/sdk";
 import { NodeTest } from "./NodeTest";
 import type { FlowNode, NodeRun } from "./types";
@@ -112,6 +113,7 @@ export function NodeInspector({
       <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3">
         {panel === "setup" ? (
           <>
+            {node.kind !== "constants" && (
             <label className="block space-y-1">
               <span className="text-[11px] text-muted-foreground">Connection</span>
               <Select
@@ -142,8 +144,27 @@ export function NodeInspector({
                 </span>
               )}
             </label>
+            )}
 
-            {node.kind === "query" ? (
+            {node.kind === "constants" ? (
+              <div className="space-y-1">
+                <span className="text-[11px] text-muted-foreground">Values</span>
+                <KeyValueEditor
+                  rows={node.constants ?? []}
+                  onChange={(rows) => onChange({ constants: rows })}
+                  label="Constant values"
+                  keyPlaceholder="name"
+                  valuePlaceholder="value"
+                />
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {/* the flow is stored as plain JSON, so saying otherwise
+                      would be inviting someone to put a password here */}
+                  Stored in the flow as written, so keep credentials in the
+                  connection's variables rather than here. A value can use{" "}
+                  <code>{"{{Node.first.id}}"}</code> like anywhere else.
+                </p>
+              </div>
+            ) : node.kind === "query" ? (
               <label className="block space-y-1">
                 <span className="text-[11px] text-muted-foreground">Query</span>
                 <textarea
@@ -205,14 +226,16 @@ export function NodeInspector({
               </>
             )}
 
+            {node.kind !== "constants" && (
             <p className="text-[11px] text-muted-foreground">
               Write <code>{"{{NodeName.first.id}}"}</code> to use what an
               upstream node produced. A query node offers{" "}
               <code>rows</code>, <code>first</code> and <code>row_count</code>;
               a request node offers <code>status</code>, <code>json</code> and{" "}
-              <code>body</code>. Test the node to see the exact references,
-              with what each one holds.
+              <code>body</code>; a constants node offers its own keys. Test the
+              node to see the exact references, with what each one holds.
             </p>
+            )}
 
             <NodeTest {...test} />
           </>
