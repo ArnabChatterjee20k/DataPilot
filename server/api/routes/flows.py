@@ -368,6 +368,7 @@ async def run_flow(websocket: WebSocket, flow_uid: str):
 
             failed = [run.name for run in runs.values() if run.state == flows.FAILED]
             skipped = [run.name for run in runs.values() if run.state == flows.SKIPPED]
+            live = [run.name for run in runs.values() if run.state == flows.LIVE]
             await control(
                 "finished",
                 json.dumps(
@@ -377,6 +378,7 @@ async def run_flow(websocket: WebSocket, flow_uid: str):
                         ),
                         "failed": failed,
                         "skipped": skipped,
+                        "live": live,
                         # nested rather than alongside the states above: a
                         # failed check is a finding about the data, not a
                         # verdict on the run
