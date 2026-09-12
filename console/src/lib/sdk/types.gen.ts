@@ -422,6 +422,121 @@ export type KeyValueModel = {
 };
 
 /**
+ * NodeReferenceGroupModel
+ *
+ * The references one upstream node offers.
+ */
+export type NodeReferenceGroupModel = {
+    /**
+     * Node
+     */
+    node: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * References
+     */
+    references?: Array<NodeReferenceModel>;
+};
+
+/**
+ * NodeReferenceModel
+ *
+ * A `{{...}}` someone can copy, and what it holds right now.
+ */
+export type NodeReferenceModel = {
+    /**
+     * Reference
+     */
+    reference: string;
+    /**
+     * Value
+     */
+    value?: string;
+};
+
+/**
+ * NodeRunModel
+ *
+ * One node's outcome, the same shape the live run reports.
+ */
+export type NodeRunModel = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Elapsed Ms
+     */
+    elapsed_ms?: number | null;
+    /**
+     * Summary
+     */
+    summary?: string;
+    /**
+     * Result
+     */
+    result?: unknown;
+    /**
+     * Error
+     */
+    error?: string;
+    /**
+     * Warnings
+     */
+    warnings?: Array<string>;
+    /**
+     * Blocked By
+     */
+    blocked_by?: Array<string>;
+};
+
+/**
+ * NodeTestModel
+ *
+ * Testing one node: what it produced, and what it was actually sent.
+ */
+export type NodeTestModel = {
+    node: NodeRunModel;
+    /**
+     * Resolved Query
+     */
+    resolved_query?: string;
+    /**
+     * Resolved Request
+     */
+    resolved_request?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Upstream
+     */
+    upstream?: Array<NodeRunModel>;
+    /**
+     * Available
+     */
+    available?: Array<NodeReferenceGroupModel>;
+    /**
+     * Offers
+     */
+    offers?: Array<NodeReferenceModel>;
+};
+
+/**
  * QueryInsightModel
  *
  * What the planner intends to do, without running the query.
@@ -2617,6 +2732,40 @@ export type UpdateFlowResponses = {
 };
 
 export type UpdateFlowResponse = UpdateFlowResponses[keyof UpdateFlowResponses];
+
+export type TestNodeData = {
+    body?: never;
+    path: {
+        /**
+         * Flow Uid
+         */
+        flow_uid: string;
+        /**
+         * Node Id
+         */
+        node_id: string;
+    };
+    query?: never;
+    url: '/flows/{flow_uid}/nodes/{node_id}/test';
+};
+
+export type TestNodeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type TestNodeError = TestNodeErrors[keyof TestNodeErrors];
+
+export type TestNodeResponses = {
+    /**
+     * Successful Response
+     */
+    200: NodeTestModel;
+};
+
+export type TestNodeResponse = TestNodeResponses[keyof TestNodeResponses];
 
 export type DeleteKeyData = {
     body?: never;

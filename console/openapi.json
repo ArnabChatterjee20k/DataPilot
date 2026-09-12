@@ -2000,6 +2000,58 @@
         }
       }
     },
+    "/flows/{flow_uid}/nodes/{node_id}/test": {
+      "post": {
+        "tags": [
+          "flows"
+        ],
+        "summary": "Test Node",
+        "description": "Run one node, along with whatever feeds it, and report what happened.\n\nRunning the whole flow to find out what one node does is a slow way to\nask, and the branches beside it fire on the way past. This runs the node\nand its ancestors only.",
+        "operationId": "test_node",
+        "parameters": [
+          {
+            "name": "flow_uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flow Uid"
+            }
+          },
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTestModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/connection/{connection_id}/redis/keys": {
       "get": {
         "tags": [
@@ -3016,6 +3068,169 @@
           "key"
         ],
         "title": "KeyValueModel"
+      },
+      "NodeReferenceGroupModel": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/NodeReferenceModel"
+            },
+            "type": "array",
+            "title": "References"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "kind"
+        ],
+        "title": "NodeReferenceGroupModel",
+        "description": "The references one upstream node offers."
+      },
+      "NodeReferenceModel": {
+        "properties": {
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference"
+        ],
+        "title": "NodeReferenceModel",
+        "description": "A `{{...}}` someone can copy, and what it holds right now."
+      },
+      "NodeRunModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "result": {
+            "title": "Result"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": ""
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "blocked_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "state"
+        ],
+        "title": "NodeRunModel",
+        "description": "One node's outcome, the same shape the live run reports."
+      },
+      "NodeTestModel": {
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeRunModel"
+          },
+          "resolved_query": {
+            "type": "string",
+            "title": "Resolved Query",
+            "default": ""
+          },
+          "resolved_request": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Request"
+          },
+          "upstream": {
+            "items": {
+              "$ref": "#/components/schemas/NodeRunModel"
+            },
+            "type": "array",
+            "title": "Upstream"
+          },
+          "available": {
+            "items": {
+              "$ref": "#/components/schemas/NodeReferenceGroupModel"
+            },
+            "type": "array",
+            "title": "Available"
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/NodeReferenceModel"
+            },
+            "type": "array",
+            "title": "Offers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node"
+        ],
+        "title": "NodeTestModel",
+        "description": "Testing one node: what it produced, and what it was actually sent."
       },
       "QueryInsightModel": {
         "properties": {
