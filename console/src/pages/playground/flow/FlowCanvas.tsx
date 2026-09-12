@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
+  MiniMap,
   ReactFlow,
+  SelectionMode,
   addEdge,
   useEdgesState,
   useNodesState,
@@ -10,17 +12,24 @@ import {
   type Edge,
   type Node,
   type NodeChange,
+  type OnSelectionChangeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AlertCircle, Database, Globe, Keyboard, Loader2, Play, Save, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import type { DatabaseConnection } from "../store/store";
 import { useSaveFlow, useTestNode } from "../hooks/useFlows";
 import { FlowNodeCard, type FlowNodeCardData } from "./FlowNodeCard";
 import { NodeInspector } from "./NodeInspector";
+import { SelectionPanel } from "./SelectionPanel";
 import { useFlowRun } from "./useFlowRun";
 import {
   isMacPlatform,
@@ -172,12 +181,17 @@ export function FlowCanvas({
     setNodes((current) => {
       const sameKind = current.filter((node) => node.data.kind === kind).length;
       return [
-        ...current,
-        toCanvas({
-          ...base,
-          name: `${base.name} ${sameKind + 1}`,
-          position: nextPosition(current.length),
-        }),
+        ...current.map((node) => ({ ...node, selected: false })),
+        {
+          ...toCanvas({
+            ...base,
+            name: `${base.name} ${sameKind + 1}`,
+            position: nextPosition(current.length),
+          }),
+          // React Flow owns the selection: setting selectedId on its own is
+          // overwritten the moment it reports the change back
+          selected: true,
+        },
       ];
     });
     setSelectedId(id);
@@ -200,6 +214,70 @@ export function FlowCanvas({
     [nodes, selectedId]
   );
 
+  /**
+   * React Flow owns the selection; the inspector follows it.
+   *
+   * These used to be set separately, so rubber-banding three nodes left the
+   * inspector showing whichever one happened to be clicked last.
+   */
+  const onSelectionChange = useCallback(
+    ({ nodes: picked }: OnSelectionChangeParams) =>
+      setSelectedId(picked.length === 1 ? picked[0].id : null),
+    []
+  );
+
+  const selectAll = useCallback(() => {
+    setNodes((current) => current.map((node) => ({ ...node, selected: true })));
+  }, [setNodes]);
+
+  const clearSelection = useCallback(() => {
+    setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+    setSelectedId(null);
+  }, [setNodes]);
+
+  /**
+   * Lay the selection out in a column or a row.
+   *
+   * Aligning one edge and leaving the other alone is what a drawing tool does,
+   * but here it hides nodes behind each other the moment two of them share a
+   * row, and there is no undo to climb back out of that. Spacing them is what
+   * was wanted anyway.
+   */
+  const arrange = useCallback(
+    (axis: "column" | "row") => {
+      const chosen = selectedNodes();
+      if (chosen.length < 2) return;
+
+      const down = axis === "column";
+      const gap = down ? 190 : 300;
+      const left = Math.min(...chosen.map((node) => node.position.x));
+      const top = Math.min(...chosen.map((node) => node.position.y));
+
+      // keep the order they are already in, so a layout stays recognisable
+      const order = [...chosen].sort((a, b) =>
+        down ? a.position.y - b.position.y : a.position.x - b.position.x
+      );
+      const placed = new Map(
+        order.map((node, index) => [
+          node.id,
+          down
+            ? { x: left, y: top + index * gap }
+            : { x: left + index * gap, y: top },
+        ])
+      );
+
+      setNodes((current) =>
+        current.map((node) =>
+          placed.has(node.id)
+            ? { ...node, position: placed.get(node.id)! }
+            : node
+        )
+      );
+      setDirty(true);
+    },
+    [selectedNodes, setNodes]
+  );
+
   const duplicateSelection = useCallback(() => {
     const chosen = selectedNodes();
     if (!chosen.length) return;
@@ -207,7 +285,7 @@ export function FlowCanvas({
     const copies = chosen.map((node) => ({
       ...node,
       id: newNodeId(),
-      selected: false,
+      selected: true,
       position: { x: node.position.x + 40, y: node.position.y + 40 },
       data: { ...node.data, name: `${node.data.name} copy` },
     }));
@@ -311,6 +389,7 @@ export function FlowCanvas({
   };
 
   const selected = nodes.find((node) => node.id === selectedId);
+  const marked = nodes.filter((node) => node.selected);
   const isMac = isMacPlatform();
   const modKey = isMac ? "⌘" : "Ctrl";
 
@@ -319,13 +398,14 @@ export function FlowCanvas({
     addRequest: () => addNode("request"),
     duplicate: duplicateSelection,
     remove: removeSelection,
+    selectAll,
     save: () => {
       if (dirty && !save.isPending) void persist();
     },
     run: () => {
       if (!isRunning && nodes.length) void start();
     },
-    deselect: () => (help ? setHelp(false) : setSelectedId(null)),
+    deselect: () => (help ? setHelp(false) : clearSelection()),
     help: () => setHelp((current) => !current),
     nudge,
   });
@@ -428,8 +508,14 @@ export function FlowCanvas({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1" data-testid="flow-canvas">
+      <ResizablePanelGroup
+        direction="horizontal"
+        // the width someone chose is a preference, not a per-flow setting
+        autoSaveId="datapilot.flow-inspector"
+        className="min-h-0 flex-1"
+      >
+        <ResizablePanel id="canvas" order={1} className="min-w-0">
+          <div className="relative h-full min-w-0" data-testid="flow-canvas">
           <ReactFlow
             nodes={rendered}
             edges={edges}
@@ -437,8 +523,13 @@ export function FlowCanvas({
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(_event, node) => setSelectedId(node.id)}
+            onSelectionChange={onSelectionChange}
             onPaneClick={() => setSelectedId(null)}
+            // dragging the empty canvas draws a selection box, which is what a
+            // builder is for; panning moves to the middle and right buttons
+            selectionOnDrag
+            panOnDrag={[1, 2]}
+            selectionMode={SelectionMode.Partial}
             // deletion is handled here instead, so it marks the flow unsaved
             // and closes an inspector left open on a node that is gone
             deleteKeyCode={null}
@@ -449,6 +540,18 @@ export function FlowCanvas({
           >
             <Background />
             <Controls showInteractive={false} />
+            {nodes.length > 3 && (
+              <MiniMap
+                pannable
+                zoomable
+                // neutral rather than themed: the minimap has to read on the
+                // light palette and the dark one, and grey is both
+                bgColor="transparent"
+                nodeColor="rgb(127 127 127 / 0.6)"
+                maskColor="rgb(127 127 127 / 0.2)"
+                className="!m-2 !h-20 !w-32 rounded border !bg-card/70"
+              />
+            )}
           </ReactFlow>
 
           {help && (
@@ -505,26 +608,51 @@ export function FlowCanvas({
               </div>
             </div>
           )}
-        </div>
+          </div>
+        </ResizablePanel>
 
-        {selected && (
-          <NodeInspector
-            node={toDomain(selected)}
-            run={runs[selected.id]}
-            connections={connections}
-            test={{
-              outcome: test.data,
-              isPending: test.isPending,
-              error: test.error,
-              dirty,
-              onRun: () => void testNode(selected.id),
-            }}
-            onChange={(patch) => patchNode(selected.id, patch)}
-            onDelete={() => removeNode(selected.id)}
-            onClose={() => setSelectedId(null)}
-          />
+        {(marked.length > 1 || selected) && (
+          <>
+            <ResizableHandle withHandle />
+            <ResizablePanel
+              id="inspector"
+              order={2}
+              defaultSize={26}
+              minSize={16}
+              maxSize={50}
+              className="min-w-0"
+            >
+              {marked.length > 1 ? (
+                <SelectionPanel
+                  nodes={marked.map((node) => String(node.data.name))}
+                  onArrange={arrange}
+                  onDuplicate={duplicateSelection}
+                  onDelete={removeSelection}
+                  onClose={clearSelection}
+                />
+              ) : (
+                selected && (
+                  <NodeInspector
+                    node={toDomain(selected)}
+                    run={runs[selected.id]}
+                    connections={connections}
+                    test={{
+                      outcome: test.data,
+                      isPending: test.isPending,
+                      error: test.error,
+                      dirty,
+                      onRun: () => void testNode(selected.id),
+                    }}
+                    onChange={(patch) => patchNode(selected.id, patch)}
+                    onDelete={() => removeNode(selected.id)}
+                    onClose={clearSelection}
+                  />
+                )
+              )}
+            </ResizablePanel>
+          </>
         )}
-      </div>
+      </ResizablePanelGroup>
     </div>
   );
 }
