@@ -30,7 +30,35 @@ REFERENCE = re.compile(r"\{\{\s*([\w.\-\[\]]+)\s*\}\}")
 
 QUERY = "query"
 REQUEST = "request"
-KINDS = (QUERY, REQUEST)
+
+#: Kinds the server runs, once, when the flow runs.
+SERVER_KINDS = (QUERY, REQUEST)
+
+#: Kinds that run in the browser instead, for as long as the tab is open.
+LIVE_KINDS: tuple[str, ...] = ()
+
+KINDS = SERVER_KINDS + LIVE_KINDS
+
+#: Which config field belongs to which kind. Adding a kind means adding a row
+#: here: `to_payload` and the error message a bad kind gets both read it, so
+#: they cannot drift apart.
+KIND_FIELDS: dict[str, tuple[str, ...]] = {
+    QUERY: ("query",),
+    REQUEST: ("request",),
+}
+
+
+def is_live(kind: str) -> bool:
+    """A live node runs in the browser, so the server never executes it."""
+    return kind in LIVE_KINDS
+
+
+def kind_list() -> str:
+    """`a query, a request or a graph`, for an error somebody has to read."""
+    names = [f"a {kind}" for kind in KINDS]
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} or {names[-1]}"
 
 #: Node states, in the order a node passes through them.
 IDLE = "idle"
@@ -136,7 +164,7 @@ def read_graph(payload: dict) -> Graph:
         if kind not in KINDS:
             raise FlowError(
                 f"'{node_id}' is a '{kind or 'nameless'}' node; a flow node is "
-                f"a {' or a '.join(KINDS)}."
+                f"{kind_list()}."
             )
 
         nodes.append(
@@ -202,20 +230,26 @@ def find_cycle(graph: Graph) -> list[str]:
     return []
 
 
+#: Stored on every node, whatever it is.
+COMMON_FIELDS = ("id", "name", "kind", "connection_id", "position")
+
+
+def node_payload(node: Node) -> dict:
+    """One node, as it is stored.
+
+    A whitelist rather than the whole object, because the console sends back
+    everything React Flow hangs on a node - measurements, drag state - and none
+    of that belongs in the database.
+    """
+    stored = {name: getattr(node, name) for name in COMMON_FIELDS}
+    for name in KIND_FIELDS.get(node.kind, ()):
+        stored[name] = getattr(node, name)
+    return stored
+
+
 def to_payload(graph: Graph) -> dict:
     return {
-        "nodes": [
-            {
-                "id": node.id,
-                "name": node.name,
-                "kind": node.kind,
-                "connection_id": node.connection_id,
-                "query": node.query,
-                "request": node.request,
-                "position": node.position,
-            }
-            for node in graph.nodes
-        ],
+        "nodes": [node_payload(node) for node in graph.nodes],
         "edges": [
             {"id": edge.id or f"{edge.source}->{edge.target}",
              "source": edge.source,
@@ -228,22 +262,17 @@ def to_payload(graph: Graph) -> dict:
 # --------------------------------------------------------------------- values
 
 
-def node_output(kind: str, result: Any) -> dict:
-    """What a finished node offers downstream.
+def _query_output(result: Any) -> dict:
+    rows = result.get("rows") or []
+    return {
+        "rows": rows,
+        "row_count": result.get("row_count", len(rows)),
+        "first": rows[0] if rows else None,
+        "columns": [column.get("name") for column in result.get("columns") or []],
+    }
 
-    Shaped for how it is written rather than how it is stored: `first` exists
-    because `{{users.first.id}}` is what someone types, and `rows.0.id` is
-    what they work out afterwards.
-    """
-    if kind == QUERY:
-        rows = result.get("rows") or []
-        return {
-            "rows": rows,
-            "row_count": result.get("row_count", len(rows)),
-            "first": rows[0] if rows else None,
-            "columns": [column.get("name") for column in result.get("columns") or []],
-        }
 
+def _request_output(result: Any) -> dict:
     body = result.get("body")
     parsed: Any = None
     if isinstance(body, str) and body.strip():
@@ -264,6 +293,28 @@ def node_output(kind: str, result: Any) -> dict:
     }
 
 
+#: What each kind offers downstream, by kind.
+OUTPUTS: dict[str, Any] = {
+    QUERY: _query_output,
+    REQUEST: _request_output,
+}
+
+
+def node_output(kind: str, result: Any) -> dict:
+    """What a finished node offers downstream.
+
+    Shaped for how it is written rather than how it is stored: `first` exists
+    because `{{users.first.id}}` is what someone types, and `rows.0.id` is
+    what they work out afterwards.
+
+    A kind with no entry offers nothing. That matters more than it looks: this
+    used to be an if/else where anything that was not a query fell through to
+    the request branch and was handed HTTP response semantics.
+    """
+    reader = OUTPUTS.get(kind)
+    return reader(result) if reader else {}
+
+
 #: How many columns or JSON keys are worth listing before the list is noise.
 MAX_SUGGESTIONS = 12
 
@@ -281,6 +332,37 @@ def reference_name(name: str, node_id: str) -> str:
     return name.replace(" ", "_") if name else node_id
 
 
+def _query_paths(output: dict) -> list[str]:
+    paths = ["rows", "row_count", "columns", "columns.0"]
+    first = output.get("first")
+    if isinstance(first, dict):
+        paths += [f"first.{column}" for column in list(first)[:MAX_SUGGESTIONS]]
+        # indexing is a pattern rather than one value, so it is shown on a row
+        # that exists: a suggestion resolving to nothing teaches nothing
+        for index in range(min(len(output.get("rows") or []), 2)):
+            paths += [f"rows.{index}.{column}" for column in list(first)[:1]]
+    return paths
+
+
+def _request_paths(output: dict) -> list[str]:
+    paths = ["status", "ok", "body", "json"]
+    parsed = output.get("json")
+    if isinstance(parsed, dict):
+        paths += [f"json.{key}" for key in list(parsed)[:MAX_SUGGESTIONS]]
+    return paths
+
+
+def _no_paths(_output: dict) -> list[str]:
+    return []
+
+
+#: What each kind is worth offering as a reference, by kind.
+PATHS: dict[str, Any] = {
+    QUERY: _query_paths,
+    REQUEST: _request_paths,
+}
+
+
 def suggest_references(node_name: str, kind: str, output: dict) -> list[dict]:
     """Every reference this node offers, with what it resolves to right now.
 
@@ -288,21 +370,7 @@ def suggest_references(node_name: str, kind: str, output: dict) -> list[dict]:
     shape from the docs and the node name from the canvas and then guess how
     the two combine. The answer is copyable instead.
     """
-    paths: list[str] = []
-    if kind == QUERY:
-        paths = ["rows", "row_count", "columns", "columns.0"]
-        first = output.get("first")
-        if isinstance(first, dict):
-            paths += [f"first.{column}" for column in list(first)[:MAX_SUGGESTIONS]]
-            # indexing is a pattern rather than one value, so it is shown on a
-            # row that exists: a suggestion resolving to nothing teaches nothing
-            for index in range(min(len(output.get("rows") or []), 2)):
-                paths += [f"rows.{index}.{column}" for column in list(first)[:1]]
-    else:
-        paths = ["status", "ok", "body", "json"]
-        parsed = output.get("json")
-        if isinstance(parsed, dict):
-            paths += [f"json.{key}" for key in list(parsed)[:MAX_SUGGESTIONS]]
+    paths = PATHS.get(kind, _no_paths)(output)
 
     suggestions = []
     for path in paths:
@@ -363,6 +431,39 @@ class Missing:
     reason: str
 
 
+def resolve_reference(
+    reference: str, outputs: dict, names: dict
+) -> tuple[Any, Optional[Missing]]:
+    """Look up one `node.field` path, without deciding how to render it.
+
+    Kept apart from `interpolate` so that anything else asking the same
+    question - an assertion, a suggestion - walks the same names and the same
+    path rather than growing its own version that drifts.
+    """
+    parts = [
+        part
+        for part in reference.replace("[", ".").replace("]", "").split(".")
+        if part
+    ]
+    if not parts:
+        return None, Missing(reference, "that is not a reference to anything")
+
+    head, rest = parts[0], parts[1:]
+    node_id = names.get(head, head)
+    if node_id not in outputs:
+        return None, Missing(
+            reference, f"there is no node called '{head}' before this one"
+        )
+
+    value = resolve_path(outputs[node_id], rest)
+    if value is None:
+        return None, Missing(
+            reference,
+            f"'{head}' produced nothing at {'.'.join(rest) or 'its output'}",
+        )
+    return value, None
+
+
 def interpolate(text: str, outputs: dict, names: dict) -> tuple[str, list[Missing]]:
     """Replace `{{node.field}}` with what that node produced.
 
@@ -377,24 +478,9 @@ def interpolate(text: str, outputs: dict, names: dict) -> tuple[str, list[Missin
     missing: list[Missing] = []
 
     def replace(match: re.Match) -> str:
-        reference = match.group(1)
-        parts = [part for part in reference.replace("[", ".").replace("]", "").split(".") if part]
-        if not parts:
-            return match.group(0)
-
-        head, rest = parts[0], parts[1:]
-        node_id = names.get(head, head)
-        if node_id not in outputs:
-            missing.append(
-                Missing(reference, f"there is no node called '{head}' before this one")
-            )
-            return match.group(0)
-
-        value = resolve_path(outputs[node_id], rest)
-        if value is None:
-            missing.append(
-                Missing(reference, f"'{head}' produced nothing at {'.'.join(rest) or 'its output'}")
-            )
+        value, absent = resolve_reference(match.group(1), outputs, names)
+        if absent:
+            missing.append(absent)
             return match.group(0)
         return as_text(value)
 

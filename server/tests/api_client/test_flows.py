@@ -891,3 +891,80 @@ class TestRenderingOddValues:
         offered = flows.suggest_references("Ids", flows.QUERY, output)
 
         assert any("00000000-0000-0000-0000-000000000002" in item["value"] for item in offered)
+
+
+class TestKindDispatch:
+    """Adding a node kind should not mean editing five if/else chains.
+
+    The one that mattered: anything that was not a query fell through to the
+    request branch and was handed HTTP response semantics, which is a quiet
+    wrong answer rather than a loud one.
+    """
+
+    def test_an_unknown_kind_offers_nothing_rather_than_a_response(self):
+        offered = flows.node_output("chart", {"rows": [{"id": 1}], "status": 200})
+
+        assert offered == {}
+
+    def test_an_unknown_kind_suggests_no_references(self):
+        assert flows.suggest_references("Chart", "chart", {"status": 200}) == []
+
+    def test_a_bad_kind_is_told_what_the_kinds_are(self):
+        with pytest.raises(flows.FlowError) as problem:
+            flows.read_graph({"nodes": [{"id": "n1", "kind": "chart"}], "edges": []})
+
+        message = str(problem.value)
+        assert "'n1' is a 'chart' node" in message
+        for kind in flows.KINDS:
+            assert f"a {kind}" in message
+
+    def test_a_node_is_stored_with_its_own_fields_only(self):
+        graph = flows.read_graph(
+            {
+                "nodes": [
+                    {"id": "n1", "kind": "query", "query": "select 1"},
+                    {"id": "n2", "kind": "request", "request": {"path": "/x"}},
+                ],
+                "edges": [],
+            }
+        )
+
+        stored = {node["id"]: node for node in flows.to_payload(graph)["nodes"]}
+
+        assert stored["n1"]["query"] == "select 1"
+        assert "request" not in stored["n1"]
+        assert stored["n2"]["request"] == {"path": "/x"}
+        assert "query" not in stored["n2"]
+
+    def test_every_kind_has_a_field_list(self):
+        """A kind missing from the table would be stored without its config."""
+        assert set(flows.KIND_FIELDS) == set(flows.KINDS)
+
+
+class TestResolvingOneReference:
+    """The lookup behind `{{...}}`, on its own.
+
+    Anything else asking the same question walks this rather than growing a
+    second copy of the name index and the path walk.
+    """
+
+    outputs = {"n1": {"rows": [{"id": 7}], "row_count": 1, "first": {"id": 7}}}
+    names = {"n1": "n1", "Users": "n1"}
+
+    def test_a_value_comes_back_raw(self):
+        value, missing = flows.resolve_reference("Users.first.id", self.outputs, self.names)
+
+        assert value == 7
+        assert missing is None
+
+    def test_an_unknown_node_says_which_one(self):
+        value, missing = flows.resolve_reference("Nope.first.id", self.outputs, self.names)
+
+        assert value is None
+        assert "no node called 'Nope'" in missing.reason
+
+    def test_a_path_that_is_not_there_says_where_it_stopped(self):
+        value, missing = flows.resolve_reference("Users.first.email", self.outputs, self.names)
+
+        assert value is None
+        assert "first.email" in missing.reason
