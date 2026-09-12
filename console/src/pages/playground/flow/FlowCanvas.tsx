@@ -23,6 +23,7 @@ import {
   Keyboard,
   Loader2,
   Play,
+  Radio,
   Save,
   X,
 } from "lucide-react";
@@ -40,6 +41,7 @@ import { useSaveFlow, useTestNode } from "../hooks/useFlows";
 import { FlowNodeCard, type FlowNodeCardData } from "./FlowNodeCard";
 import { NodeInspector } from "./NodeInspector";
 import { SelectionPanel } from "./SelectionPanel";
+import { useLiveNodes } from "./useLiveNodes";
 import { useFlowRun } from "./useFlowRun";
 import {
   isMacPlatform,
@@ -50,6 +52,7 @@ import {
 import {
   NEW_CONSTANTS_NODE,
   NEW_QUERY_NODE,
+  NEW_SOCKET_NODE,
   NEW_REQUEST_NODE,
   newNodeId,
   type FlowGraph,
@@ -68,6 +71,7 @@ const nextPosition = (count: number) => ({
 });
 
 function subtitleOf(data: FlowNodeCardData): string {
+  if (data.kind === "socket") return (data.socket?.path ?? "").trim() || "/";
   if (data.kind === "constants") {
     const rows = (data.constants ?? []).filter((row) => row.key.trim());
     return rows.length
@@ -90,6 +94,7 @@ const toCanvas = (node: FlowNode): CanvasNode => ({
     query: node.query ?? "",
     request: node.request,
     constants: node.constants ?? [],
+    socket: node.socket,
     checks: node.checks ?? [],
     subtitle: "",
   },
@@ -103,6 +108,7 @@ const toDomain = (node: CanvasNode): FlowNode => ({
   query: String(node.data.query ?? ""),
   request: node.data.request,
   constants: (node.data.constants as FlowNode["constants"]) ?? [],
+  socket: node.data.socket as FlowNode["socket"],
   checks: (node.data.checks as FlowNode["checks"]) ?? [],
   position: node.position,
 });
@@ -203,7 +209,9 @@ export function FlowCanvas({
         ? NEW_QUERY_NODE(id)
         : kind === "constants"
           ? NEW_CONSTANTS_NODE(id)
-          : NEW_REQUEST_NODE(id);
+          : kind === "socket"
+            ? NEW_SOCKET_NODE(id)
+            : NEW_REQUEST_NODE(id);
     setNodes((current) => {
       const sameKind = current.filter((node) => node.data.kind === kind).length;
       return [
@@ -416,6 +424,8 @@ export function FlowCanvas({
 
   const selected = nodes.find((node) => node.id === selectedId);
   const marked = nodes.filter((node) => node.selected);
+  const domain = nodes.map(toDomain);
+  const live = useLiveNodes(domain);
   const isMac = isMacPlatform();
   const modKey = isMac ? "⌘" : "Ctrl";
 
@@ -423,6 +433,7 @@ export function FlowCanvas({
     addQuery: () => addNode("query"),
     addRequest: () => addNode("request"),
     addConstants: () => addNode("constants"),
+    addSocket: () => addNode("socket"),
     duplicate: duplicateSelection,
     remove: removeSelection,
     selectAll,
@@ -469,6 +480,16 @@ export function FlowCanvas({
         >
           <Braces className="h-3.5 w-3.5" />
           Constants
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 px-2 text-xs"
+          onClick={() => addNode("socket")}
+          title="Add a websocket source (W)"
+        >
+          <Radio className="h-3.5 w-3.5" />
+          Websocket
         </Button>
 
         <div className="ml-auto flex items-center gap-1.5">
@@ -683,6 +704,16 @@ export function FlowCanvas({
                 selected && (
                   <NodeInspector
                     node={toDomain(selected)}
+                    live={
+                      selected.data.kind === "socket"
+                        ? {
+                            feed: live.feed(selected.id),
+                            onStart: () => live.start(toDomain(selected)),
+                            onStop: () => live.stop(selected.id),
+                            onClear: () => live.clear(selected.id),
+                          }
+                        : undefined
+                    }
                     run={runs[selected.id]}
                     connections={connections}
                     test={{

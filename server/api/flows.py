@@ -31,12 +31,13 @@ REFERENCE = re.compile(r"\{\{\s*([\w.\-\[\]]+)\s*\}\}")
 QUERY = "query"
 REQUEST = "request"
 CONSTANTS = "constants"
+SOCKET = "socket"
 
 #: Kinds the server runs, once, when the flow runs.
 SERVER_KINDS = (QUERY, REQUEST, CONSTANTS)
 
 #: Kinds that run in the browser instead, for as long as the tab is open.
-LIVE_KINDS: tuple[str, ...] = ()
+LIVE_KINDS: tuple[str, ...] = (SOCKET,)
 
 KINDS = SERVER_KINDS + LIVE_KINDS
 
@@ -47,6 +48,7 @@ KIND_FIELDS: dict[str, tuple[str, ...]] = {
     QUERY: ("query",),
     REQUEST: ("request",),
     CONSTANTS: ("constants",),
+    SOCKET: ("socket",),
 }
 
 
@@ -73,6 +75,8 @@ SUCCEEDED = "succeeded"
 FAILED = "failed"
 #: Never ran, because something it depends on did not finish.
 SKIPPED = "skipped"
+#: Runs in the browser, so the server never starts or finishes it.
+LIVE = "live"
 
 
 class FlowError(Exception):
@@ -88,6 +92,7 @@ class Node:
     query: str = ""
     request: dict = field(default_factory=dict)
     constants: list[dict] = field(default_factory=list)
+    socket: dict = field(default_factory=dict)
     checks: list[dict] = field(default_factory=list)
     position: dict = field(default_factory=dict)
 
@@ -184,6 +189,7 @@ def read_graph(payload: dict) -> Graph:
                 query=str(raw.get("query") or ""),
                 request=raw.get("request") or {},
                 constants=read_constants(node_id, raw.get("constants")),
+                socket=raw.get("socket") or {},
                 checks=read_checks(node_id, raw.get("checks")),
                 position=raw.get("position") or {},
             )
@@ -202,6 +208,21 @@ def read_graph(payload: dict) -> Graph:
         edges.append(Edge(source=source, target=target, id=str(raw.get("id") or "")))
 
     graph = Graph(nodes=nodes, edges=edges)
+
+    by_id = graph.by_id()
+    for edge in edges:
+        source, target = by_id[edge.source], by_id[edge.target]
+        if is_live(source.kind) and not is_live(target.kind):
+            # the server can never resolve {{Stream.last.value}}: not "not
+            # yet", but architecturally never, because the subscription lives
+            # in a browser tab. Refusing the edge beats a node that succeeds
+            # having sent the braces along with the request.
+            raise FlowError(
+                f"'{source.label}' is a {source.kind} node, which runs in your "
+                f"browser, so '{target.label}' cannot read it. A {target.kind} "
+                f"node only sees nodes the server ran."
+            )
+
     cycle = find_cycle(graph)
     if cycle:
         names = " → ".join(graph.by_id()[node].label for node in cycle)

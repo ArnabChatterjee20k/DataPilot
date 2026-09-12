@@ -109,6 +109,17 @@ class FlowRun:
         run = self.runs[node_id]
         node = self.nodes[node_id]
 
+        if flows.is_live(node.kind):
+            # a live node is the browser's job. Reporting it and letting go
+            # immediately keeps it from stalling anything drawn after it, and
+            # leaves nothing in `outputs`, so no reference can reach a value
+            # that only exists in a tab.
+            run.state = flows.LIVE
+            run.summary = "runs in your browser"
+            await self._announce(run)
+            self._finished[node_id].set()
+            return
+
         # wait for everything upstream, whatever order it finishes in
         for parent in self.parents[node_id]:
             await self._finished[parent].wait()
