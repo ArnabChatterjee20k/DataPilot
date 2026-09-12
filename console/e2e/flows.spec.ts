@@ -489,3 +489,124 @@ test.describe("testing one node", () => {
     await expect(page.getByLabel("What came back")).toHaveCount(0);
   });
 });
+
+test.describe("selecting more than one node", () => {
+  async function threeNodes(page: Page) {
+    await newFlow(page);
+    await page.getByTestId("flow-canvas").click();
+    await page.keyboard.press("q");
+    await page.keyboard.press("q");
+    await page.keyboard.press("r");
+  }
+
+  const panel = (page: Page) =>
+    page.getByRole("complementary", { name: "Selection" });
+
+  test("dragging across the canvas rubber-bands a selection", async ({ page }) => {
+    await threeNodes(page);
+    // the inspector is open on the node that was just added
+    await expect(page.getByRole("complementary", { name: /settings/ })).toBeVisible();
+
+    const canvas = (await page.getByTestId("flow-canvas").boundingBox())!;
+    await page.mouse.move(canvas.x + 20, canvas.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(canvas.x + canvas.width - 40, canvas.y + 400, { steps: 12 });
+    await page.mouse.up();
+
+    await expect(panel(page)).toContainText("3 nodes selected");
+    // and the single-node inspector steps aside rather than showing one of them
+    await expect(page.getByRole("complementary", { name: /settings/ })).toHaveCount(0);
+  });
+
+  test("select all picks up every node", async ({ page }) => {
+    await threeNodes(page);
+    await page.getByTestId("flow-canvas").click();
+    await page.keyboard.press("ControlOrMeta+a");
+
+    await expect(panel(page)).toContainText("3 nodes selected");
+    await expect(panel(page).getByRole("list", { name: "Selected nodes" })).toContainText(
+      "Query 1"
+    );
+  });
+
+  test("laying them out in a column leaves none hidden behind another", async ({
+    page,
+  }) => {
+    await threeNodes(page);
+    await page.getByTestId("flow-canvas").click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await panel(page).getByRole("button", { name: "Column" }).click();
+
+    const boxes = await Promise.all(
+      ["Query 1", "Query 2", "Request 1"].map((name) => node(page, name).boundingBox())
+    );
+    const xs = boxes.map((box) => Math.round(box!.x));
+    const ys = boxes.map((box) => Math.round(box!.y));
+
+    // one column: the same left edge, and no two at the same height
+    expect(new Set(xs).size).toBe(1);
+    expect(new Set(ys).size).toBe(3);
+  });
+
+  test("deleting the selection takes all of them", async ({ page }) => {
+    await threeNodes(page);
+    await page.getByTestId("flow-canvas").click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await panel(page).getByRole("button", { name: "Delete" }).click();
+
+    await expect(page.locator('[data-testid^="flow-node-"]')).toHaveCount(0);
+    await expect(page.getByText("Nothing on the canvas yet")).toBeVisible();
+  });
+
+  test("Escape clears it and the canvas keeps the nodes", async ({ page }) => {
+    await threeNodes(page);
+    await page.getByTestId("flow-canvas").click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await expect(panel(page)).toBeVisible();
+
+    await page.keyboard.press("Escape");
+
+    await expect(panel(page)).toHaveCount(0);
+    await expect(page.locator('[data-testid^="flow-node-"]')).toHaveCount(3);
+  });
+
+  test("one node still opens its own settings", async ({ page }) => {
+    await threeNodes(page);
+    await node(page, "Query 1").click();
+
+    await expect(page.getByRole("complementary", { name: "Query 1 settings" })).toBeVisible();
+    await expect(panel(page)).toHaveCount(0);
+  });
+});
+
+test.describe("the inspector is adjustable", () => {
+  test("dragging the handle makes it wider, and the width is remembered", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select 1 as id");
+
+    const inspector = page.getByRole("complementary", { name: "Rows settings" });
+    const before = (await inspector.boundingBox())!;
+
+    const handle = page.locator('[role="separator"]').last();
+    const grip = (await handle.boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x - 160, grip.y + grip.height / 2, { steps: 10 });
+    await page.mouse.up();
+
+    const after = (await inspector.boundingBox())!;
+    expect(after.width).toBeGreaterThan(before.width + 80);
+
+    // it is a preference, so it survives a reload
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("unsaved")).toHaveCount(0);
+    await page.reload();
+    await node(page, "Rows").click();
+    const reopened = (await page
+      .getByRole("complementary", { name: "Rows settings" })
+      .boundingBox())!;
+    expect(Math.abs(reopened.width - after.width)).toBeLessThan(30);
+  });
+});
