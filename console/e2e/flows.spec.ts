@@ -610,3 +610,78 @@ test.describe("the inspector is adjustable", () => {
     expect(Math.abs(reopened.width - after.width)).toBeLessThan(30);
   });
 });
+
+test.describe("a constants node", () => {
+  async function addConstants(page: Page, name: string, values: [string, string][]) {
+    await page.getByRole("button", { name: "Constants" }).click();
+    await page.getByLabel("Node name").fill(name);
+    const rows = page.getByLabel("Constant values");
+    for (const [index, [key, value]] of values.entries()) {
+      await rows.getByPlaceholder("name").nth(index).fill(key);
+      await rows.getByPlaceholder("value").nth(index).fill(value);
+    }
+  }
+
+  test("holds values and offers them to the next node", async ({ page }) => {
+    await newFlow(page);
+    await addConstants(page, "Config", [["path", "/echo"]]);
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    const table = page.getByRole("table", { name: "How the next node uses this" });
+    await expect(table.locator("tr").filter({ hasText: "{{Config.path}}" })).toContainText(
+      "/echo"
+    );
+  });
+
+  test("needs no connection, and does not claim to", async ({ page }) => {
+    await newFlow(page);
+    await addConstants(page, "Config", [["a", "1"]]);
+
+    // every other kind warns on the card until one is chosen
+    await expect(node(page, "Config")).not.toContainText("no connection chosen");
+    await expect(page.getByLabel("Node connection")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Test this node" }).click();
+    await expect(page.getByLabel("What came back")).toContainText('"a": "1"');
+  });
+
+  test("a request node really sends what the constant holds", async ({ page }) => {
+    await newFlow(page);
+    await addConstants(page, "Config", [["who", "ada"]]);
+    await addRequestNode(page, "Send", "/echo", '{"who": "{{Config.who}}"}');
+    await connect(page, "Config", "Send");
+
+    await node(page, "Send").click();
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByLabel("What was sent")).toContainText('{"who": "ada"}');
+    await expect(page.getByLabel("What was sent")).not.toContainText("{{Config");
+  });
+
+  test("a value can be built from an upstream node", async ({ page }) => {
+    await newFlow(page);
+    await addQueryNode(page, "Rows", "select id from users order by id limit 1");
+    await addConstants(page, "Config", [["url", "/users/{{Rows.first.id}}"]]);
+    await connect(page, "Rows", "Config");
+
+    await node(page, "Config").click();
+    await page.getByRole("button", { name: "Test this node" }).click();
+
+    await expect(page.getByLabel("What came back")).toContainText('"/users/1"');
+  });
+
+  test("two rows with the same name are refused rather than one winning", async ({
+    page,
+  }) => {
+    await newFlow(page);
+    await addConstants(page, "Config", [
+      ["same", "1"],
+      ["same", "2"],
+    ]);
+
+    await page.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByRole("alert")).toContainText("two values called 'same'");
+  });
+});
