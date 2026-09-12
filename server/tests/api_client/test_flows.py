@@ -75,7 +75,7 @@ def edge(source, target):
 
 class TestReadingAGraph:
     def test_a_node_without_a_kind_is_refused(self):
-        with pytest.raises(flows.FlowError, match="query or a request"):
+        with pytest.raises(flows.FlowError, match="one of query, request"):
             flows.read_graph({"nodes": [{"id": "a"}]})
 
     def test_two_nodes_cannot_share_an_id(self):
@@ -916,7 +916,7 @@ class TestKindDispatch:
         message = str(problem.value)
         assert "'n1' is a 'chart' node" in message
         for kind in flows.KINDS:
-            assert f"a {kind}" in message
+            assert kind in message
 
     def test_a_node_is_stored_with_its_own_fields_only(self):
         graph = flows.read_graph(
@@ -968,3 +968,139 @@ class TestResolvingOneReference:
 
         assert value is None
         assert "first.email" in missing.reason
+
+
+def constants_node(node_id, name, values, **extra):
+    return {
+        "id": node_id,
+        "name": name,
+        "kind": "constants",
+        "constants": [
+            {"key": key, "value": value, "enabled": True} for key, value in values
+        ],
+        **extra,
+    }
+
+
+class TestConstantsNode:
+    """One place to keep a value several nodes share.
+
+    The alternative is the same base URL pasted into three request nodes, and
+    a fourth that was missed when it changed.
+    """
+
+    def test_its_values_are_offered_downstream(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Config",
+            [
+                constants_node("c1", "Config", [("path", "/ping"), ("who", "ada")]),
+                request_node("r1", "Call", api_connection["uid"], {"path": "{{Config.path}}"}),
+            ],
+            [edge("c1", "r1")],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        assert summary["failed"] == []
+        assert states["c1"]["summary"] == "2 values"
+        # the reference resolved, so the request really went to /ping
+        assert states["r1"]["result"]["status"] == 200
+
+    def test_a_value_can_be_built_from_an_upstream_node(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Derived",
+            [
+                request_node("r1", "Ping", api_connection["uid"], {"path": "/ping"}),
+                constants_node("c1", "Config", [("seen", "pong was {{Ping.json.pong}}")]),
+            ],
+            [edge("r1", "c1")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/c1/test").json()
+
+        assert body["node"]["state"] == flows.SUCCEEDED
+        assert body["node"]["result"]["values"]["seen"] == "pong was true"
+
+    def test_it_needs_no_connection(self, client):
+        uid = create_flow(
+            client, "Alone", [constants_node("c1", "Config", [("a", "1")])], []
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/c1/test").json()
+
+        # every other kind is refused for having no connection chosen
+        assert body["node"]["state"] == flows.SUCCEEDED
+        assert body["node"]["error"] == ""
+
+    def test_its_keys_are_offered_as_references(self, client):
+        uid = create_flow(
+            client,
+            "Alone",
+            [constants_node("c1", "Config", [("api_key", "secret"), ("base", "/v1")])],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/c1/test").json()
+
+        offered = {item["reference"]: item["value"] for item in body["offers"]}
+        assert offered["{{Config.api_key}}"] == "secret"
+        assert offered["{{Config.base}}"] == "/v1"
+
+    def test_a_blank_key_is_dropped_rather_than_stored(self, client):
+        """The editor always leaves a blank row to type into."""
+        uid = create_flow(
+            client,
+            "Blank",
+            [constants_node("c1", "Config", [("a", "1"), ("", "")])],
+            [],
+        )
+
+        graph = client.get(f"/flows/{uid}").json()["graph"]
+
+        assert graph["nodes"][0]["constants"] == [
+            {"key": "a", "value": "1", "enabled": True}
+        ]
+
+    def test_two_rows_with_one_key_are_refused(self, client):
+        response = client.post(
+            "/flows",
+            json={
+                "name": "Twice",
+                "graph": {
+                    "nodes": [constants_node("c1", "Config", [("a", "1"), ("a", "2")])],
+                    "edges": [],
+                },
+            },
+        )
+
+        assert response.status_code == 400
+        assert "two values called 'a'" in response.json()["detail"]
+
+    def test_a_disabled_row_is_kept_but_not_offered(self, client):
+        uid = create_flow(
+            client,
+            "Off",
+            [
+                {
+                    "id": "c1",
+                    "name": "Config",
+                    "kind": "constants",
+                    "constants": [
+                        {"key": "on", "value": "1", "enabled": True},
+                        {"key": "off", "value": "2", "enabled": False},
+                    ],
+                }
+            ],
+            [],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/c1/test").json()
+
+        assert body["node"]["result"]["values"] == {"on": "1"}
+        # switched off rather than deleted, so it survives the round trip
+        stored = client.get(f"/flows/{uid}").json()["graph"]["nodes"][0]["constants"]
+        assert [row["key"] for row in stored] == ["on", "off"]
