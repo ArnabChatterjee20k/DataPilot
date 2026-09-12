@@ -339,12 +339,19 @@ def resolve_path(source: Any, path: list[str]) -> Any:
 
 
 def as_text(value: Any) -> str:
+    """Render a value for a request body, a query, or a preview.
+
+    Rows are serialised before they get here, so a UUID or a datetime should
+    never reach this. Should is not a guarantee, and the cost of being wrong
+    used to be a 500 on the endpoint rather than one odd looking cell, so
+    anything json cannot encode falls back to its text form.
+    """
     if value is None:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (dict, list)):
-        return json.dumps(value)
+        return json.dumps(value, default=str)
     return str(value)
 
 

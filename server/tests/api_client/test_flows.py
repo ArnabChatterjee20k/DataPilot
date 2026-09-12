@@ -853,3 +853,41 @@ class TestValuesThatAreNotJson:
 
         assert response.status_code == 200, response.text
         assert response.json()["node"]["state"] == flows.SUCCEEDED
+
+
+class TestRenderingOddValues:
+    """`as_text` is the last thing between a value and a 500.
+
+    Rows are serialised before they reach it, so nothing here should ever
+    happen. The point is that being wrong about that costs one odd looking
+    cell rather than the endpoint.
+    """
+
+    def test_a_uuid_inside_a_row_is_rendered_rather_than_raised(self):
+        from uuid import UUID
+
+        rows = [{"id": UUID("49d11d0b-d7b0-431d-8476-ca5f68e59d90")}]
+
+        rendered = flows.as_text(rows)
+
+        assert "49d11d0b-d7b0-431d-8476-ca5f68e59d90" in rendered
+
+    def test_a_reference_to_one_still_resolves(self):
+        from uuid import UUID
+
+        outputs = {"n1": {"rows": [{"id": UUID(int=1)}], "row_count": 1}}
+        names = {"Ids": "n1", "n1": "n1"}
+
+        text, missing = flows.interpolate("{{Ids.rows}}", outputs, names)
+
+        assert missing == []
+        assert "00000000-0000-0000-0000-000000000001" in text
+
+    def test_suggestions_survive_one_too(self):
+        from uuid import UUID
+
+        output = {"rows": [{"id": UUID(int=2)}], "row_count": 1, "first": {"id": UUID(int=2)}}
+
+        offered = flows.suggest_references("Ids", flows.QUERY, output)
+
+        assert any("00000000-0000-0000-0000-000000000002" in item["value"] for item in offered)
