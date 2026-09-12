@@ -1,7 +1,12 @@
 import type { RequestSpecModel } from "@/lib/sdk";
 import { emptyRow, type KeyValueRow } from "../store/store";
 
-export type NodeKind = "query" | "request" | "constants" | "socket";
+export type NodeKind =
+  | "query"
+  | "request"
+  | "constants"
+  | "socket"
+  | "graph";
 
 /**
  * A node's state during a run.
@@ -27,6 +32,7 @@ export interface FlowNodeData {
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
   socket?: SocketConfig;
+  chart?: ChartConfig;
   checks?: FlowCheck[];
   [key: string]: unknown;
 }
@@ -34,6 +40,17 @@ export interface FlowNodeData {
 /** What a socket node subscribes to. The connection carries the base URL. */
 export interface SocketConfig {
   path?: string;
+}
+
+/** What a graph node draws, and out of which fields. */
+export interface ChartConfig {
+  type?: "line" | "bar" | "area";
+  /** The field along the bottom. Blank means the order things arrived in. */
+  x?: string;
+  /** One line each. */
+  y?: string[];
+  /** How many points to keep on screen. */
+  window?: number;
 }
 
 export interface FlowNode {
@@ -45,6 +62,7 @@ export interface FlowNode {
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
   socket?: SocketConfig;
+  chart?: ChartConfig;
   checks?: FlowCheck[];
   position?: { x: number; y: number };
 }
@@ -158,6 +176,14 @@ export const NEW_SOCKET_NODE = (id: string): FlowNode => ({
   name: "Stream",
   kind: "socket",
   socket: { path: "" },
+  position: { x: 0, y: 0 },
+});
+
+export const NEW_GRAPH_NODE = (id: string): FlowNode => ({
+  id,
+  name: "Chart",
+  kind: "graph",
+  chart: { type: "line", x: "", y: [], window: 100 },
   position: { x: 0, y: 0 },
 });
 

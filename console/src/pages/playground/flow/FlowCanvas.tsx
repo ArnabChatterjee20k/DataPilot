@@ -17,6 +17,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   AlertCircle,
+  BarChart3,
   Braces,
   Database,
   Globe,
@@ -42,6 +43,7 @@ import { FlowNodeCard, type FlowNodeCardData } from "./FlowNodeCard";
 import { NodeInspector } from "./NodeInspector";
 import { SelectionPanel } from "./SelectionPanel";
 import { useLiveNodes } from "./useLiveNodes";
+import { rowsFrom } from "./chartData";
 import { useFlowRun } from "./useFlowRun";
 import {
   isMacPlatform,
@@ -51,6 +53,7 @@ import {
 } from "./shortcuts";
 import {
   NEW_CONSTANTS_NODE,
+  NEW_GRAPH_NODE,
   NEW_QUERY_NODE,
   NEW_SOCKET_NODE,
   NEW_REQUEST_NODE,
@@ -72,6 +75,10 @@ const nextPosition = (count: number) => ({
 
 function subtitleOf(data: FlowNodeCardData): string {
   if (data.kind === "socket") return (data.socket?.path ?? "").trim() || "/";
+  if (data.kind === "graph") {
+    const drawn = data.chart?.y ?? [];
+    return drawn.length ? drawn.join(", ") : "nothing chosen yet";
+  }
   if (data.kind === "constants") {
     const rows = (data.constants ?? []).filter((row) => row.key.trim());
     return rows.length
@@ -95,6 +102,7 @@ const toCanvas = (node: FlowNode): CanvasNode => ({
     request: node.request,
     constants: node.constants ?? [],
     socket: node.socket,
+    chart: node.chart,
     checks: node.checks ?? [],
     subtitle: "",
   },
@@ -109,6 +117,7 @@ const toDomain = (node: CanvasNode): FlowNode => ({
   request: node.data.request,
   constants: (node.data.constants as FlowNode["constants"]) ?? [],
   socket: node.data.socket as FlowNode["socket"],
+  chart: node.data.chart as FlowNode["chart"],
   checks: (node.data.checks as FlowNode["checks"]) ?? [],
   position: node.position,
 });
@@ -211,7 +220,9 @@ export function FlowCanvas({
           ? NEW_CONSTANTS_NODE(id)
           : kind === "socket"
             ? NEW_SOCKET_NODE(id)
-            : NEW_REQUEST_NODE(id);
+            : kind === "graph"
+              ? NEW_GRAPH_NODE(id)
+              : NEW_REQUEST_NODE(id);
     setNodes((current) => {
       const sameKind = current.filter((node) => node.data.kind === kind).length;
       return [
@@ -426,6 +437,13 @@ export function FlowCanvas({
   const marked = nodes.filter((node) => node.selected);
   const domain = nodes.map(toDomain);
   const live = useLiveNodes(domain);
+
+  /** The rows a graph node has to draw, from whichever node feeds it. */
+  const feedFor = (id: string) => {
+    const parent = edges.find((edge) => edge.target === id)?.source;
+    const upstream = domain.find((node) => node.id === parent);
+    return rowsFrom(upstream, parent ? runs[parent] : undefined, live.feed(parent ?? ""));
+  };
   const isMac = isMacPlatform();
   const modKey = isMac ? "⌘" : "Ctrl";
 
@@ -434,6 +452,7 @@ export function FlowCanvas({
     addRequest: () => addNode("request"),
     addConstants: () => addNode("constants"),
     addSocket: () => addNode("socket"),
+    addGraph: () => addNode("graph"),
     duplicate: duplicateSelection,
     remove: removeSelection,
     selectAll,
@@ -490,6 +509,16 @@ export function FlowCanvas({
         >
           <Radio className="h-3.5 w-3.5" />
           Websocket
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 px-2 text-xs"
+          onClick={() => addNode("graph")}
+          title="Add a graph (G)"
+        >
+          <BarChart3 className="h-3.5 w-3.5" />
+          Graph
         </Button>
 
         <div className="ml-auto flex items-center gap-1.5">
@@ -704,6 +733,11 @@ export function FlowCanvas({
                 selected && (
                   <NodeInspector
                     node={toDomain(selected)}
+                    rows={
+                      selected.data.kind === "graph"
+                        ? feedFor(selected.id)
+                        : undefined
+                    }
                     live={
                       selected.data.kind === "socket"
                         ? {

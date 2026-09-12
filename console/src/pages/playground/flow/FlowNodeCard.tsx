@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Circle,
+  BarChart3,
   Braces,
   Database,
   Radio,
@@ -17,7 +18,13 @@ import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/format";
 import type { RequestSpecModel } from "@/lib/sdk";
 import type { KeyValueRow } from "../store/store";
-import type { NodeKind, NodeRun, NodeState, SocketConfig } from "./types";
+import type {
+  ChartConfig,
+  NodeKind,
+  NodeRun,
+  NodeState,
+  SocketConfig,
+} from "./types";
 
 const STATE_STYLE: Record<NodeState, string> = {
   idle: "border-border",
@@ -56,6 +63,7 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
   socket?: SocketConfig;
+  chart?: ChartConfig;
   checks?: unknown[];
   /** Derived for the card: the line under the title. */
   subtitle: string;
@@ -84,10 +92,12 @@ export const FlowNodeCard = memo(function FlowNodeCard({
         ? Braces
         : card.kind === "socket"
           ? Radio
-          : Globe;
+          : card.kind === "graph"
+            ? BarChart3
+            : Globe;
   // a constants node has nothing to connect to, so the amber warning below
   // would make a correctly configured one look permanently broken
-  const needsConnection = card.kind !== "constants";
+  const needsConnection = card.kind !== "constants" && card.kind !== "graph";
 
   return (
     <div

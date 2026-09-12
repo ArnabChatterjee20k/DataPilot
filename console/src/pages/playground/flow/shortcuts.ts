@@ -13,6 +13,7 @@ export type ShortcutAction =
   | "addRequest"
   | "addConstants"
   | "addSocket"
+  | "addGraph"
   | "duplicate"
   | "remove"
   | "selectAll"
@@ -36,6 +37,7 @@ export const SHORTCUTS: Shortcut[] = [
   { action: "addRequest", keys: ["r"], label: "Add a request node" },
   { action: "addConstants", keys: ["c"], label: "Add a constants node" },
   { action: "addSocket", keys: ["w"], label: "Add a websocket source" },
+  { action: "addGraph", keys: ["g"], label: "Add a graph" },
   { action: "duplicate", keys: ["d"], mod: true, label: "Duplicate the selection" },
   { action: "remove", keys: ["Delete", "Backspace"], label: "Delete the selection" },
   { action: "selectAll", keys: ["a"], mod: true, label: "Select every node" },
