@@ -1537,3 +1537,193 @@ class TestGraphNode:
 
         assert stored["chart"] == {"type": "bar", "x": "day", "y": ["a", "b"]}
         assert "socket" not in stored
+
+
+class TestWhatWasSent:
+    """Half of "where did the data stop being what I expected" is the input.
+
+    The single-node test has always reported it. A whole run reported only
+    what came back, so the one thing worth comparing was missing from the
+    place people actually look.
+    """
+
+    def test_a_query_reports_the_sql_it_ran(self, client, seeded_sqlite):
+        uid = create_flow(
+            client,
+            "Sent",
+            [query_node("q1", "Rows", seeded_sqlite["uid"], "select 1 as id")],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, _summary = drain(socket)
+
+        assert states["q1"]["sent"] == "select 1 as id"
+
+    def test_a_reference_is_reported_as_the_value_it_became(
+        self, client, seeded_sqlite, api_connection
+    ):
+        uid = create_flow(
+            client,
+            "Sent",
+            [
+                query_node("q1", "Users", seeded_sqlite["uid"], "select 7 as id"),
+                request_node(
+                    "r1",
+                    "Notify",
+                    api_connection["uid"],
+                    {
+                        "path": "/echo",
+                        "method": "POST",
+                        "body_type": "json",
+                        "body": '{"id": {{Users.first.id}}}',
+                    },
+                ),
+            ],
+            [edge("q1", "r1")],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, _summary = drain(socket)
+
+        # the braces are gone by the time it went out, which is the point
+        assert states["r1"]["sent"]["body"] == '{"id": 7}'
+
+    def test_a_constants_node_reports_what_it_resolved_to(self, client):
+        uid = create_flow(
+            client,
+            "Sent",
+            [constants_node("c1", "Config", [("a", "1")])],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, _summary = drain(socket)
+
+        assert states["c1"]["sent"] == {"a": "1"}
+
+    def test_a_node_that_never_ran_sent_nothing(self, client, api_connection):
+        uid = create_flow(
+            client,
+            "Sent",
+            [
+                request_node("r1", "First", None, {"path": "/ping"}),
+                request_node("r2", "Second", api_connection["uid"], {"path": "/ping"}),
+            ],
+            [edge("r1", "r2")],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, _summary = drain(socket)
+
+        assert states["r2"]["state"] == flows.SKIPPED
+        assert states["r2"]["sent"] is None
+
+
+class TestCheckingEveryRow:
+    """Asserting about the data, not only about how much of it there is.
+
+    `row_count more than 0` says a query returned something. It says nothing
+    about whether what came back is right, which is the question a test is
+    actually asking.
+    """
+
+    def _check(self, path, op, value, scope):
+        return flows.check(
+            [{"on": "output", "path": path, "op": op, "value": value, "enabled": True}],
+            scope,
+            {},
+            "output",
+        )[0]
+
+    rows = {
+        "rows": [
+            {"total": 5, "user": {"id": 1}},
+            {"total": 9, "user": {"id": 2}},
+        ]
+    }
+
+    def test_every_row_passing_passes(self):
+        result = self._check("rows.*.total", "gt", "0", self.rows)
+
+        assert result["passed"] is True
+        assert result["description"] == "every rows.total to be more than 0"
+
+    def test_one_bad_row_fails_and_says_how_many(self):
+        scope = {"rows": [{"total": 5}, {"total": 0}, {"total": 3}]}
+
+        result = self._check("rows.*.total", "gt", "0", scope)
+
+        assert result["passed"] is False
+        assert "1 of 3 did not" in result["detail"]
+        # the offending value, not the first one, because that is the one to go and look at
+        assert result["actual"] == "0"
+
+    def test_it_reaches_through_nested_keys(self):
+        result = self._check("rows.*.user.id", "exists", "", self.rows)
+
+        assert result["passed"] is True
+
+    def test_one_row_by_index_still_works(self):
+        result = self._check("rows.0.user.id", "eq", "1", self.rows)
+
+        assert result["passed"] is True
+
+    def test_nothing_to_check_is_not_a_pass(self):
+        """An empty table quietly passing every check is the worst outcome."""
+        result = self._check("rows.*.total", "gt", "0", {"rows": []})
+
+        assert result["passed"] is False
+        assert "nothing there to check" in result["detail"]
+
+    def test_it_works_on_what_a_node_received(self, client, seeded_sqlite, api_connection):
+        uid = create_flow(
+            client,
+            "Checked",
+            [
+                query_node("q1", "Users", seeded_sqlite["uid"], "select id from users"),
+                with_checks(
+                    request_node("r1", "Notify", api_connection["uid"], {"path": "/ping"}),
+                    {"on": "input", "path": "Users.rows.*.id", "op": "gt", "value": "0"},
+                ),
+            ],
+            [edge("q1", "r1")],
+        )
+
+        body = client.post(f"/flows/{uid}/nodes/r1/test").json()
+
+        check = body["node"]["checks"][0]
+        assert check["passed"] is True
+        assert check["description"] == "every Users.rows.id to be more than 0"
+
+    def test_a_row_that_breaks_the_rule_is_found_through_a_whole_run(
+        self, client, seeded_sqlite
+    ):
+        uid = create_flow(
+            client,
+            "Checked",
+            [
+                with_checks(
+                    query_node(
+                        "q1",
+                        "Users",
+                        seeded_sqlite["uid"],
+                        "select id, name from users",
+                    ),
+                    {"on": "output", "path": "rows.*.name", "op": "ne", "value": "Ada"},
+                )
+            ],
+            [],
+        )
+
+        with client.websocket_connect(f"/flows/{uid}/run") as socket:
+            read_control(socket, "ready")
+            states, summary = drain(socket)
+
+        # the node still succeeded; the finding is about the data
+        assert states["q1"]["state"] == flows.SUCCEEDED
+        assert summary["checks"]["failed"] == ["Users: every rows.name not to be Ada"]

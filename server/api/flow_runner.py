@@ -39,6 +39,9 @@ class NodeRun:
     #: Assertions this node carried, and what each one saw. A failed check is
     #: a finding rather than a verdict: it never changes `state`.
     checks: list[dict] = field(default_factory=list)
+    #: What this node was actually sent, once its references were replaced.
+    #: Half of "where did the data stop being what I expected" is what went in.
+    sent: Any = None
 
     def as_dict(self) -> dict:
         return {
@@ -53,6 +56,7 @@ class NodeRun:
             "warnings": self.warnings,
             "blocked_by": self.blocked_by,
             "checks": self.checks,
+            "sent": self.sent,
         }
 
 
