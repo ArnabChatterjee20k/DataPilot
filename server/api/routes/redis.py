@@ -8,15 +8,21 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
-from .. import redis_client
+from .. import redis_client, redis_commands
 from ..config import SourceConfig
 from ..models import (
     RedisChannelListModel,
+    RedisCommandModel,
+    RedisCommandResultModel,
     RedisInfoModel,
+    RedisKeyCreateModel,
+    RedisKeyEditModel,
     RedisKeyListModel,
     RedisKeyModel,
     RedisKeyValueModel,
     RedisPublishResultModel,
+    RedisRenameModel,
+    RedisTtlModel,
 )
 from ..database.db import DBSession
 from .connections import load_connection
@@ -49,6 +55,23 @@ def address_of(connection) -> redis_client.RedisAddress:
 async def open_redis(connection):
     """A session, with every failure already phrased for a person."""
     return redis_client.RedisSession(address_of(require_redis(connection)))
+
+
+def require_writable(connection, allow_writes: bool, doing: str):
+    """The same promise a read-only SQL connection makes, kept for Redis.
+
+    A connection marked read-only refused writes in the query tab and then
+    let the key browser delete whatever it liked, which made the flag mean
+    less than it said.
+    """
+    if getattr(connection, "read_only", True) and not allow_writes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"This connection is read-only, so {doing} was refused. Turn off "
+                "read-only on the connection, or allow writes for this tab."
+            ),
+        )
 
 
 def to_http(address: redis_client.RedisAddress, error: Exception) -> HTTPException:
@@ -142,8 +165,14 @@ async def read_key(connection_id: str, db: DBSession, key: Annotated[str, Query(
     "/connection/{connection_id}/redis/keys",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_key(connection_id: str, db: DBSession, key: Annotated[str, Query()]):
+async def delete_key(
+    connection_id: str,
+    db: DBSession,
+    key: Annotated[str, Query()],
+    allow_writes: Annotated[bool, Query()] = False,
+):
     connection = require_redis(await load_connection(db, connection_id))
+    require_writable(connection, allow_writes, f"deleting {key!r}")
     address = address_of(connection)
 
     try:
@@ -155,6 +184,187 @@ async def delete_key(connection_id: str, db: DBSession, key: Annotated[str, Quer
                 )
     except Exception as error:
         raise to_http(address, error) from error
+
+
+async def _write_then_read(connection, key: str, write) -> RedisKeyValueModel:
+    """Run a write, then hand back the key as it now is.
+
+    Answering with the result means the editor shows what Redis holds rather
+    than what it assumed it sent.
+    """
+    address = address_of(connection)
+    try:
+        async with await open_redis(connection) as session:
+            await write(session)
+            value = await session.read(key)
+    except Exception as error:
+        raise to_http(address, error) from error
+
+    return RedisKeyValueModel(
+        connection_id=connection.uid,
+        key=value.key,
+        type=value.type,
+        label=redis_client.TYPE_LABELS.get(value.type, value.type),
+        ttl=value.ttl,
+        size=value.size,
+        encoding=value.encoding,
+        value=value.value,
+        is_text=value.is_text,
+        entries=value.entries,
+        members=value.members,
+        truncated=value.truncated,
+    )
+
+
+@router.post(
+    "/connection/{connection_id}/redis/keys",
+    response_model=RedisKeyValueModel,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_key(
+    connection_id: str,
+    body: RedisKeyCreateModel,
+    db: DBSession,
+    allow_writes: Annotated[bool, Query()] = False,
+):
+    """Write a new key of any type, or replace one when asked to."""
+    connection = require_redis(await load_connection(db, connection_id))
+    require_writable(connection, allow_writes, f"writing {body.key!r}")
+
+    return await _write_then_read(
+        connection,
+        body.key,
+        lambda session: session.create(
+            body.key,
+            body.type,
+            value=body.value,
+            entries=body.entries,
+            members=body.members,
+            ttl=body.ttl,
+            replace=body.replace,
+        ),
+    )
+
+
+@router.patch(
+    "/connection/{connection_id}/redis/keys/items", response_model=RedisKeyValueModel
+)
+async def edit_key(
+    connection_id: str,
+    body: RedisKeyEditModel,
+    db: DBSession,
+    allow_writes: Annotated[bool, Query()] = False,
+):
+    """Change one field, position or member, rather than rewriting the key."""
+    connection = require_redis(await load_connection(db, connection_id))
+    require_writable(connection, allow_writes, f"changing {body.key!r}")
+
+    item = body.model_dump(exclude={"key", "action"}, exclude_none=True)
+    return await _write_then_read(
+        connection, body.key, lambda session: session.edit(body.key, body.action, item)
+    )
+
+
+@router.put(
+    "/connection/{connection_id}/redis/keys/ttl", response_model=RedisKeyValueModel
+)
+async def set_ttl(
+    connection_id: str,
+    body: RedisTtlModel,
+    db: DBSession,
+    allow_writes: Annotated[bool, Query()] = False,
+):
+    connection = require_redis(await load_connection(db, connection_id))
+    require_writable(connection, allow_writes, f"changing when {body.key!r} expires")
+
+    return await _write_then_read(
+        connection, body.key, lambda session: session.expire(body.key, body.ttl)
+    )
+
+
+@router.post(
+    "/connection/{connection_id}/redis/keys/rename", response_model=RedisKeyValueModel
+)
+async def rename_key(
+    connection_id: str,
+    body: RedisRenameModel,
+    db: DBSession,
+    allow_writes: Annotated[bool, Query()] = False,
+):
+    connection = require_redis(await load_connection(db, connection_id))
+    require_writable(connection, allow_writes, f"renaming {body.key!r}")
+
+    return await _write_then_read(
+        connection,
+        body.to,
+        lambda session: session.rename(body.key, body.to, body.replace),
+    )
+
+
+@router.post(
+    "/connection/{connection_id}/redis/command", response_model=RedisCommandResultModel
+)
+async def run_command(
+    connection_id: str,
+    body: RedisCommandModel,
+    db: DBSession,
+    allow_writes: Annotated[bool, Query()] = False,
+):
+    """Run one command, the way redis-cli would.
+
+    Only a command known to read runs on a read-only connection. A command
+    that empties a database needs `confirm` as well, because one mistyped
+    line should not take a cache with it.
+    """
+    import time
+
+    connection = require_redis(await load_connection(db, connection_id))
+    address = address_of(connection)
+
+    try:
+        command = redis_commands.parse(body.command)
+    except redis_commands.CommandError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)
+        ) from error
+
+    if command.writes:
+        require_writable(connection, allow_writes, f"running {command.name}")
+    if command.wipes and not body.confirm:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"{command.name} deletes every key in "
+                f"{'every database' if command.name == 'FLUSHALL' else 'this database'}. "
+                "Confirm it to run it."
+            ),
+        )
+
+    started = time.perf_counter()
+    try:
+        async with await open_redis(connection) as session:
+            reply = await session.client.execute_command(*command.parts)
+    except Exception as error:
+        # a reply error is Redis explaining what was wrong with the command,
+        # and its own words are the clearest ones available
+        from redis.exceptions import ResponseError
+
+        if isinstance(error, ResponseError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Redis said: {error}"
+            ) from error
+        raise to_http(address, error) from error
+
+    rendered = redis_commands.render(reply)
+    return RedisCommandResultModel(
+        connection_id=connection_id,
+        command=" ".join(command.parts),
+        reply=rendered,
+        kind=redis_commands.kind_of(rendered),
+        writes=command.writes,
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        warning=command.warning,
+    )
 
 
 @router.get("/connection/{connection_id}/redis/info", response_model=RedisInfoModel)
