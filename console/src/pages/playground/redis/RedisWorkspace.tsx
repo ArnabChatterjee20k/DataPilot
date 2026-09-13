@@ -4,20 +4,31 @@ import {
   Database,
   Gauge,
   Loader2,
+  Plus,
   Radio,
   RefreshCw,
   SendHorizontal,
+  ShieldAlert,
+  TerminalSquare,
   Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import { formatCount } from "@/lib/format";
 import type { DatabaseConnection, Tab } from "../store/store";
 import { EmptyState, EnvironmentBadge } from "../components/primitives";
+import { CommandPanel } from "./CommandPanel";
+import { CreateKeyDialog } from "./CreateKeyDialog";
 import { KeyTree } from "./KeyTree";
-import { RedisKeyValue } from "./RedisKeyValue";
+import { RedisKeyValue, type KeyWrites } from "./RedisKeyValue";
 import {
   useChannels,
   useDeleteKey,
@@ -25,15 +36,17 @@ import {
   useKeyValue,
   usePublish,
   useRedisInfo,
+  useRedisWrites,
   useSubscription,
 } from "./useRedis";
 
-type Panel = "keys" | "dashboard" | "pubsub";
+type Panel = "keys" | "dashboard" | "pubsub" | "command";
 
 const PANELS: { value: Panel; label: string; icon: typeof Database }[] = [
   { value: "keys", label: "Keys", icon: Database },
   { value: "dashboard", label: "Dashboard", icon: Gauge },
   { value: "pubsub", label: "Pub/Sub", icon: Radio },
+  { value: "command", label: "Command", icon: TerminalSquare },
 ];
 
 export function RedisWorkspace({
@@ -44,6 +57,10 @@ export function RedisWorkspace({
   connection?: DatabaseConnection;
 }) {
   const [panel, setPanel] = useState<Panel>("keys");
+  // the same escape hatch the query tab has: a read-only connection refuses
+  // writes until this tab says it means them
+  const [allowWrites, setAllowWrites] = useState(false);
+  const readOnly = connection?.readOnly ?? true;
 
   // polled whichever panel is open, so the count answers "is anything talking
   // on this server" without having to go and look
@@ -61,7 +78,29 @@ export function RedisWorkspace({
           />
         )}
 
-        <div className="ml-auto flex items-center rounded-md border p-0.5">
+        {readOnly && (
+          <label
+            className={cn(
+              "ml-auto flex items-center gap-1.5 text-xs",
+              allowWrites ? "text-amber-400" : "text-muted-foreground"
+            )}
+            title="This connection is read-only. Tick to let this tab change keys."
+          >
+            <Checkbox
+              checked={allowWrites}
+              onCheckedChange={(checked) => setAllowWrites(checked === true)}
+            />
+            <ShieldAlert className="h-3.5 w-3.5" />
+            Allow writes
+          </label>
+        )}
+
+        <div
+          className={cn(
+            "flex items-center rounded-md border p-0.5",
+            !readOnly && "ml-auto"
+          )}
+        >
           {PANELS.map((item) => (
             <button
               key={item.value}
@@ -90,9 +129,18 @@ export function RedisWorkspace({
         </div>
       </div>
 
-      {panel === "keys" && <KeyBrowser connectionId={tab.connectionId} />}
+      {panel === "keys" && (
+        <KeyBrowser
+          connectionId={tab.connectionId}
+          canWrite={!readOnly || allowWrites}
+          allowWrites={allowWrites}
+        />
+      )}
       {panel === "dashboard" && <Dashboard connectionId={tab.connectionId} />}
       {panel === "pubsub" && <PubSub connectionId={tab.connectionId} />}
+      {panel === "command" && (
+        <CommandPanel connectionId={tab.connectionId} allowWrites={allowWrites} />
+      )}
     </div>
   );
 }
@@ -107,7 +155,17 @@ const TYPES = [
   { value: "stream", label: "Stream" },
 ] as const;
 
-function KeyBrowser({ connectionId }: { connectionId?: string }) {
+const READ_ONLY = "This connection is read-only. Tick Allow writes to change keys.";
+
+function KeyBrowser({
+  connectionId,
+  canWrite,
+  allowWrites,
+}: {
+  connectionId?: string;
+  canWrite: boolean;
+  allowWrites: boolean;
+}) {
   const [pattern, setPattern] = useState("*");
   const [draft, setDraft] = useState("*");
   const [selected, setSelected] = useState<string | null>(null);
@@ -116,7 +174,30 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
 
   const scan = useKeyScan(connectionId, pattern);
   const value = useKeyValue(connectionId, selected);
-  const remove = useDeleteKey(connectionId);
+  const remove = useDeleteKey(connectionId, allowWrites);
+  const writes = useRedisWrites(connectionId, allowWrites);
+  const [creating, setCreating] = useState(false);
+
+  const keyWrites: KeyWrites | undefined = selected
+    ? {
+        canWrite,
+        readOnlyHint: READ_ONLY,
+        edit: (body) => writes.edit.mutateAsync(body),
+        expire: (ttl) => writes.expire.mutateAsync({ key: selected, ttl }),
+        rename: async (to) => {
+          await writes.rename.mutateAsync({ key: selected, to });
+          setSelected(to);
+        },
+        pending:
+          writes.edit.isPending || writes.expire.isPending || writes.rename.isPending,
+        error: writes.edit.error ?? writes.expire.error ?? writes.rename.error,
+        reset: () => {
+          writes.edit.reset();
+          writes.expire.reset();
+          writes.rename.reset();
+        },
+      }
+    : undefined;
 
   const all = scan.data?.keys ?? [];
   // filtering here rather than in the scan: SCAN's TYPE option would need a
@@ -137,8 +218,14 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
     });
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex w-72 shrink-0 flex-col border-r">
+    <ResizablePanelGroup
+      direction="horizontal"
+      // how wide the key list was dragged is a preference, not a per-tab thing
+      autoSaveId="datapilot.redis-keys"
+      className="min-h-0 flex-1"
+    >
+      <ResizablePanel defaultSize={28} minSize={16} maxSize={60} className="min-w-0">
+      <div className="flex h-full min-w-0 flex-col border-r">
         <form
           className="flex items-center gap-1.5 border-b p-2"
           onSubmit={(event) => {
@@ -166,6 +253,18 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
             )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 text-xs"
+            type="button"
+            onClick={() => setCreating(true)}
+            disabled={!canWrite}
+            aria-label="New key"
+            title={canWrite ? "Create a key" : READ_ONLY}
+          >
+            <Plus className="h-3.5 w-3.5" />
           </Button>
         </form>
 
@@ -243,19 +342,30 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
           )}
         </div>
       </div>
+      </ResizablePanel>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <ResizableHandle withHandle />
+
+      <ResizablePanel className="min-w-0">
+      <div className="flex h-full min-w-0 flex-col">
         {selected && (
-          <div className="flex items-center justify-end border-b px-4 py-1.5">
+          <div className="flex items-center gap-2 border-b px-4 py-1.5">
+            {remove.error && (
+              <p role="alert" className="min-w-0 truncate text-[11px] text-destructive">
+                {errorMessage(remove.error, "Could not delete the key")}
+              </p>
+            )}
             <Button
               size="sm"
               variant="outline"
-              className="h-7 gap-1.5 px-2 text-xs"
-              onClick={() => {
-                remove.mutate(selected);
-                setSelected(null);
-              }}
-              disabled={remove.isPending}
+              className="ml-auto h-7 gap-1.5 px-2 text-xs"
+              onClick={() =>
+                // cleared only once it is gone: a refused delete used to empty
+                // the panel as though it had worked
+                remove.mutate(selected, { onSuccess: () => setSelected(null) })
+              }
+              disabled={remove.isPending || !canWrite}
+              title={canWrite ? undefined : READ_ONLY}
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete key
@@ -267,10 +377,22 @@ function KeyBrowser({ connectionId }: { connectionId?: string }) {
             value={value.data}
             isLoading={value.isLoading}
             error={value.error}
+            writes={keyWrites}
           />
         </div>
       </div>
-    </div>
+      </ResizablePanel>
+
+      <CreateKeyDialog
+        open={creating}
+        onOpenChange={setCreating}
+        onCreate={async (body) => {
+          const created = await writes.create.mutateAsync(body);
+          setSelected(created.key);
+          return created;
+        }}
+      />
+    </ResizablePanelGroup>
   );
 }
 
