@@ -31,11 +31,12 @@ REFERENCE = re.compile(r"\{\{\s*([\w.\-\[\]]+)\s*\}\}")
 QUERY = "query"
 REQUEST = "request"
 CONSTANTS = "constants"
+REDIS = "redis"
 SOCKET = "socket"
 GRAPH = "graph"
 
 #: Kinds the server runs, once, when the flow runs.
-SERVER_KINDS = (QUERY, REQUEST, CONSTANTS)
+SERVER_KINDS = (QUERY, REQUEST, CONSTANTS, REDIS)
 
 #: Kinds that run in the browser instead, for as long as the tab is open.
 LIVE_KINDS: tuple[str, ...] = (SOCKET, GRAPH)
@@ -49,6 +50,7 @@ KIND_FIELDS: dict[str, tuple[str, ...]] = {
     QUERY: ("query",),
     REQUEST: ("request",),
     CONSTANTS: ("constants",),
+    REDIS: ("command",),
     SOCKET: ("socket",),
     GRAPH: ("chart",),
 }
@@ -94,6 +96,8 @@ class Node:
     query: str = ""
     request: dict = field(default_factory=dict)
     constants: list[dict] = field(default_factory=list)
+    #: A Redis node's command, as it would be typed into redis-cli.
+    command: str = ""
     socket: dict = field(default_factory=dict)
     chart: dict = field(default_factory=dict)
     checks: list[dict] = field(default_factory=list)
@@ -192,6 +196,7 @@ def read_graph(payload: dict) -> Graph:
                 query=str(raw.get("query") or ""),
                 request=raw.get("request") or {},
                 constants=read_constants(node_id, raw.get("constants")),
+                command=str(raw.get("command") or ""),
                 socket=raw.get("socket") or {},
                 chart=raw.get("chart") or {},
                 checks=read_checks(node_id, raw.get("checks")),
@@ -429,11 +434,31 @@ def _constants_output(result: Any) -> dict:
     return dict(result.get("values") or {})
 
 
+def _redis_output(result: Any) -> dict:
+    reply = result.get("reply")
+    parsed: Any = None
+    # caches mostly hold JSON, and `{{Cached.json.email}}` is what gets typed
+    if isinstance(reply, str) and reply.strip()[:1] in ("{", "["):
+        try:
+            parsed = json.loads(reply)
+        except ValueError:
+            parsed = None
+    return {
+        "reply": reply,
+        "json": parsed,
+        "kind": result.get("kind"),
+        # a list reply is nearly always walked item by item
+        "items": reply if isinstance(reply, list) else None,
+        "first": reply[0] if isinstance(reply, list) and reply else None,
+    }
+
+
 #: What each kind offers downstream, by kind.
 OUTPUTS: dict[str, Any] = {
     QUERY: _query_output,
     REQUEST: _request_output,
     CONSTANTS: _constants_output,
+    REDIS: _redis_output,
 }
 
 
@@ -497,11 +522,25 @@ def _constants_paths(output: dict) -> list[str]:
     return list(output)[:MAX_SUGGESTIONS]
 
 
+def _redis_paths(output: dict) -> list[str]:
+    reply = output.get("reply")
+    paths = ["reply", "kind"]
+    if isinstance(reply, list):
+        paths += ["items", "first"]
+    elif isinstance(reply, dict):
+        paths += [f"reply.{key}" for key in list(reply)[:MAX_SUGGESTIONS]]
+    parsed = output.get("json")
+    if isinstance(parsed, dict):
+        paths += [f"json.{key}" for key in list(parsed)[:MAX_SUGGESTIONS]]
+    return paths
+
+
 #: What each kind is worth offering as a reference, by kind.
 PATHS: dict[str, Any] = {
     QUERY: _query_paths,
     REQUEST: _request_paths,
     CONSTANTS: _constants_paths,
+    REDIS: _redis_paths,
 }
 
 
