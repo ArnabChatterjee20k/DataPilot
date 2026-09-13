@@ -293,6 +293,8 @@ test.describe("the command runner", () => {
     await openRedis(page);
     await page.getByRole("button", { name: "Command", exact: true }).click();
     await command(page, "PING");
+    // history is what has run, so it only holds PING once the reply is back
+    await expect(page.getByLabel("Command output")).toContainText("PONG");
 
     await page.getByLabel("Redis command").press("ArrowUp");
 

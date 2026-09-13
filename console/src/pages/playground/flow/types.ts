@@ -5,6 +5,7 @@ export type NodeKind =
   | "query"
   | "request"
   | "constants"
+  | "redis"
   | "socket"
   | "graph";
 
@@ -31,6 +32,7 @@ export interface FlowNodeData {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  command?: string;
   socket?: SocketConfig;
   chart?: ChartConfig;
   checks?: FlowCheck[];
@@ -87,6 +89,8 @@ export interface FlowNode {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  /** A Redis node's command, as it would be typed into redis-cli. */
+  command?: string;
   socket?: SocketConfig;
   chart?: ChartConfig;
   checks?: FlowCheck[];
@@ -196,6 +200,14 @@ export const NEW_CONSTANTS_NODE = (id: string): FlowNode => ({
   name: "Config",
   kind: "constants",
   constants: [emptyRow()],
+  position: { x: 0, y: 0 },
+});
+
+export const NEW_REDIS_NODE = (id: string): FlowNode => ({
+  id,
+  name: "Redis",
+  kind: "redis",
+  command: "",
   position: { x: 0, y: 0 },
 });
 

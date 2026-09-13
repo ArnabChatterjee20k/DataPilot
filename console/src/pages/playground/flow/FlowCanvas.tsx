@@ -21,6 +21,7 @@ import {
   Braces,
   Database,
   Globe,
+  KeyRound,
   Keyboard,
   Loader2,
   Play,
@@ -56,6 +57,7 @@ import {
   NEW_CONSTANTS_NODE,
   NEW_GRAPH_NODE,
   NEW_QUERY_NODE,
+  NEW_REDIS_NODE,
   NEW_SOCKET_NODE,
   NEW_REQUEST_NODE,
   newNodeId,
@@ -98,6 +100,7 @@ function subtitleOf(data: FlowNodeCardData): string {
       : "no values yet";
   }
   if (data.kind === "query") return String(data.query ?? "").trim();
+  if (data.kind === "redis") return String(data.command ?? "").trim();
   const request = data.request;
   return request ? `${request.method ?? "GET"} ${request.path ?? ""}`.trim() : "";
 }
@@ -113,6 +116,7 @@ const toCanvas = (node: FlowNode): CanvasNode => ({
     query: node.query ?? "",
     request: node.request,
     constants: node.constants ?? [],
+    command: node.command ?? "",
     socket: node.socket,
     chart: node.chart,
     checks: node.checks ?? [],
@@ -128,6 +132,7 @@ const toDomain = (node: CanvasNode): FlowNode => ({
   query: String(node.data.query ?? ""),
   request: node.data.request,
   constants: (node.data.constants as FlowNode["constants"]) ?? [],
+  command: String(node.data.command ?? ""),
   socket: node.data.socket as FlowNode["socket"],
   chart: node.data.chart as FlowNode["chart"],
   checks: (node.data.checks as FlowNode["checks"]) ?? [],
@@ -294,6 +299,8 @@ export function FlowCanvas({
         ? NEW_QUERY_NODE(id)
         : kind === "constants"
           ? NEW_CONSTANTS_NODE(id)
+          : kind === "redis"
+            ? NEW_REDIS_NODE(id)
           : kind === "socket"
             ? NEW_SOCKET_NODE(id)
             : kind === "graph"
@@ -521,6 +528,7 @@ export function FlowCanvas({
     addQuery: () => addNode("query"),
     addRequest: () => addNode("request"),
     addConstants: () => addNode("constants"),
+    addRedis: () => addNode("redis"),
     addSocket: () => addNode("socket"),
     addGraph: () => addNode("graph"),
     duplicate: duplicateSelection,
@@ -580,6 +588,16 @@ export function FlowCanvas({
         >
           <Braces className="h-3.5 w-3.5" />
           Constants
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 px-2 text-xs"
+          onClick={() => addNode("redis")}
+          title="Add a Redis node (K)"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Redis
         </Button>
         <Button
           size="sm"

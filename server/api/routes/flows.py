@@ -199,6 +199,10 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
         if node.kind == flows.CONSTANTS:
             return run_constants_node(node, inputs, runner)
 
+        if node.kind == flows.REDIS:
+            connection = await load_connection_for(session, node.connection_id, node)
+            return await run_redis_node(connection, node, inputs, runner, captured)
+
         if node.kind == flows.QUERY:
             connection = await load_connection_for(session, node.connection_id, node)
             sql, missing = flows.interpolate(node.query, inputs, runner.names)
@@ -221,6 +225,77 @@ def node_executor(session, runner_ref: dict, captured: Optional[dict] = None):
         return await run_request_node(connection, node, spec)
 
     return execute
+
+
+async def run_redis_node(connection, node, inputs: dict, runner, captured) -> tuple[str, dict]:
+    """Run one Redis command, under the rules the command panel keeps.
+
+    The command is split into arguments before references are replaced, not
+    after: a name like `Ada Lovelace` dropped into `SET user:7 {{Users.first.name}}`
+    has to stay one argument rather than becoming two.
+    """
+    from redis.exceptions import ResponseError
+
+    from .. import redis_commands
+    from .redis import address_of, open_redis, to_http
+
+    if connection.source != SourceConfig.REDIS.value:
+        raise flows.FlowError(
+            f"{node.label} is a Redis node on a {connection.source} connection. "
+            "Point it at a Redis connection."
+        )
+
+    try:
+        command = redis_commands.parse(node.command)
+    except redis_commands.CommandError as error:
+        raise flows.FlowError(f"{node.label}: {error}") from error
+
+    parts = []
+    for part in command.parts:
+        text, missing = flows.interpolate(part, inputs, runner.names)
+        if missing:
+            runner.warn(node.id, flows.describe_missing(missing))
+        parts.append(text)
+
+    # a flow runs unattended once started, so a wipe gets no confirmation here
+    # and is refused outright, as a destructive SQL statement is
+    if command.wipes:
+        raise flows.FlowError(
+            f"{node.label} would run {command.name}, which empties the database. "
+            "A flow will not run one."
+        )
+    if command.writes and getattr(connection, "read_only", True):
+        raise flows.FlowError(
+            f"{node.label} runs {command.name}, which writes, and "
+            f"'{connection.name}' is read-only. Turn off read-only on the "
+            "connection to let a flow change it."
+        )
+
+    sent = " ".join(parts)
+    runner.runs[node.id].sent = sent
+    if captured is not None and captured.get("id") == node.id:
+        captured["query"] = sent
+
+    try:
+        async with await open_redis(connection) as session:
+            reply = await session.client.execute_command(*parts)
+    except HTTPException as error:
+        raise flows.FlowError(str(error.detail)) from error
+    except ResponseError as error:
+        raise flows.FlowError(f"{node.label}: Redis said: {error}") from error
+    except Exception as error:
+        raise flows.FlowError(str(to_http(address_of(connection), error).detail)) from error
+
+    rendered = redis_commands.render(reply, command.name)
+    if isinstance(rendered, list):
+        summary = f"{len(rendered)} item{'' if len(rendered) == 1 else 's'}"
+    elif isinstance(rendered, dict):
+        summary = f"{len(rendered)} field{'' if len(rendered) == 1 else 's'}"
+    elif rendered is None:
+        summary = "(nil)"
+    else:
+        summary = str(rendered)[:40]
+    return summary, {"reply": rendered, "kind": redis_commands.kind_of(rendered)}
 
 
 def run_constants_node(node: flows.Node, inputs: dict, runner) -> tuple[str, dict]:

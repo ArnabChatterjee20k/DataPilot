@@ -117,10 +117,16 @@ def parse(text: str) -> Command:
     )
 
 
-def render(reply: Any) -> Any:
-    """A reply in a shape JSON can carry: text for bytes, lists stay lists."""
+def render(reply: Any, name: str = "") -> Any:
+    """A reply in a shape JSON can carry: text for bytes, lists stay lists.
+
+    redis-py turns a status reply into `True`, so `PING` would read as
+    `(integer) true`; redis-cli says PONG, and OK for everything else.
+    """
     from .redis_client import as_text
 
+    if reply is True:
+        return "PONG" if name == "PING" else "OK"
     if isinstance(reply, (bytes, bytearray, memoryview)):
         return as_text(bytes(reply))
     if isinstance(reply, dict):

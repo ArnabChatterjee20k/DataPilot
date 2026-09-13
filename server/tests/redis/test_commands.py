@@ -39,6 +39,16 @@ class TestParsing:
             redis_commands.parse("SUBSCRIBE news")
 
 
+class TestRendering:
+    def test_a_status_reply_reads_as_redis_cli_prints_it(self):
+        """redis-py hands back `True`, which would read as `(integer) true`."""
+        assert redis_commands.render(True, "PING") == "PONG"
+        assert redis_commands.render(True, "SET") == "OK"
+
+    def test_a_real_integer_is_left_alone(self):
+        assert redis_commands.render(1, "EXISTS") == 1
+
+
 class TestRunning:
     def test_a_read_returns_its_value(self, client, redis_connection):
         response = run(client, redis_connection["uid"], "GET greeting", allow_writes=False)
