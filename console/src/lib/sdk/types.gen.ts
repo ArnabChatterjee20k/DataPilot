@@ -741,6 +741,54 @@ export type RedisChannelListModel = {
 };
 
 /**
+ * RedisCommandModel
+ */
+export type RedisCommandModel = {
+    /**
+     * Command
+     */
+    command: string;
+    /**
+     * Confirm
+     */
+    confirm?: boolean;
+};
+
+/**
+ * RedisCommandResultModel
+ */
+export type RedisCommandResultModel = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Command
+     */
+    command: string;
+    /**
+     * Reply
+     */
+    reply?: unknown;
+    /**
+     * Kind
+     */
+    kind?: string;
+    /**
+     * Writes
+     */
+    writes?: boolean;
+    /**
+     * Elapsed Ms
+     */
+    elapsed_ms?: number;
+    /**
+     * Warning
+     */
+    warning?: string;
+};
+
+/**
  * RedisInfoModel
  */
 export type RedisInfoModel = {
@@ -772,6 +820,98 @@ export type RedisInfoModel = {
      * Pattern Subscriptions
      */
     pattern_subscriptions?: number;
+};
+
+/**
+ * RedisKeyCreateModel
+ *
+ * A whole key, written in one go. Which fields matter depends on its type.
+ */
+export type RedisKeyCreateModel = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Type
+     */
+    type: 'string' | 'hash' | 'list' | 'set' | 'zset' | 'stream';
+    /**
+     * Value
+     */
+    value?: string | null;
+    /**
+     * Entries
+     */
+    entries?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Members
+     */
+    members?: Array<string>;
+    /**
+     * Ttl
+     */
+    ttl?: number | null;
+    /**
+     * Replace
+     */
+    replace?: boolean;
+};
+
+/**
+ * RedisKeyEditModel
+ *
+ * One change to one part of a key.
+ *
+ * `action` depends on the type: `set` for a string, `set`/`remove` a hash
+ * field, `set`/`push`/`remove` a list position, `add`/`remove` a set member,
+ * `set`/`remove` a sorted set member, `add`/`remove` a stream entry.
+ */
+export type RedisKeyEditModel = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Field
+     */
+    field?: string | null;
+    /**
+     * Member
+     */
+    member?: string | null;
+    /**
+     * Index
+     */
+    index?: number | null;
+    /**
+     * Value
+     */
+    value?: string | null;
+    /**
+     * Score
+     */
+    score?: number | null;
+    /**
+     * Fields
+     */
+    fields?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Id
+     */
+    id?: string | null;
+    /**
+     * End
+     */
+    end?: 'head' | 'tail' | null;
 };
 
 /**
@@ -900,6 +1040,38 @@ export type RedisPublishResultModel = {
      * Received By
      */
     received_by?: number;
+};
+
+/**
+ * RedisRenameModel
+ */
+export type RedisRenameModel = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * To
+     */
+    to: string;
+    /**
+     * Replace
+     */
+    replace?: boolean;
+};
+
+/**
+ * RedisTtlModel
+ */
+export type RedisTtlModel = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Ttl
+     */
+    ttl?: number | null;
 };
 
 /**
@@ -2835,6 +3007,10 @@ export type DeleteKeyData = {
          * Key
          */
         key: string;
+        /**
+         * Allow Writes
+         */
+        allow_writes?: boolean;
     };
     url: '/connection/{connection_id}/redis/keys';
 };
@@ -2900,6 +3076,41 @@ export type ScanKeysResponses = {
 
 export type ScanKeysResponse = ScanKeysResponses[keyof ScanKeysResponses];
 
+export type CreateKeyData = {
+    body: RedisKeyCreateModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Allow Writes
+         */
+        allow_writes?: boolean;
+    };
+    url: '/connection/{connection_id}/redis/keys';
+};
+
+export type CreateKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateKeyError = CreateKeyErrors[keyof CreateKeyErrors];
+
+export type CreateKeyResponses = {
+    /**
+     * Successful Response
+     */
+    201: RedisKeyValueModel;
+};
+
+export type CreateKeyResponse = CreateKeyResponses[keyof CreateKeyResponses];
+
 export type ReadKeyData = {
     body?: never;
     path: {
@@ -2934,6 +3145,146 @@ export type ReadKeyResponses = {
 };
 
 export type ReadKeyResponse = ReadKeyResponses[keyof ReadKeyResponses];
+
+export type EditKeyData = {
+    body: RedisKeyEditModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Allow Writes
+         */
+        allow_writes?: boolean;
+    };
+    url: '/connection/{connection_id}/redis/keys/items';
+};
+
+export type EditKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EditKeyError = EditKeyErrors[keyof EditKeyErrors];
+
+export type EditKeyResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisKeyValueModel;
+};
+
+export type EditKeyResponse = EditKeyResponses[keyof EditKeyResponses];
+
+export type SetTtlData = {
+    body: RedisTtlModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Allow Writes
+         */
+        allow_writes?: boolean;
+    };
+    url: '/connection/{connection_id}/redis/keys/ttl';
+};
+
+export type SetTtlErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetTtlError = SetTtlErrors[keyof SetTtlErrors];
+
+export type SetTtlResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisKeyValueModel;
+};
+
+export type SetTtlResponse = SetTtlResponses[keyof SetTtlResponses];
+
+export type RenameKeyData = {
+    body: RedisRenameModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Allow Writes
+         */
+        allow_writes?: boolean;
+    };
+    url: '/connection/{connection_id}/redis/keys/rename';
+};
+
+export type RenameKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RenameKeyError = RenameKeyErrors[keyof RenameKeyErrors];
+
+export type RenameKeyResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisKeyValueModel;
+};
+
+export type RenameKeyResponse = RenameKeyResponses[keyof RenameKeyResponses];
+
+export type RunCommandData = {
+    body: RedisCommandModel;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: {
+        /**
+         * Allow Writes
+         */
+        allow_writes?: boolean;
+    };
+    url: '/connection/{connection_id}/redis/command';
+};
+
+export type RunCommandErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RunCommandError = RunCommandErrors[keyof RunCommandErrors];
+
+export type RunCommandResponses = {
+    /**
+     * Successful Response
+     */
+    200: RedisCommandResultModel;
+};
+
+export type RunCommandResponse = RunCommandResponses[keyof RunCommandResponses];
 
 export type ServerInfoData = {
     body?: never;
