@@ -12,6 +12,7 @@ export type ShortcutAction =
   | "addQuery"
   | "addRequest"
   | "addConstants"
+  | "addRedis"
   | "addSocket"
   | "addGraph"
   | "duplicate"
@@ -36,6 +37,7 @@ export const SHORTCUTS: Shortcut[] = [
   { action: "addQuery", keys: ["q"], label: "Add a query node" },
   { action: "addRequest", keys: ["r"], label: "Add a request node" },
   { action: "addConstants", keys: ["c"], label: "Add a constants node" },
+  { action: "addRedis", keys: ["k"], label: "Add a Redis node" },
   { action: "addSocket", keys: ["w"], label: "Add a websocket source" },
   { action: "addGraph", keys: ["g"], label: "Add a graph" },
   { action: "duplicate", keys: ["d"], mod: true, label: "Duplicate the selection" },

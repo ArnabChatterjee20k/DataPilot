@@ -67,8 +67,13 @@ export function NodeInspector({
   const [panel, setPanel] = useState<"setup" | "result">("setup");
   const [pastedCurl, setPastedCurl] = useState<string | null>(null);
 
+  // offering a connection the node cannot use only moves the error to run time
   const usable = connections.filter((item) =>
-    node.kind === "query" ? item.type !== "api" : item.type === "api"
+    node.kind === "redis"
+      ? item.type === "redis"
+      : node.kind === "query"
+        ? item.type !== "api" && item.type !== "redis"
+        : item.type === "api"
   );
 
   const patchRequest = (patch: Partial<RequestSpecModel>) =>
@@ -173,7 +178,9 @@ export function NodeInspector({
                 <span className="text-[11px] text-amber-500">
                   {node.kind === "query"
                     ? "No database connections yet."
-                    : "No API connections yet."}
+                    : node.kind === "redis"
+                      ? "No Redis connections yet."
+                      : "No API connections yet."}
                 </span>
               )}
             </label>
@@ -216,6 +223,24 @@ export function NodeInspector({
                   <code>{"{{Node.first.id}}"}</code> like anywhere else.
                 </p>
               </div>
+            ) : node.kind === "redis" ? (
+              <label className="block space-y-1">
+                <span className="text-[11px] text-muted-foreground">Command</span>
+                <input
+                  value={node.command ?? ""}
+                  onChange={(event) => onChange({ command: event.target.value })}
+                  aria-label="Node command"
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="HGETALL user:{{Users.first.id}}"
+                  className="h-8 w-full rounded-md border bg-background px-2 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+                <span className="block text-[11px] leading-relaxed text-muted-foreground">
+                  One command, as redis-cli takes it. A reference stays one
+                  argument even with spaces in it. A write needs the connection
+                  to allow writes, and FLUSHDB or FLUSHALL never run from a flow.
+                </span>
+              </label>
             ) : node.kind === "query" ? (
               <label className="block space-y-1">
                 <span className="text-[11px] text-muted-foreground">Query</span>
@@ -300,7 +325,9 @@ export function NodeInspector({
               upstream node produced. A query node offers{" "}
               <code>rows</code>, <code>first</code> and <code>row_count</code>;
               a request node offers <code>status</code>, <code>json</code> and{" "}
-              <code>body</code>; a constants node offers its own keys. Test the
+              <code>body</code>; a Redis node offers <code>reply</code>,{" "}
+              <code>json</code> and <code>items</code>; a constants node offers
+              its own keys. Test the
               node to see the exact references, with what each one holds.
             </p>
             )}
@@ -320,7 +347,9 @@ export function NodeInspector({
                     ? "row_count"
                     : node.kind === "constants"
                       ? "api_key"
-                      : "status"
+                      : node.kind === "redis"
+                        ? "reply"
+                        : "status"
                 }
               />
               <p className="text-[11px] leading-relaxed text-muted-foreground">

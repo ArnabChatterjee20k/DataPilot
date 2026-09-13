@@ -9,6 +9,7 @@ import {
   Database,
   Radio,
   Globe,
+  KeyRound,
   Loader2,
   MinusCircle,
   XCircle,
@@ -65,6 +66,7 @@ export interface FlowNodeCardData extends Record<string, unknown> {
   query?: string;
   request?: RequestSpecModel;
   constants?: KeyValueRow[];
+  command?: string;
   socket?: SocketConfig;
   chart?: ChartConfig;
   checks?: unknown[];
@@ -95,6 +97,8 @@ export const FlowNodeCard = memo(function FlowNodeCard({
       ? Database
       : card.kind === "constants"
         ? Braces
+        : card.kind === "redis"
+          ? KeyRound
         : card.kind === "socket"
           ? Radio
           : card.kind === "graph"
@@ -190,7 +194,9 @@ export const FlowNodeCard = memo(function FlowNodeCard({
               ? "no query yet"
               : card.kind === "constants"
                 ? "no values yet"
-                : "no path yet")}
+                : card.kind === "redis"
+                  ? "no command yet"
+                  : "no path yet")}
         </p>
 
         {card.connectionName ? (
