@@ -324,6 +324,75 @@ class RedisKeyValueModel(BaseModel):
     truncated: bool = False
 
 
+class RedisKeyCreateModel(BaseModel):
+    """A whole key, written in one go. Which fields matter depends on its type."""
+
+    key: str
+    type: Literal["string", "hash", "list", "set", "zset", "stream"]
+    #: A string's value.
+    value: Optional[str] = None
+    #: Hash `{field, value}`, sorted set `{member, score}`, stream `{fields}`.
+    entries: list[dict] = Field(default_factory=list)
+    #: List or set members, in order.
+    members: list[str] = Field(default_factory=list)
+    #: Seconds until it expires; leave it out for no expiry.
+    ttl: Optional[int] = None
+    #: Overwrite a key that already exists rather than refusing.
+    replace: bool = False
+
+
+class RedisKeyEditModel(BaseModel):
+    """One change to one part of a key.
+
+    `action` depends on the type: `set` for a string, `set`/`remove` a hash
+    field, `set`/`push`/`remove` a list position, `add`/`remove` a set member,
+    `set`/`remove` a sorted set member, `add`/`remove` a stream entry.
+    """
+
+    key: str
+    action: str
+    field: Optional[str] = None
+    member: Optional[str] = None
+    index: Optional[int] = None
+    value: Optional[str] = None
+    score: Optional[float] = None
+    fields: Optional[dict] = None
+    id: Optional[str] = None
+    #: For a list push: `head` or `tail`.
+    end: Optional[Literal["head", "tail"]] = None
+
+
+class RedisTtlModel(BaseModel):
+    key: str
+    #: Seconds; null takes the expiry away.
+    ttl: Optional[int] = None
+
+
+class RedisRenameModel(BaseModel):
+    key: str
+    to: str
+    replace: bool = False
+
+
+class RedisCommandModel(BaseModel):
+    command: str
+    #: A command that empties a whole database runs only when this is true.
+    confirm: bool = False
+
+
+class RedisCommandResultModel(BaseModel):
+    connection_id: str
+    command: str
+    #: The reply, with bytes as text and arrays as lists.
+    reply: Any = None
+    #: `nil`, `integer`, `double`, `string`, `array` or `map`.
+    kind: str = "nil"
+    writes: bool = False
+    elapsed_ms: float = 0.0
+    #: Something worth knowing before running it again.
+    warning: str = ""
+
+
 class RedisInfoModel(BaseModel):
     connection_id: str
     server: str

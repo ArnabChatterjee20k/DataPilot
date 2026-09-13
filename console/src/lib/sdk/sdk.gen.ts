@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteKeyData, DeleteKeyErrors, DeleteKeyResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListChannelsData, ListChannelsErrors, ListChannelsResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, ProvisionAppwriteJwtData, ProvisionAppwriteJwtErrors, ProvisionAppwriteJwtResponses, PublishData, PublishErrors, PublishResponses, ReadKeyData, ReadKeyErrors, ReadKeyResponses, ScanKeysData, ScanKeysErrors, ScanKeysResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, ServerInfoData, ServerInfoErrors, ServerInfoResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, TestNodeData, TestNodeErrors, TestNodeResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
+import type { CompareSnapshotsData, CompareSnapshotsErrors, CompareSnapshotsResponses, CreateConnectionData, CreateConnectionErrors, CreateConnectionResponses, CreateFlowData, CreateFlowErrors, CreateFlowResponses, CreateKeyData, CreateKeyErrors, CreateKeyResponses, CreateRequestData, CreateRequestErrors, CreateRequestResponses, DeleteConnectionData, DeleteConnectionErrors, DeleteConnectionResponses, DeleteFlowData, DeleteFlowErrors, DeleteFlowResponses, DeleteKeyData, DeleteKeyErrors, DeleteKeyResponses, DeleteRequestData, DeleteRequestErrors, DeleteRequestResponses, DeleteSnapshotData, DeleteSnapshotErrors, DeleteSnapshotResponses, EditKeyData, EditKeyErrors, EditKeyResponses, ExecuteQueryData, ExecuteQueryErrors, ExecuteQueryResponses, ExplainQueryData, ExplainQueryErrors, ExplainQueryResponses, ExportEntityData, ExportEntityErrors, ExportEntityResponses, GetConnectionData, GetConnectionErrors, GetConnectionResponses, GetConnectionStatusData, GetConnectionStatusErrors, GetConnectionStatusResponses, GetEntityColumnsData, GetEntityColumnsErrors, GetEntityColumnsResponses, GetEntityRowsData, GetEntityRowsErrors, GetEntityRowsResponses, GetEntityStatsData, GetEntityStatsErrors, GetEntityStatsResponses, GetFlowData, GetFlowErrors, GetFlowResponses, GetRequestData, GetRequestErrors, GetRequestResponses, GetSchemasData, GetSchemasErrors, GetSchemasResponses, GetSlowQueriesData, GetSlowQueriesErrors, GetSlowQueriesResponses, GetSnapshotData, GetSnapshotErrors, GetSnapshotResponses, GetTablesData, GetTablesErrors, GetTablesResponses, GetVariablesData, GetVariablesErrors, GetVariablesResponses, HealthData, HealthResponses, ListChannelsData, ListChannelsErrors, ListChannelsResponses, ListConnectionsData, ListConnectionsResponses, ListFlowsData, ListFlowsResponses, ListRequestsData, ListRequestsErrors, ListRequestsResponses, ListSnapshotsData, ListSnapshotsErrors, ListSnapshotsResponses, ProvisionAppwriteJwtData, ProvisionAppwriteJwtErrors, ProvisionAppwriteJwtResponses, PublishData, PublishErrors, PublishResponses, ReadKeyData, ReadKeyErrors, ReadKeyResponses, RenameKeyData, RenameKeyErrors, RenameKeyResponses, RunCommandData, RunCommandErrors, RunCommandResponses, ScanKeysData, ScanKeysErrors, ScanKeysResponses, SendAdHocRequestData, SendAdHocRequestErrors, SendAdHocRequestResponses, SendRequestData, SendRequestErrors, SendRequestResponses, ServerInfoData, ServerInfoErrors, ServerInfoResponses, SetTtlData, SetTtlErrors, SetTtlResponses, SetVariablesData, SetVariablesErrors, SetVariablesResponses, TakeSnapshotData, TakeSnapshotErrors, TakeSnapshotResponses, TestConnectionData, TestConnectionErrors, TestConnectionResponses, TestNodeData, TestNodeErrors, TestNodeResponses, UpdateConnectionData, UpdateConnectionErrors, UpdateConnectionResponses, UpdateFlowData, UpdateFlowErrors, UpdateFlowResponses, UpdateRequestData, UpdateRequestErrors, UpdateRequestResponses, UploadFileData, UploadFileErrors, UploadFileResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -385,11 +385,81 @@ export const deleteKey = <ThrowOnError extends boolean = false>(options: Options
 export const scanKeys = <ThrowOnError extends boolean = false>(options: Options<ScanKeysData, ThrowOnError>): RequestResult<ScanKeysResponses, ScanKeysErrors, ThrowOnError> => (options.client ?? client).get<ScanKeysResponses, ScanKeysErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/keys', ...options });
 
 /**
+ * Create Key
+ *
+ * Write a new key of any type, or replace one when asked to.
+ */
+export const createKey = <ThrowOnError extends boolean = false>(options: Options<CreateKeyData, ThrowOnError>): RequestResult<CreateKeyResponses, CreateKeyErrors, ThrowOnError> => (options.client ?? client).post<CreateKeyResponses, CreateKeyErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/redis/keys',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Read Key
  *
  * One key, shown as whatever it actually is.
  */
 export const readKey = <ThrowOnError extends boolean = false>(options: Options<ReadKeyData, ThrowOnError>): RequestResult<ReadKeyResponses, ReadKeyErrors, ThrowOnError> => (options.client ?? client).get<ReadKeyResponses, ReadKeyErrors, ThrowOnError>({ url: '/connection/{connection_id}/redis/keys/value', ...options });
+
+/**
+ * Edit Key
+ *
+ * Change one field, position or member, rather than rewriting the key.
+ */
+export const editKey = <ThrowOnError extends boolean = false>(options: Options<EditKeyData, ThrowOnError>): RequestResult<EditKeyResponses, EditKeyErrors, ThrowOnError> => (options.client ?? client).patch<EditKeyResponses, EditKeyErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/redis/keys/items',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Set Ttl
+ */
+export const setTtl = <ThrowOnError extends boolean = false>(options: Options<SetTtlData, ThrowOnError>): RequestResult<SetTtlResponses, SetTtlErrors, ThrowOnError> => (options.client ?? client).put<SetTtlResponses, SetTtlErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/redis/keys/ttl',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Rename Key
+ */
+export const renameKey = <ThrowOnError extends boolean = false>(options: Options<RenameKeyData, ThrowOnError>): RequestResult<RenameKeyResponses, RenameKeyErrors, ThrowOnError> => (options.client ?? client).post<RenameKeyResponses, RenameKeyErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/redis/keys/rename',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Run Command
+ *
+ * Run one command, the way redis-cli would.
+ *
+ * Only a command known to read runs on a read-only connection. A command
+ * that empties a database needs `confirm` as well, because one mistyped
+ * line should not take a cache with it.
+ */
+export const runCommand = <ThrowOnError extends boolean = false>(options: Options<RunCommandData, ThrowOnError>): RequestResult<RunCommandResponses, RunCommandErrors, ThrowOnError> => (options.client ?? client).post<RunCommandResponses, RunCommandErrors, ThrowOnError>({
+    url: '/connection/{connection_id}/redis/command',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Server Info

@@ -312,6 +312,155 @@ def summarise(info: dict) -> list[dict]:
 # ----------------------------------------------------------------- the session
 
 
+#: The types a key can be created as from here.
+WRITABLE_TYPES = (STRING, HASH, LIST, SET, ZSET, STREAM)
+
+
+def _require_content(kind: str, value, entries: list, members: list) -> None:
+    """Redis cannot store an empty collection: the key simply would not exist."""
+    if kind == STRING:
+        if value is None:
+            raise RedisError("A string key needs a value, even an empty one.")
+        return
+    if kind in (LIST, SET) and not members:
+        raise RedisError(
+            f"A {TYPE_LABELS[kind].lower()} with nothing in it is not a key Redis "
+            "can store. Give it at least one member."
+        )
+    if kind in (HASH, ZSET, STREAM) and not entries:
+        raise RedisError(
+            f"A {TYPE_LABELS[kind].lower()} with nothing in it is not a key Redis "
+            "can store. Give it at least one entry."
+        )
+
+
+def _score(raw) -> float:
+    try:
+        return float(raw)
+    except (TypeError, ValueError) as error:
+        raise RedisError(f"{raw!r} is not a number, so it cannot be a score.") from error
+
+
+def _queue_write(pipe, key: str, kind: str, value, entries: list, members: list) -> None:
+    if kind == STRING:
+        pipe.set(key, value)
+    elif kind == HASH:
+        mapping = {str(entry.get("field", "")): str(entry.get("value", "")) for entry in entries}
+        if "" in mapping:
+            raise RedisError("Every hash field needs a name.")
+        pipe.hset(key, mapping=mapping)
+    elif kind == LIST:
+        pipe.rpush(key, *members)
+    elif kind == SET:
+        pipe.sadd(key, *members)
+    elif kind == ZSET:
+        pipe.zadd(
+            key,
+            {str(entry.get("member", "")): _score(entry.get("score")) for entry in entries},
+        )
+    elif kind == STREAM:
+        for entry in entries:
+            fields = {str(name): str(item) for name, item in (entry.get("fields") or {}).items()}
+            if not fields:
+                raise RedisError("A stream entry needs at least one field.")
+            pipe.xadd(key, fields)
+
+
+async def _string_set(client, key, item):
+    await client.set(key, str(item.get("value", "")), keepttl=True)
+
+
+async def _hash_set(client, key, item):
+    field = str(item.get("field") or "")
+    if not field:
+        raise RedisError("A hash field needs a name.")
+    await client.hset(key, field, str(item.get("value", "")))
+
+
+async def _hash_remove(client, key, item):
+    if not await client.hdel(key, str(item.get("field") or "")):
+        raise RedisError(f"There is no field {item.get('field')!r} in {key!r}.")
+
+
+async def _list_set(client, key, item):
+    try:
+        await client.lset(key, int(item.get("index")), str(item.get("value", "")))
+    except (TypeError, ValueError) as error:
+        raise RedisError("A list position is a whole number.") from error
+
+
+async def _list_push(client, key, item):
+    value = str(item.get("value", ""))
+    if item.get("end") == "head":
+        await client.lpush(key, value)
+    else:
+        await client.rpush(key, value)
+
+
+async def _list_remove(client, key, item):
+    """Remove one position, rather than every member that happens to match.
+
+    LREM works by value, so two identical members make "remove this one"
+    ambiguous. Marking the position with a value nothing else can hold, then
+    removing that, takes exactly the row that was pointed at.
+    """
+    import uuid
+
+    marker = f"__datapilot_removed_{uuid.uuid4().hex}"
+    try:
+        await client.lset(key, int(item.get("index")), marker)
+    except (TypeError, ValueError) as error:
+        raise RedisError("A list position is a whole number.") from error
+    await client.lrem(key, 1, marker)
+
+
+async def _set_add(client, key, item):
+    await client.sadd(key, str(item.get("member", "")))
+
+
+async def _set_remove(client, key, item):
+    if not await client.srem(key, str(item.get("member", ""))):
+        raise RedisError(f"{item.get('member')!r} is not in {key!r}.")
+
+
+async def _zset_set(client, key, item):
+    await client.zadd(key, {str(item.get("member", "")): _score(item.get("score"))})
+
+
+async def _zset_remove(client, key, item):
+    if not await client.zrem(key, str(item.get("member", ""))):
+        raise RedisError(f"{item.get('member')!r} is not in {key!r}.")
+
+
+async def _stream_add(client, key, item):
+    fields = {str(name): str(value) for name, value in (item.get("fields") or {}).items()}
+    if not fields:
+        raise RedisError("A stream entry needs at least one field.")
+    await client.xadd(key, fields)
+
+
+async def _stream_remove(client, key, item):
+    if not await client.xdel(key, str(item.get("id", ""))):
+        raise RedisError(f"There is no entry {item.get('id')!r} in {key!r}.")
+
+
+#: What each type can be changed with, one part at a time.
+_EDITS = {
+    (STRING, "set"): _string_set,
+    (HASH, "set"): _hash_set,
+    (HASH, "remove"): _hash_remove,
+    (LIST, "set"): _list_set,
+    (LIST, "push"): _list_push,
+    (LIST, "remove"): _list_remove,
+    (SET, "add"): _set_add,
+    (SET, "remove"): _set_remove,
+    (ZSET, "set"): _zset_set,
+    (ZSET, "remove"): _zset_remove,
+    (STREAM, "add"): _stream_add,
+    (STREAM, "remove"): _stream_remove,
+}
+
+
 class RedisSession:
     """One connection to a Redis server, for the length of one request.
 
@@ -383,7 +532,10 @@ class RedisSession:
             if cursor == 0 or len(found) >= count:
                 break
 
-        return await self._describe(found[:count]), int(cursor)
+        # every key found is kept, even past `count`: the cursor has already
+        # moved beyond them, so trimming a page loses keys for good. COUNT is
+        # only a hint, and one hash bucket can hand back more than it asked.
+        return await self._describe(found), int(cursor)
 
     async def _describe(self, keys: list) -> list[KeyInfo]:
         """Type, TTL and size for a page of keys, in one round trip."""
@@ -511,6 +663,109 @@ class RedisSession:
 
     async def delete(self, key: str) -> bool:
         return bool(await self.client.delete(key))
+
+    # --------------------------------------------------------------- writes
+
+    async def create(
+        self,
+        key: str,
+        kind: str,
+        *,
+        value: Optional[str] = None,
+        entries: Optional[list] = None,
+        members: Optional[list] = None,
+        ttl: Optional[int] = None,
+        replace: bool = False,
+    ) -> None:
+        """Write a whole key in one go, or refuse to clobber one that exists.
+
+        Done as a transaction watching the key, so "it did not exist when I
+        looked" and "I wrote it" cannot have someone else's write between them.
+        """
+        import redis.asyncio as redis
+
+        if not key:
+            raise RedisError("A key needs a name.")
+        if kind not in WRITABLE_TYPES:
+            raise RedisError(
+                f"'{kind}' is not a type a key can be created as; it is one of "
+                f"{', '.join(WRITABLE_TYPES)}."
+            )
+
+        entries = entries or []
+        members = [str(member) for member in (members or [])]
+        _require_content(kind, value, entries, members)
+
+        async with self.client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                if not replace and await pipe.exists(key):
+                    raise RedisError(
+                        f"There is already a key called {key!r}. Open it to edit "
+                        "it, or choose to replace it."
+                    )
+                pipe.multi()
+                if replace:
+                    pipe.delete(key)
+                _queue_write(pipe, key, kind, value, entries, members)
+                if ttl is not None and ttl > 0:
+                    pipe.expire(key, int(ttl))
+                await pipe.execute()
+            except redis.WatchError as error:
+                raise RedisError(
+                    f"{key!r} changed while it was being written, so nothing was "
+                    "written. Try again."
+                ) from error
+
+    async def edit(self, key: str, action: str, item: dict) -> None:
+        """Change one part of a key, in the way its type allows.
+
+        A hash field, a list position, a set member: editing one of them should
+        not mean rewriting the whole key and racing whoever else touches it.
+        """
+        kind = as_text(await self.client.type(key)) or NONE
+        if kind == NONE:
+            raise RedisError(
+                f"There is no key called {key!r}. It may have expired since it was "
+                "opened."
+            )
+
+        handler = _EDITS.get((kind, action))
+        if handler is None:
+            allowed = sorted(name for (of, name) in _EDITS if of == kind)
+            raise RedisError(
+                f"A {TYPE_LABELS.get(kind, kind).lower()} cannot be changed with "
+                f"'{action}'; it takes {', '.join(allowed)}."
+            )
+        await handler(self.client, key, item)
+
+    async def expire(self, key: str, ttl: Optional[int]) -> None:
+        """Set how long a key lives, or take the limit away."""
+        if not await self.client.exists(key):
+            raise RedisError(f"There is no key called {key!r}.")
+        if ttl is None or ttl < 0:
+            await self.client.persist(key)
+        elif ttl == 0:
+            # zero would delete it on the spot, which is a delete, not an expiry
+            raise RedisError(
+                "A time to live of 0 would delete the key immediately. Delete it "
+                "instead, or give it at least one second."
+            )
+        else:
+            await self.client.expire(key, int(ttl))
+
+    async def rename(self, key: str, to: str, replace: bool = False) -> None:
+        if not to:
+            raise RedisError("The new name is empty.")
+        if not await self.client.exists(key):
+            raise RedisError(f"There is no key called {key!r}.")
+        if replace:
+            await self.client.rename(key, to)
+        elif not await self.client.renamenx(key, to):
+            raise RedisError(
+                f"There is already a key called {to!r}. Choose to replace it, or "
+                "pick another name."
+            )
 
     # -------------------------------------------------------------- pub/sub
 

@@ -2,12 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  createKey,
   deleteKey,
+  editKey,
   listChannels,
   publish,
   readKey,
+  renameKey,
+  runCommand,
   scanKeys,
   serverInfo,
+  setTtl,
+  type RedisCommandModel,
+  type RedisKeyCreateModel,
+  type RedisKeyEditModel,
+  type RedisRenameModel,
+  type RedisTtlModel,
   type RedisChannelListModel,
   type RedisInfoModel,
   type RedisKeyListModel,
@@ -62,18 +72,86 @@ export function useKeyValue(connectionId: string | undefined, key: string | null
   });
 }
 
-export function useDeleteKey(connectionId: string | undefined) {
+export function useDeleteKey(connectionId: string | undefined, allowWrites = false) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (key: string) => {
       await deleteKey({
         path: { connection_id: connectionId! },
-        query: { key },
+        query: { key, ...(allowWrites ? { allow_writes: true } : {}) },
         throwOnError: true,
       });
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["redis", connectionId ?? ""] }),
+  });
+}
+
+/**
+ * Everything that changes a key.
+ *
+ * Each write answers with the key as Redis now holds it, and the keyspace is
+ * refreshed afterwards, so the browser shows what was stored rather than what
+ * it assumed it sent.
+ */
+export function useRedisWrites(connectionId: string | undefined, allowWrites: boolean) {
+  const queryClient = useQueryClient();
+  const path = { connection_id: connectionId! };
+  const query = allowWrites ? { allow_writes: true } : {};
+  const refresh = () =>
+    queryClient.invalidateQueries({ queryKey: ["redis", connectionId ?? ""] });
+
+  const create = useMutation({
+    mutationFn: async (body: RedisKeyCreateModel) =>
+      (await createKey({ path, query, body, throwOnError: true })).data!,
+    onSuccess: refresh,
+  });
+
+  const edit = useMutation({
+    mutationFn: async (body: RedisKeyEditModel) =>
+      (await editKey({ path, query, body, throwOnError: true })).data!,
+    onSuccess: refresh,
+  });
+
+  const expire = useMutation({
+    mutationFn: async (body: RedisTtlModel) =>
+      (await setTtl({ path, query, body, throwOnError: true })).data!,
+    onSuccess: refresh,
+  });
+
+  const rename = useMutation({
+    mutationFn: async (body: RedisRenameModel) =>
+      (await renameKey({ path, query, body, throwOnError: true })).data!,
+    onSuccess: refresh,
+  });
+
+  return { create, edit, expire, rename };
+}
+
+/**
+ * One command, run the way redis-cli would.
+ *
+ * The server says whether the command wrote, from the same table it used to
+ * decide it could run, so the keyspace is refreshed only when something may
+ * have changed rather than guessed at here.
+ */
+export function useRunCommand(connectionId: string | undefined, allowWrites: boolean) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: RedisCommandModel) =>
+      (
+        await runCommand({
+          path: { connection_id: connectionId! },
+          query: allowWrites ? { allow_writes: true } : {},
+          body,
+          throwOnError: true,
+        })
+      ).data!,
+    onSuccess: (result) => {
+      if (result.writes) {
+        void queryClient.invalidateQueries({ queryKey: ["redis", connectionId ?? ""] });
+      }
+    },
   });
 }
 
