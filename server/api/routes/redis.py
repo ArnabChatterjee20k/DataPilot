@@ -355,7 +355,7 @@ async def run_command(
             ) from error
         raise to_http(address, error) from error
 
-    rendered = redis_commands.render(reply)
+    rendered = redis_commands.render(reply, command.name)
     return RedisCommandResultModel(
         connection_id=connection_id,
         command=" ".join(command.parts),
